@@ -1,6 +1,3 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js';
-import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js';
-
 (() => {
   'use strict';
   const $ = (s, p=document) => p.querySelector(s);
@@ -18,12 +15,18 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
   let remoteWriteTimer = 0;
 
   async function initRemoteSync(){
+    if(!navigator.onLine) return;
     try{
+      const [{ initializeApp }, { doc, getFirestore, onSnapshot, setDoc: firebaseSetDoc }] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
+      ]);
       const response=await fetch('configuracion.json');
       const cfg=await response.json();
       if(!cfg?.firebase?.apiKey||!cfg?.firebase?.projectId) return;
       const app=initializeApp(cfg.firebase,'panel-v3');
       remoteStateRef=doc(getFirestore(app),'config','estado');
+      window.__egmSetDoc=firebaseSetDoc;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
@@ -48,7 +51,7 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
     const write=async()=>{
       const cfg=state.config||{};
       try{
-        await setDoc(remoteStateRef,{
+        await window.__egmSetDoc(remoteStateRef,{
           lista_activa:cfg.repertoire||'todas',
           listaActiva:cfg.repertoire||'todas',
           pedidos_whatsapp:cfg.whatsapp!==false,
@@ -203,21 +206,47 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
     state.filtered.forEach((song,index)=>{
       const queued=state.queue.includes(song.id), played=state.played.has(song.id);
       const card=document.createElement('article');card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
-      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics" data-act="lyrics" title="Letra">Letra</button><button class="song-action notes" data-act="notes" title="Notas">Notas</button></div>`;
+      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics" data-act="lyrics" title="Letra">Letra</button><button class="song-action notes" data-act="notes" title="Notas">Notas</button><button class="song-action daniel" data-act="daniel" title="Cancionero Daniel">Daniel</button></div>`;
       card.addEventListener('click',e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
         const act=button.dataset.act;
-        if(act==='lyrics'||act==='notes') handleSongAction(song,act);
-      });
-      card.addEventListener('dblclick',e=>{
-        const act=e.target.closest('[data-act]')?.dataset.act;
-        if(act==='queue'||act==='played') handleSongAction(song,act);
+        if(act==='lyrics'||act==='notes'||act==='daniel'){
+          requireSecondTap(song,act,button);
+          return;
+        }
+        handleSongAction(song,act);
       });
       list.append(card);
     });
     if(!state.filtered.length) list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3><p>Prueba con otro título, artista o número.</p></div>';
   }
+  let pendingViewerTap=null;
+  function requireSecondTap(song,act,button){
+    const key=`${song.id}:${act}`;
+    const now=Date.now();
+    if(pendingViewerTap?.key===key && now-pendingViewerTap.time<=900){
+      clearTimeout(pendingViewerTap.timer);
+      pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
+      pendingViewerTap=null;
+      handleSongAction(song,act);
+      return;
+    }
+    if(pendingViewerTap){
+      clearTimeout(pendingViewerTap.timer);
+      pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
+    }
+    button.classList.add('is-awaiting-second-tap');
+    const label=act==='lyrics'?'Letra':act==='notes'?'Notas':'Daniel';
+    toast(`Toca otra vez para abrir ${label}`);
+    const entry={key,time:now,button,timer:null};
+    entry.timer=setTimeout(()=>{
+      if(pendingViewerTap===entry) pendingViewerTap=null;
+      button.classList.remove('is-awaiting-second-tap');
+    },900);
+    pendingViewerTap=entry;
+  }
+
   function handleSongAction(song,act){
     if(act==='queue'){
       state.queue=state.queue.includes(song.id)?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
@@ -227,6 +256,7 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
       saveState();renderQueue();renderSongs();toast(state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
     } else if(act==='lyrics') openViewer(song,'lyrics');
     else if(act==='notes') openViewer(song,'notes');
+    else if(act==='daniel') openViewer(song,'daniel');
   }
 
   function renderQueue(){
@@ -241,7 +271,7 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
     state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
       const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;
       item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
-      item.addEventListener('dblclick',e=>{
+      item.addEventListener('click',e=>{
         const act=e.target.closest('[data-q]')?.dataset.q;if(!act)return;
         if(act==='played'){state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);}
         if(act==='remove') state.queue=state.queue.filter(id=>id!==song.id);
@@ -251,7 +281,8 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
   }
 
   function openViewer(song,type){
-    $('#viewerTitle').textContent=`${type==='notes'?'Notas':'Letra'} · ${song.titulo}`;
+    const label=type==='notes'?'Notas':type==='daniel'?'Daniel':'Letra';
+    $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';
     if(type==='notes'){
       const key=slug(song.titulo);let file=song.elenaNotesDataUrl||song.elenaNotes||song.notasElena||state.notes[key];
@@ -259,14 +290,15 @@ import { doc, getFirestore, onSnapshot, setDoc } from 'https://www.gstatic.com/f
       if(file){const img=new Image();img.alt=`Notas de ${song.titulo}`;img.src=String(file).startsWith('data:')||String(file).startsWith('blob:')||String(file).startsWith('assets/')?file:`assets/anotaciones/${file}`;content.append(img);}
       else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
     } else {
-      const html = song.elenaLyrics || song.cancioneroElena || song.letraElena || '';
+      const isDaniel=type==='daniel';
+      const html=isDaniel ? (song.cancioneroDaniel || song.danielLyrics || song.letraDaniel || '') : (song.elenaLyrics || song.cancioneroElena || song.letraElena || '');
       if(html){
         const page=document.createElement('article');
         page.className='live-songbook-page';
         page.innerHTML=html;
         content.append(page);
       } else {
-        content.innerHTML='<div class="viewer-empty"><h3>Sin letra disponible</h3><p>Esta canción todavía no tiene contenido en el Cancionero Elena.</p></div>';
+        content.innerHTML=`<div class="viewer-empty"><h3>Sin contenido disponible</h3><p>Esta canción todavía no tiene contenido en el Cancionero ${isDaniel?'Daniel':'Elena'}.</p></div>`;
       }
     }
     $('#viewerDialog').showModal();

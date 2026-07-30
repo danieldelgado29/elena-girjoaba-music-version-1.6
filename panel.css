@@ -550,3 +550,26 @@ body.live-mode .song-number{
 
 /* Entrega 6.21 — centrado óptico de la X del panel */
 .panel-exit-btn{display:inline-flex;align-items:center;justify-content:center;padding:0 0 3px 0;line-height:1;text-align:center;}
+
+
+/* Entrega online/offline 6.31 · área segura iPhone y botón Daniel */
+:root{--egm-safe-top:env(safe-area-inset-top,0px)}
+body.live-mode .live-toolbar{top:0;padding-top:calc(6px + var(--egm-safe-top));min-height:calc(44px + var(--egm-safe-top))}
+body.live-mode .live-sticky-tools{top:calc(44px + var(--egm-safe-top))}
+.viewer-topbar{padding-top:calc(9px + var(--egm-safe-top));min-height:calc(58px + var(--egm-safe-top))}
+.song-action.daniel{background:#35304a}
+@media(max-width:760px){
+  .song-actions{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .song-action.notes,.song-action.lyrics,.song-action.daniel{width:auto}
+}
+@media(max-width:520px){
+  body.live-mode .live-toolbar{padding-top:calc(5px + var(--egm-safe-top));min-height:calc(44px + var(--egm-safe-top))}
+  body.live-mode .live-sticky-tools{top:calc(44px + var(--egm-safe-top))}
+  .song-action{font-size:9px;padding-left:2px;padding-right:2px}
+}
+
+/* Confirmación visual para acciones que requieren dos toques */
+.song-action.is-awaiting-second-tap {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.72), 0 0 16px rgba(255,255,255,.32);
+}

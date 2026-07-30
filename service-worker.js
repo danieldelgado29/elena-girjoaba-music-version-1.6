@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v1-20260730";
+const VERSION = "egm-offline-v3-20260730-doubletap";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
