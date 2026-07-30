@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260730-auto-update";
+const VERSION = "egm-offline-v6-20260730-annotations-6333";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
@@ -118,24 +118,21 @@ const LOCAL_ASSETS = [
   "./assets/foto-banda-mobile.jpg",
   "./assets/foto-banda.jpg",
   "./assets/hero-mobile.jpg",
-  "./assets/hero.jpg",
-  "./canciones.json",
-  "./configuracion.json",
-  "./data/letras.json",
-  "./favicon.png",
-  "./foto-banda-mobile.jpg",
-  "./foto-banda.jpg",
-  "./hero-mobile.jpg",
-  "./hero.jpg",
-  "./index.html",
-  "./manifest.json",
-  "./version.json",
-  "./panel.css",
-  "./panel.html",
-  "./panel.js",
-  "./pwa.js",
-  "./script.js",
-  "./style.css"
+  "./assets/hero.jpg"
+  "./assets/anotaciones/american-woman.jpeg",
+  "./assets/anotaciones/another-one-bites-the-dust.jpeg",
+  "./assets/anotaciones/come-together.jpeg",
+  "./assets/anotaciones/enter-sandman.jpeg",
+  "./assets/anotaciones/every-breath-you-take.jpeg",
+  "./assets/anotaciones/heart-of-glass.jpeg",
+  "./assets/anotaciones/i-don-t-want-to-miss.jpeg",
+  "./assets/anotaciones/like-a-stone.jpeg",
+  "./assets/anotaciones/personal-jesus.jpeg",
+  "./assets/anotaciones/red-red-wine.jpeg",
+  "./assets/anotaciones/sweet-dreams.jpeg",
+  "./assets/anotaciones/valio-la-pena.jpeg",
+  "./assets/anotaciones/we-will-rock-you.jpeg",
+  "./assets/anotaciones/wonderwall.jpeg",
 ];
 const EXTERNAL_MODULES = [
   "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js",

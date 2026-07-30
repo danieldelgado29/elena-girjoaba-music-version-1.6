@@ -1,12 +1,26 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "6.33.0";
+  const APP_VERSION = "6.33.2-annotations";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
   let registrationRef = null;
   let reloading = false;
+
+  function showTestUpdateConfirmation() {
+    const badge = document.createElement("div");
+    badge.textContent = "Actualización automática recibida · notas cargadas 6.33.2";
+    Object.assign(badge.style, {
+      position: "fixed", left: "50%", top: "calc(env(safe-area-inset-top, 0px) + 14px)",
+      zIndex: "100000", transform: "translateX(-50%)", padding: "9px 14px",
+      borderRadius: "999px", background: "#fff", color: "#000",
+      font: "700 12px/1.2 system-ui, sans-serif", boxShadow: "0 8px 28px rgba(0,0,0,.3)",
+      whiteSpace: "nowrap"
+    });
+    document.body.appendChild(badge);
+    setTimeout(() => badge.remove(), 5000);
+  }
 
   function showConnectionStatus() {
     let banner = document.getElementById("pwaConnectionStatus");
@@ -76,6 +90,7 @@
   });
 
   window.addEventListener("load", async () => {
+    showTestUpdateConfirmation();
     try {
       const registration = await navigator.serviceWorker.register("./service-worker.js", {
         scope: "./",

@@ -1,5 +1,5 @@
 {
-  "version": "6.33.0",
+  "version": "6.33.3-annotations",
   "released": "2026-07-30",
-  "mode": "automatic"
+  "mode": "automatic-annotations-update"
 }
