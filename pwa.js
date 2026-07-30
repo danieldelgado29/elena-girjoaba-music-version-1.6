@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "6.33.2-annotations";
+  const APP_VERSION = "6.33.4-notes-zoom-fix";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
@@ -10,7 +10,7 @@
 
   function showTestUpdateConfirmation() {
     const badge = document.createElement("div");
-    badge.textContent = "Actualización automática recibida · notas cargadas 6.33.2";
+    badge.textContent = "Actualización automática recibida · corrección notas 6.33.4";
     Object.assign(badge.style, {
       position: "fixed", left: "50%", top: "calc(env(safe-area-inset-top, 0px) + 14px)",
       zIndex: "100000", transform: "translateX(-50%)", padding: "9px 14px",

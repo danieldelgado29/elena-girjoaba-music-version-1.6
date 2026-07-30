@@ -314,9 +314,15 @@
     const content=$('#viewerContent');content.innerHTML='';
     if(type==='notes'){
       const key=slug(song.titulo);let file=song.elenaNotesDataUrl||song.elenaNotes||song.notasElena||state.notes[key];
+      if(Array.isArray(file)) file=file[0];
       if(file && typeof file==='object') file=file.archivo||file.file||file.ruta;
-      if(file){const img=new Image();img.alt=`Notas de ${song.titulo}`;img.src=String(file).startsWith('data:')||String(file).startsWith('blob:')||String(file).startsWith('assets/')?file:`assets/anotaciones/${file}`;content.append(img);}
-      else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
+      if(file){
+        const img=new Image();
+        img.alt=`Notas de ${song.titulo}`;
+        img.src=String(file).startsWith('data:')||String(file).startsWith('blob:')||String(file).startsWith('assets/')?file:`assets/anotaciones/${file}`;
+        img.addEventListener('error',()=>{content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';},{once:true});
+        content.append(img);
+      } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
     } else {
       const isDaniel=type==='daniel';
       const html=isDaniel ? (song.cancioneroDaniel || song.danielLyrics || song.letraDaniel || '') : (song.elenaLyrics || song.cancioneroElena || song.letraElena || '');
@@ -962,6 +968,11 @@
     catch(_){toast('La imagen es demasiado grande. Usa una imagen más liviana.');}
   },'Guardar'));
 
+
+  // Evita que el doble toque requerido por los botones active el zoom de Safari/iPhone.
+  document.addEventListener('dblclick',event=>{
+    if(event.target.closest('button,.song-action,.mini-btn')) event.preventDefault();
+  },{passive:false});
 
   Promise.all([loadData(),initRemoteSync()]).then(()=>{
     // Siempre abrir primero la ventana de configuración del show.

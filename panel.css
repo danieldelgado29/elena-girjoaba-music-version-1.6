@@ -573,3 +573,6 @@ body.live-mode .live-sticky-tools{top:calc(44px + var(--egm-safe-top))}
   transform: scale(1.05);
   box-shadow: 0 0 0 2px rgba(255,255,255,.72), 0 0 16px rgba(255,255,255,.32);
 }
+
+/* Entrega 6.33.4: doble toque sin zoom accidental en iPhone */
+button,.song-action,.mini-btn,.toolbar-btn,.icon-btn,.primary-btn,.secondary-btn,.danger-btn{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}

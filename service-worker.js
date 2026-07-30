@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260730-annotations-6333";
+const VERSION = "egm-offline-v6-20260730-notes-zoom-6334";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [

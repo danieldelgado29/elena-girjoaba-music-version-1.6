@@ -1,5 +1,5 @@
 {
-  "version": "6.33.3-annotations",
+  "version": "6.33.4-notes-zoom-fix",
   "released": "2026-07-30",
-  "mode": "automatic-annotations-update"
+  "mode": "automatic-notes-and-double-tap-fix"
 }
