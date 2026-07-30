@@ -5,8 +5,7 @@
     "artista": "Inner Cycle",
     "idioma": "Inglés",
     "categorias": [
-      "Reggae",
-      "Bailables"
+      "Reggae"
     ],
     "tranquila": false,
     "listas": [
@@ -58,8 +57,8 @@
     "artista": "Bill Withers",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Románticas"
+      "Románticas",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -93,6 +92,7 @@
     "artista": "Ace of Base",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -129,7 +129,9 @@
     "artista": "Selena",
     "idioma": "Español",
     "categorias": [
-      "Pop"
+      "Pop",
+      "Bailables",
+      "Románticas"
     ],
     "tranquila": false,
     "listas": [
@@ -145,8 +147,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -160,7 +162,8 @@
     "artista": "Queen",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -196,7 +199,7 @@
     "artista": "L. Kravitz",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock"
     ],
     "tranquila": false,
     "listas": [
@@ -231,9 +234,9 @@
     "artista": "Etta James",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
+      "Románticas",
       "Blues",
-      "Románticas"
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -321,6 +324,7 @@
     "artista": "Michael Jackson",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -355,7 +359,8 @@
     "artista": "Blondie",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -373,6 +378,7 @@
     "artista": "Emmanuel",
     "idioma": "Español",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -442,7 +448,9 @@
     "artista": "Angeles azules",
     "idioma": "Español",
     "categorias": [
-      "Pop"
+      "Pop",
+      "Bailables",
+      "Románticas"
     ],
     "tranquila": false,
     "listas": [
@@ -459,8 +467,7 @@
     "idioma": "Español",
     "categorias": [
       "Rock",
-      "Rock Español",
-      "Bailables"
+      "Rock Español"
     ],
     "tranquila": false,
     "listas": [
@@ -513,6 +520,7 @@
     "artista": "Queen",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -659,8 +667,7 @@
     "idioma": "Español",
     "categorias": [
       "Rock",
-      "Rock Español",
-      "Bailables"
+      "Rock Español"
     ],
     "tranquila": false,
     "listas": [
@@ -676,6 +683,7 @@
     "artista": "Depeche M.",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -725,7 +733,8 @@
     "artista": "Police",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": true,
     "listas": [
@@ -764,8 +773,8 @@
     "artista": "Nina Simone",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -779,7 +788,7 @@
     "artista": "Gondwana",
     "idioma": "Español",
     "categorias": [
-      "Pop"
+      "Reggae"
     ],
     "tranquila": true,
     "listas": [
@@ -793,8 +802,8 @@
     "artista": "Peggy Lee",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -826,8 +835,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -859,6 +868,7 @@
     "artista": "ABBA",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -913,7 +923,7 @@
     "artista": "CCR",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock"
     ],
     "tranquila": true,
     "listas": [
@@ -933,7 +943,8 @@
     "artista": "Miley Cyrus",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -950,8 +961,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Reggae"
+      "Reggae",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -983,7 +994,8 @@
     "artista": "Pat Benatar",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -1036,6 +1048,7 @@
     "artista": "Donna Summer",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1072,7 +1085,9 @@
     "artista": "Aerosmith",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock",
+      "Pop",
+      "Románticas"
     ],
     "tranquila": true,
     "listas": [
@@ -1092,7 +1107,7 @@
     "artista": "Joan Jett",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock"
     ],
     "tranquila": false,
     "listas": [
@@ -1128,8 +1143,8 @@
     "artista": "Jeff Beck & Joss Stone",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Rock"
+      "Rock",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -1143,7 +1158,8 @@
     "artista": "Queen",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -1161,6 +1177,7 @@
     "artista": "Kiss",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1178,8 +1195,8 @@
     "artista": "Etta James",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Románticas"
+      "Románticas",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -1193,8 +1210,8 @@
     "artista": "Beth Hart",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Románticas"
+      "Románticas",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -1239,25 +1256,6 @@
       "principal-privados",
       "tranquilas-principal",
       "tranquilas-todas",
-      "todas"
-    ]
-  },
-  {
-    "id": "c072",
-    "titulo": "I'm Yours",
-    "artista": "Jason Mraz",
-    "idioma": "Inglés",
-    "categorias": [
-      "Pop",
-      "Románticas"
-    ],
-    "tranquila": true,
-    "listas": [
-      "principal-diario",
-      "solo-ingles",
-      "principal-privados",
-      "tranquilas-principal",
-      "tranquilas-todas",
       "todas",
       "eventos-corporativos",
       "tree-house"
@@ -1269,8 +1267,8 @@
     "artista": "Bob Marley",
     "idioma": "Inglés",
     "categorias": [
-      "Reggae",
-      "Románticas"
+      "Románticas",
+      "Reggae"
     ],
     "tranquila": true,
     "listas": [
@@ -1290,8 +1288,8 @@
     "artista": "Tanya Stephens",
     "idioma": "Inglés",
     "categorias": [
-      "Reggae",
-      "Románticas"
+      "Románticas",
+      "Reggae"
     ],
     "tranquila": true,
     "listas": [
@@ -1341,6 +1339,7 @@
     "artista": "Chuck Berry",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1359,8 +1358,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -1389,8 +1388,7 @@
     "idioma": "Español",
     "categorias": [
       "Rock",
-      "Rock Español",
-      "Bailables"
+      "Rock Español"
     ],
     "tranquila": false,
     "listas": [
@@ -1515,6 +1513,7 @@
     "artista": "Bon Jovy",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1568,8 +1567,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Románticas"
+      "Románticas",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -1600,7 +1599,9 @@
     "artista": "Lou Bega",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock",
+      "Pop",
+      "Bailables"
     ],
     "tranquila": false,
     "listas": [
@@ -1636,6 +1637,7 @@
     "artista": "Michael Sembello",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1654,8 +1656,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -1732,6 +1734,8 @@
     "artista": "Soda Stereo",
     "idioma": "Español",
     "categorias": [
+      "Rock",
+      "Rock Español",
       "Pop"
     ],
     "tranquila": false,
@@ -1749,7 +1753,8 @@
     "artista": "The Knack",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -1834,6 +1839,7 @@
     "artista": "Blondie",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -1852,8 +1858,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Románticas"
+      "Románticas",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -1868,8 +1874,7 @@
     "idioma": "Español",
     "categorias": [
       "Rock",
-      "Rock Español",
-      "Bailables"
+      "Rock Español"
     ],
     "tranquila": false,
     "listas": [
@@ -1886,8 +1891,7 @@
     "idioma": "Español",
     "categorias": [
       "Rock",
-      "Rock Español",
-      "Bailables"
+      "Rock Español"
     ],
     "tranquila": false,
     "listas": [
@@ -1922,7 +1926,8 @@
     "artista": "Depeche Mode",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [
@@ -2103,6 +2108,7 @@
     "artista": "The Rolling Sones",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2121,7 +2127,7 @@
     "artista": "Gondwana",
     "idioma": "Español",
     "categorias": [
-      "Pop"
+      "Reggae"
     ],
     "tranquila": true,
     "listas": [
@@ -2218,8 +2224,8 @@
     "artista": "Beth Hart",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Rock"
+      "Rock",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -2249,8 +2255,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2264,6 +2270,7 @@
     "artista": "Rockwell",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2320,8 +2327,8 @@
     "artista": "Gary Moore",
     "idioma": "Inglés",
     "categorias": [
-      "Blues",
-      "Románticas"
+      "Románticas",
+      "Blues"
     ],
     "tranquila": true,
     "listas": [
@@ -2335,8 +2342,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2350,8 +2357,8 @@
     "artista": "Ella Fitzgerald",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2361,11 +2368,11 @@
   },
   {
     "id": "c137",
-    "titulo": "Sweet child of Mine",
-    "artista": "G&R",
+    "titulo": "Sweet Child O' Mine",
+    "artista": "Guns N' Roses",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock"
     ],
     "tranquila": false,
     "listas": [
@@ -2383,6 +2390,7 @@
     "artista": "Eurythmics",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2401,6 +2409,7 @@
     "artista": "A-ha",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2419,8 +2428,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Románticas"
+      "Románticas",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2451,8 +2460,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2486,6 +2495,7 @@
     "artista": "M. Jackson",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2517,6 +2527,7 @@
     "artista": "M. Jackson",
     "idioma": "Inglés",
     "categorias": [
+      "Rock",
       "Pop"
     ],
     "tranquila": false,
@@ -2554,8 +2565,8 @@
     "artista": "PMJ",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2587,8 +2598,8 @@
     "artista": "Dread Mar",
     "idioma": "Español",
     "categorias": [
-      "Reggae",
-      "Románticas"
+      "Románticas",
+      "Reggae"
     ],
     "tranquila": true,
     "listas": [
@@ -2622,7 +2633,8 @@
     "artista": "Mark Anthony",
     "idioma": "Español",
     "categorias": [
-      "Pop"
+      "Pop",
+      "Bailables"
     ],
     "tranquila": false,
     "listas": [
@@ -2638,8 +2650,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Románticas"
+      "Románticas",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2723,8 +2735,8 @@
     "artista": "Peggy Lee",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2738,7 +2750,9 @@
     "artista": "Chris Isaak",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock",
+      "Pop",
+      "Románticas"
     ],
     "tranquila": true,
     "listas": [
@@ -2757,8 +2771,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Románticas"
+      "Románticas",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2792,8 +2806,8 @@
     "artista": "Nina Simone",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Blues"
+      "Blues",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2877,8 +2891,8 @@
     "artista": "Amy Winehouse",
     "idioma": "Inglés",
     "categorias": [
-      "Jazz",
-      "Pop"
+      "Pop",
+      "Jazz"
     ],
     "tranquila": true,
     "listas": [
@@ -2892,7 +2906,7 @@
     "artista": "ACDC",
     "idioma": "Inglés",
     "categorias": [
-      "Pop"
+      "Rock"
     ],
     "tranquila": false,
     "listas": [
@@ -2910,7 +2924,8 @@
     "artista": "The Outfield",
     "idioma": "Inglés",
     "categorias": [
-      "Rock"
+      "Rock",
+      "Pop"
     ],
     "tranquila": false,
     "listas": [

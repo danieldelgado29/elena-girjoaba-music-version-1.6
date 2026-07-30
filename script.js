@@ -30,8 +30,8 @@ const MODOS = Object.freeze([
 
 const CONFIG = Object.freeze({
   claveAdmin: "2907",
-  duracionPulsacionAdmin: 5000,
-  rutaCanciones: "canciones.json?v=4",
+  duracionPulsacionAdmin: 3000,
+  rutaCanciones: "canciones.json?v=5",
   rutaConfiguracion: "configuracion.json",
   instagramApp: "instagram://user?username=elenagirjoabamusic",
   instagramWeb: "https://instagram.com/elenagirjoabamusic",
@@ -40,11 +40,27 @@ const CONFIG = Object.freeze({
   telefonoDaniel: "593992890540",
   claveInstagramVisitado: "egmInstagramVisitado",
   claveInstagramDesbloqueo: "egmInstagramDesbloqueo",
-  demoraContinuacionInstagram: 5000,
+  demoraContinuacionInstagram: 3000,
   rutaAnotaciones: "assets/anotaciones",
   rutaIndiceAnotaciones: "assets/anotaciones/index.json",
   extensionesAnotaciones: ["jpg", "jpeg", "png", "webp"]
 });
+
+function obtenerSeguridadLocal() {
+  try {
+    return {
+      password: CONFIG.claveAdmin,
+      danielPhone: CONFIG.telefonoDaniel,
+      elenaPhone: CONFIG.telefonoElena,
+      ...JSON.parse(localStorage.getItem("egm-security-settings") || "{}")
+    };
+  } catch (_) {
+    return { password: CONFIG.claveAdmin, danielPhone: CONFIG.telefonoDaniel, elenaPhone: CONFIG.telefonoElena };
+  }
+}
+function telefonoWhatsAppActual() {
+  return String(obtenerSeguridadLocal().elenaPhone || CONFIG.telefonoWhatsApp).replace(/\D/g, "");
+}
 
 const estado = {
   todas: [],
@@ -104,6 +120,33 @@ function normalizar(valor = "") {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+
+function depurarCanciones(canciones = []) {
+  const unicas = new Map();
+
+  canciones.forEach((cancion) => {
+    const clave = `${normalizar(cancion.titulo)}::${normalizar(cancion.artista)}`;
+    const categorias = [...new Set((cancion.categorias || ["Otros"]).filter(Boolean))];
+    const listas = [...new Set((cancion.listas || ["todas"]).filter(Boolean))];
+
+    if (!unicas.has(clave)) {
+      unicas.set(clave, {
+        ...cancion,
+        categorias: categorias.length ? categorias : ["Otros"],
+        listas: listas.includes("todas") ? listas : [...listas, "todas"]
+      });
+      return;
+    }
+
+    const existente = unicas.get(clave);
+    existente.categorias = [...new Set([...existente.categorias, ...categorias])];
+    existente.listas = [...new Set([...existente.listas, ...listas, "todas"])];
+    existente.tranquila = Boolean(existente.tranquila || cancion.tranquila);
+  });
+
+  return [...unicas.values()];
 }
 
 function escapar(valor = "") {
@@ -638,9 +681,7 @@ function capturarDOM() {
     tocadasPublicasVacia: $("#tocadasPublicasVacia"),
     pedidoModal: $("#pedidoModal"),
     pedidoCancion: $("#pedidoCancion"),
-    pedidoNombre: $("#pedidoNombre"),
     pedidoTelefono: $("#pedidoTelefono"),
-    pedidoConsentimiento: $("#pedidoConsentimiento"),
     pedidoError: $("#pedidoError"),
     pedidoEnviar: $("#pedidoEnviar"),
     adminCantidadContactos: $("#adminCantidadContactos"),
@@ -671,11 +712,12 @@ async function cargarDatos() {
     throw new Error("No se pudieron cargar las canciones.");
   }
 
-  estado.todas = await respuestaCanciones.json();
+  estado.todas = depurarCanciones(await respuestaCanciones.json());
   const cancionesLocales = JSON.parse(localStorage.getItem("egmCancionesLocales") || "[]");
   cancionesLocales.forEach((local) => {
-    if (!estado.todas.some((c) => c.id === local.id)) estado.todas.push(local);
+    estado.todas.push(local);
   });
+  estado.todas = depurarCanciones(estado.todas);
   estado.todas.sort((a,b) => a.titulo.localeCompare(b.titulo, "es", { sensitivity: "base" }));
 
   const configuracion = respuestaConfig.ok
@@ -858,25 +900,18 @@ function obtenerVisibles() {
     return [];
   }
 
-  const terminos = normalizar(estado.consulta).split(" ").filter(Boolean);
+  const consulta = normalizar(estado.consulta).trim();
 
   return estado.base.filter((cancion) => {
     const coincideCategoria =
       !estado.categoria || cancion.categorias.includes(estado.categoria);
 
-    const texto = normalizar(
-      [
-        cancion.titulo,
-        cancion.artista,
-        cancion.categorias.join(" "),
-        cancion.idioma
-      ].join(" ")
-    );
+    // Búsqueda pública precisa: solo muestra títulos que comienzan
+    // con las letras escritas, ignorando mayúsculas y tildes.
+    const coincideInicioTitulo =
+      !consulta || normalizar(cancion.titulo).startsWith(consulta);
 
-    return (
-      coincideCategoria &&
-      terminos.every((termino) => texto.includes(termino))
-    );
+    return coincideCategoria && coincideInicioTitulo;
   });
 }
 
@@ -946,6 +981,10 @@ function crearTarjeta(cancion, indice) {
           .map((categoria) => `<span class="tag">${escapar(categoria)}</span>`)
           .join("")}
       </div>
+      <button class="cancion__cerrar" type="button" aria-label="Cerrar">×</button>
+      <div class="cancion__grita" aria-hidden="true">
+        <span>¡Grita el número o el nombre!</span>
+      </div>
       <div class="cancion__acciones">
         ${botonPedido}
         ${tieneLetra(cancion.id) ? '<button class="cancion__letra" type="button">Letra</button>' : ""}
@@ -964,8 +1003,49 @@ function crearTarjeta(cancion, indice) {
     .querySelector(".cancion__pedir:not([disabled])")
     ?.addEventListener("click", (evento) => {
       evento.stopPropagation();
+      activarTarjetaWhatsApp(articulo, true);
       abrirPedido(cancion);
     });
+
+  if (!estado.vistaClientes && estado.configRemota.pedidos_whatsapp && situacion === "disponible") {
+    const alternarSeleccionWhatsApp = (evento) => {
+      if (evento?.target?.closest("button, a, input, textarea, select")) return;
+      const yaActiva = articulo.classList.contains("is-whatsapp-activa");
+      document.querySelectorAll(".cancion.is-whatsapp-activa").forEach((otra) => {
+        otra.classList.remove("is-whatsapp-activa");
+      });
+      if (!yaActiva) activarTarjetaWhatsApp(articulo, true);
+    };
+
+    articulo.addEventListener("click", alternarSeleccionWhatsApp);
+    articulo.addEventListener("keydown", (evento) => {
+      if ((evento.key === "Enter" || evento.key === " ") && evento.target === articulo) {
+        evento.preventDefault();
+        alternarSeleccionWhatsApp(evento);
+      }
+    });
+  }
+
+  if (!estado.vistaClientes && !estado.configRemota.pedidos_whatsapp && situacion === "disponible") {
+    const mostrarIndicacion = () => {
+      document.querySelectorAll(".cancion.is-grita-activa").forEach((otra) => {
+        if (otra !== articulo) otra.classList.remove("is-grita-activa");
+      });
+      articulo.classList.remove("is-grita-activa");
+      void articulo.offsetWidth;
+      articulo.classList.add("is-grita-activa");
+      // Permanece activa hasta que el cliente seleccione otra canción.
+    };
+    articulo.querySelector(".cancion__cerrar")?.addEventListener("click",(e)=>{e.stopPropagation();articulo.classList.remove("is-grita-activa");});
+
+articulo.addEventListener("click", mostrarIndicacion);
+    articulo.addEventListener("keydown", (evento) => {
+      if (evento.key === "Enter" || evento.key === " ") {
+        evento.preventDefault();
+        mostrarIndicacion();
+      }
+    });
+  }
 
   return articulo;
 }
@@ -1116,21 +1196,23 @@ function actualizarPosicionMenuPublico() {
     );
 
   if (!colaVisible) {
-    DOM.volver.style.bottom = "max(16px, env(safe-area-inset-bottom))";
+    DOM.volver.style.removeProperty("--menu-publico-bottom");
     return;
   }
 
   const rectCola = DOM.estadoShowPublico.getBoundingClientRect();
-  const separacion = 10;
-
-  // Distancia exacta desde el borde inferior de la pantalla
-  // hasta el borde superior de la cola.
+  // El borde inferior del botón queda exactamente unido al borde superior
+  // del panel que contiene el título “Canciones a la cola”. La variable CSS
+  // evita que las reglas responsive con !important anulen esta posición.
   const distancia = Math.max(
-    16,
-    window.innerHeight - rectCola.top + separacion
+    0,
+    window.innerHeight - rectCola.top
   );
 
-  DOM.volver.style.bottom = `${Math.ceil(distancia)}px`;
+  DOM.volver.style.setProperty(
+    "--menu-publico-bottom",
+    `${Math.round(distancia)}px`
+  );
 }
 
 function renderizarEstadoPublico() {
@@ -1238,8 +1320,7 @@ function programarContinuacion() {
 }
 
 function abrirInstagram() {
-  // Una sola navegación evita abrir la app y otra pestaña al mismo tiempo.
-  window.location.assign(CONFIG.instagramWeb);
+  abrirAplicacionConRespaldo(CONFIG.instagramApp, CONFIG.instagramWeb);
 }
 
 function abrirAplicacionConRespaldo(urlApp, urlWeb) {
@@ -1254,13 +1335,17 @@ function abrirAplicacionConRespaldo(urlApp, urlWeb) {
 }
 
 function abrirAdmin() {
-  DOM.adminModal.hidden = false;
-  document.body.classList.add("admin-abierto");
-  DOM.adminAcceso.hidden = false;
-  DOM.adminSelector.hidden = true;
-  DOM.adminClave.value = "";
-  DOM.adminError.hidden = true;
-  window.setTimeout(() => DOM.adminClave.focus(), 100);
+  cancelarPulsacionAdmin();
+
+  const clave = window.prompt("Contraseña del panel");
+  if (clave === null) return;
+
+  if (clave.trim() !== CONFIG.claveAdmin) {
+    window.alert("Contraseña incorrecta.");
+    return;
+  }
+
+  window.location.href = "panel.html";
 }
 
 function cerrarAdmin() {
@@ -1949,12 +2034,24 @@ async function reiniciarShow() {
   }
 }
 
+function activarTarjetaWhatsApp(articulo, forzar = false) {
+  if (!articulo) return;
+  document.querySelectorAll(".cancion.is-whatsapp-activa").forEach((otra) => {
+    if (otra !== articulo) otra.classList.remove("is-whatsapp-activa");
+  });
+  articulo.classList.toggle("is-whatsapp-activa", forzar ? true : undefined);
+}
+
+function limpiarSeleccionWhatsApp() {
+  document.querySelectorAll(".cancion.is-whatsapp-activa").forEach((tarjeta) => {
+    tarjeta.classList.remove("is-whatsapp-activa");
+  });
+}
+
 function abrirPedido(cancion) {
   estado.pedidoSeleccionado = cancion;
   DOM.pedidoCancion.textContent = `${cancion.titulo} — ${cancion.artista}`;
-  DOM.pedidoNombre.value = "";
   DOM.pedidoTelefono.value = "";
-  DOM.pedidoConsentimiento.checked = false;
   DOM.pedidoError.hidden = true;
   DOM.pedidoModal.hidden = false;
 }
@@ -1962,6 +2059,7 @@ function abrirPedido(cancion) {
 function cerrarPedido() {
   DOM.pedidoModal.hidden = true;
   estado.pedidoSeleccionado = null;
+  limpiarSeleccionWhatsApp();
 }
 
 async function enviarPedidoWhatsApp() {
@@ -1969,13 +2067,10 @@ async function enviarPedidoWhatsApp() {
 
   if (!cancion) return;
 
-  const nombre = DOM.pedidoNombre.value.trim() || "Sin nombre";
+  const nombre = "Sin nombre";
   const telefono = normalizarTelefono(DOM.pedidoTelefono.value);
 
-  if (
-    !telefonoValido(telefono) ||
-    !DOM.pedidoConsentimiento.checked
-  ) {
+  if (!telefonoValido(telefono)) {
     DOM.pedidoError.hidden = false;
     return;
   }
@@ -1993,8 +2088,8 @@ async function enviarPedidoWhatsApp() {
       `Hola Elena Girjoaba Music 👋\n\nSoy ${nombre}. Quisiera pedir esta canción:\n${cancion.titulo} — ${cancion.artista}\n\n¡Gracias!`
     );
 
-    const app = `whatsapp://send?phone=${CONFIG.telefonoWhatsApp}&text=${mensaje}`;
-    const web = `https://wa.me/${CONFIG.telefonoWhatsApp}?text=${mensaje}`;
+    const app = `whatsapp://send?phone=${telefonoWhatsAppActual()}&text=${mensaje}`;
+    const web = `https://wa.me/${telefonoWhatsAppActual()}?text=${mensaje}`;
 
     cerrarPedido();
     abrirAplicacionConRespaldo(app, web);
@@ -2034,7 +2129,7 @@ function idShowActual() {
 }
 
 async function guardarContactoYPedido(cancion) {
-  const nombre = DOM.pedidoNombre.value.trim() || "Sin nombre";
+  const nombre = "Sin nombre";
   const telefono = normalizarTelefono(DOM.pedidoTelefono.value);
   const ahora = Date.now();
   const showId = idShowActual();
@@ -2357,11 +2452,17 @@ function exportarDatosShow() {
 }
 
 function registrarEventos() {
-  DOM.seguirInstagram.addEventListener("click", () => {
-    // Dejamos que el enlace con target="_blank" abra UNA sola pestaña.
-    // Aquí únicamente guardamos el desbloqueo de la lista.
+  DOM.seguirInstagram.addEventListener("click", (evento) => {
+    evento.preventDefault();
+
+    // Mantener oculto el acceso y mostrarlo únicamente al cumplirse 3 segundos.
+    DOM.continuar.hidden = true;
+    DOM.entrar.hidden = true;
+    DOM.continuar.classList.remove("is-visible");
+
     guardarVisitaInstagram();
     programarContinuacion();
+    abrirInstagram();
   });
 
   DOM.entrar.addEventListener("click", mostrarApp);
@@ -2401,12 +2502,8 @@ function registrarEventos() {
   DOM.buscar.addEventListener("input", (evento) => {
     estado.consulta = evento.target.value;
     estado.mostrar = false;
-    estado.categoria = null;
 
-    DOM.categorias.forEach((boton) =>
-      boton.classList.remove("is-active")
-    );
-
+    // Conserva el género activo para buscar dentro de él.
     actualizarControles();
     renderizar();
   });
@@ -2434,8 +2531,8 @@ function registrarEventos() {
       );
 
       abrirAplicacionConRespaldo(
-        `whatsapp://send?phone=${CONFIG.telefonoWhatsApp}&text=${mensaje}`,
-        `https://wa.me/${CONFIG.telefonoWhatsApp}?text=${mensaje}`
+        `whatsapp://send?phone=${telefonoWhatsAppActual()}&text=${mensaje}`,
+        `https://wa.me/${telefonoWhatsAppActual()}?text=${mensaje}`
       );
     });
   });
@@ -2455,27 +2552,58 @@ function registrarEventos() {
   ].filter(Boolean);
 
   accesosAdmin.forEach((acceso) => {
-    ["pointerdown", "touchstart"].forEach((evento) => {
-      acceso.addEventListener(evento, iniciarPulsacionAdmin, {
-        passive: true
-      });
-    });
+    let pulsacionActiva = false;
+    let idPuntero = null;
 
-    [
-      "pointerup",
-      "pointercancel",
-      "pointerleave",
-      "touchend",
-      "touchcancel"
-    ].forEach((evento) => {
-      acceso.addEventListener(evento, cancelarPulsacionAdmin, {
-        passive: true
-      });
-    });
+    const iniciarAccesoAdmin = (evento) => {
+      // En Android evita que la pulsación prolongada seleccione la palabra
+      // o abra el menú contextual antes de activar el acceso secreto.
+      if (evento.cancelable) evento.preventDefault();
+      evento.stopPropagation();
 
-    acceso.addEventListener("contextmenu", (evento) => {
-      evento.preventDefault();
-    });
+      pulsacionActiva = true;
+      idPuntero = evento.pointerId ?? null;
+
+      if (idPuntero !== null && acceso.setPointerCapture) {
+        try { acceso.setPointerCapture(idPuntero); } catch (_) {}
+      }
+
+      const seleccion = window.getSelection?.();
+      if (seleccion && seleccion.rangeCount) seleccion.removeAllRanges();
+
+      iniciarPulsacionAdmin();
+    };
+
+    const terminarAccesoAdmin = (evento) => {
+      if (!pulsacionActiva) return;
+      if (evento?.cancelable) evento.preventDefault();
+
+      pulsacionActiva = false;
+      cancelarPulsacionAdmin();
+
+      if (idPuntero !== null && acceso.releasePointerCapture) {
+        try { acceso.releasePointerCapture(idPuntero); } catch (_) {}
+      }
+      idPuntero = null;
+    };
+
+    if (window.PointerEvent) {
+      acceso.addEventListener("pointerdown", iniciarAccesoAdmin, { passive: false });
+      acceso.addEventListener("pointerup", terminarAccesoAdmin, { passive: false });
+      acceso.addEventListener("pointercancel", terminarAccesoAdmin, { passive: false });
+    } else {
+      acceso.addEventListener("touchstart", iniciarAccesoAdmin, { passive: false });
+      acceso.addEventListener("touchend", terminarAccesoAdmin, { passive: false });
+      acceso.addEventListener("touchcancel", terminarAccesoAdmin, { passive: false });
+      acceso.addEventListener("mousedown", iniciarAccesoAdmin);
+      acceso.addEventListener("mouseup", terminarAccesoAdmin);
+      acceso.addEventListener("mouseleave", terminarAccesoAdmin);
+    }
+
+    acceso.addEventListener("selectstart", (evento) => evento.preventDefault());
+    acceso.addEventListener("dragstart", (evento) => evento.preventDefault());
+    acceso.addEventListener("contextmenu", (evento) => evento.preventDefault());
+    acceso.addEventListener("click", (evento) => evento.preventDefault());
   });
 
   $$("[data-cerrar-admin]").forEach((elemento) =>
@@ -2483,7 +2611,7 @@ function registrarEventos() {
   );
 
   DOM.adminIngresar.addEventListener("click", () => {
-    if (DOM.adminClave.value === CONFIG.claveAdmin) {
+    if (DOM.adminClave.value === obtenerSeguridadLocal().password) {
       mostrarSelectorAdmin();
     } else {
       DOM.adminError.hidden = false;

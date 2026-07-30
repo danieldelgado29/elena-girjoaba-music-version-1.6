@@ -46,11 +46,11 @@
           sessionStorage.setItem("egmInstagramVisitado", "1");
           sessionStorage.setItem(
             "egmInstagramDesbloqueo",
-            String(Date.now() + 5000)
+            String(Date.now() + 3000)
           );
         } catch (error) {}
 
-        window.setTimeout(mostrarBoton, 5000);
+        window.setTimeout(mostrarBoton, 3000);
       });
 
       try {
@@ -70,7 +70,7 @@
     });
   </script>
 
-  <script type="module" src="script.js?v=7"></script>
+  <script type="module" src="script.js?v=10"></script>
 </head>
 
 <body>
@@ -759,19 +759,9 @@
     <section class="pedido-panel" role="dialog" aria-modal="true" aria-labelledby="pedidoTitulo">
       <button class="pedido-panel__cerrar" type="button" data-cerrar-pedido aria-label="Cerrar">×</button>
       <p class="admin-panel__eyebrow">PEDIR CANCIÓN</p>
-      <h2 id="pedidoTitulo">Enviar por WhatsApp</h2>
       <p id="pedidoCancion" class="pedido-panel__cancion"></p>
 
-      <label class="pedido-panel__label" for="pedidoNombre">Nombre</label>
-      <input
-        id="pedidoNombre"
-        class="admin-panel__input"
-        type="text"
-        autocomplete="name"
-        placeholder="Tu nombre"
-      >
-
-      <label class="pedido-panel__label" for="pedidoTelefono">Número de WhatsApp</label>
+      <label class="pedido-panel__label" for="pedidoTelefono">Escribe tu número de teléfono</label>
       <input
         id="pedidoTelefono"
         class="admin-panel__input"
@@ -781,21 +771,14 @@
         placeholder="Ejemplo: 0991234567"
       >
 
-      <label class="pedido-consentimiento">
-        <input id="pedidoConsentimiento" type="checkbox">
-        <span>
-          Acepto que Elena Girjoaba Music guarde mis datos para responder a este pedido
-          y mantener el contacto.
-        </span>
-      </label>
+      <p class="pedido-panel__nota">
+        Acepto abrir WhatsApp para enviar mi canción.
+      </p>
 
       <p id="pedidoError" class="admin-panel__error" hidden>
-        Ingresa un número válido y acepta el uso de tus datos.
+        Ingresa un número de WhatsApp válido.
       </p>
 
-      <p class="pedido-panel__nota">
-        Al continuar, la canción se agregará a la cola del show.
-      </p>
 
       <button id="pedidoEnviar" class="admin-panel__boton" type="button">
         Enviar por WhatsApp

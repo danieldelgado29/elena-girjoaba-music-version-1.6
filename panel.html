@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101114">
+  <title>Panel de control</title>
+  <link rel="icon" href="assets/favicon.png">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="brandbar">
+      <h1>Panel de control</h1>
+      <div class="header-actions">
+        <span id="statusChip" class="status-chip">Sin show activo</span>
+        <button id="openMenuBtn" class="menu-btn" type="button" aria-label="Abrir menú" aria-controls="toolsMenu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <button id="exitPanelBtn" class="panel-exit-btn" type="button" aria-label="Salir del panel">×</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="configView" class="view is-active" aria-labelledby="configTitle">
+        <div class="section-heading">
+          <h2 id="configTitle">Configuración</h2>
+        </div>
+
+        <form id="showForm" class="config-grid" autocomplete="off">
+          <label class="field">
+            <span>Lugar</span>
+            <input id="venueInput" type="text" list="venueHistory" placeholder="Ej. Hotel Oro Verde" required>
+            <datalist id="venueHistory"></datalist>
+          </label>
+
+          <label class="field">
+            <span>Repertorio</span>
+            <select id="repertoireSelect" required></select>
+          </label>
+
+          <label class="field">
+            <span>Perfil del cliente</span>
+            <select id="profileSelect" required>
+              <option value="alto">Alto potencial</option>
+              <option value="medio">Potencial medio</option>
+              <option value="bajo">Bajo potencial</option>
+            </select>
+          </label>
+
+          <div class="switch-card">
+            <div>
+              <strong>Pedidos por WhatsApp</strong>
+              <small>Mostrar u ocultar el botón público</small>
+            </div>
+            <label class="switch"><input id="whatsappToggle" type="checkbox" checked><span></span></label>
+          </div>
+
+          <div class="switch-card">
+            <div>
+              <strong>Cola pública</strong>
+              <small>Mostrar la lista de espera al público</small>
+            </div>
+            <label class="switch"><input id="publicQueueToggle" type="checkbox" checked><span></span></label>
+          </div>
+
+          <button class="primary-btn start-btn" type="submit">Guardar configuración y comenzar show</button>
+        </form>
+
+
+      </section>
+
+      <section id="liveView" class="view" aria-labelledby="liveTitle">
+        <div class="live-toolbar">
+          <button id="backConfigBtn" class="toolbar-btn" type="button">← <span>Configuración</span></button>
+          <strong id="liveRepertoireName" class="live-repertoire-name"></strong>
+          <div class="live-toolbar-right">
+            <button id="finishShowBtn" class="toolbar-btn danger" type="button">Finalizar show</button>
+            <button id="closePanelBtn" class="toolbar-btn danger square" type="button" aria-label="Cerrar panel">×</button>
+          </div>
+        </div>
+
+        <div class="live-sticky-tools">
+          <section id="queuePanel" class="queue-panel">
+            <div class="queue-heading">
+              <div><span class="live-dot"></span><strong>Cola activa</strong></div>
+              <small id="queueCount">0 canciones</small>
+            </div>
+            <div id="queueList" class="queue-list"></div>
+          </section>
+
+          <div class="search-wrap">
+            <span>⌕</span>
+            <input id="songSearch" type="search" placeholder="Buscar por número, canción o artista">
+            <kbd id="songCount"></kbd>
+          </div>
+        </div>
+
+        <div class="song-table-head" aria-hidden="true">
+          <span id="liveTitle">Repertorio</span><span>Acciones</span>
+        </div>
+        <div id="songList" class="song-list"></div>
+      </section>
+    </main>
+  </div>
+
+
+  <dialog id="toolsMenu" class="menu-dialog">
+    <div class="menu-panel">
+      <div class="menu-header">
+        <h2>Menú</h2>
+        <button id="closeMenuBtn" class="menu-close" type="button" aria-label="Cerrar menú">×</button>
+      </div>
+      <nav class="menu-options" aria-label="Opciones del panel">
+        <button type="button" data-module="new-song"><b>＋</b><span>Nueva canción</span></button>
+        <button type="button" data-module="repertoires"><b>♫</b><span>Repertorios</span></button>
+        <button type="button" data-module="edit-songs"><b>✎</b><span>Editar canciones</span></button>
+        <button type="button" data-module="songbook-elena"><b>Ｅ</b><span>Cancionero Elena</span></button>
+        <button type="button" data-module="songbook-daniel"><b>Ｄ</b><span>Cancionero Daniel</span></button>
+        <button type="button" data-module="export-contacts"><b>⇩</b><span>Exportar contactos</span></button>
+        <button type="button" data-module="upload-photos"><b>▧</b><span>Subir fotos</span></button>
+        <button type="button" data-module="security"><b>🔒</b><span>Seguridad</span></button>
+      </nav>
+    </div>
+  </dialog>
+
+
+  <dialog id="securityAuthDialog" class="modal">
+    <div class="module-card compact-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">SEGURIDAD</p>
+      <h3>Confirmar contraseña</h3>
+      <form id="securityAuthForm" class="module-form" autocomplete="off">
+        <label class="field full"><span>Contraseña actual</span><input id="securityCurrentPassword" type="password" inputmode="numeric" required></label>
+        <p id="securityAuthError" class="form-error full" hidden>Contraseña incorrecta.</p>
+        <button class="primary-btn full" type="submit">Continuar</button>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="securityDialog" class="modal">
+    <div class="module-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">SEGURIDAD</p>
+      <h3>Contraseña y teléfonos</h3>
+      <form id="securityForm" class="module-form" autocomplete="off">
+        <label class="field"><span>Nueva contraseña</span><input id="securityNewPassword" type="password" inputmode="numeric" minlength="4" required></label>
+        <label class="field"><span>Confirmar nueva contraseña</span><input id="securityConfirmPassword" type="password" inputmode="numeric" minlength="4" required></label>
+        <label class="field"><span>WhatsApp Daniel</span><input id="securityDanielPhone" type="tel" inputmode="tel" required placeholder="593..."></label>
+        <label class="field"><span>WhatsApp Elena</span><input id="securityElenaPhone" type="tel" inputmode="tel" required placeholder="593..."></label>
+        <p class="module-note full">Escribe los números con código de país, solo números.</p>
+        <p id="securityFormError" class="form-error full" hidden></p>
+        <button class="primary-btn full" type="submit">Guardar cambios</button>
+      </form>
+    </div>
+  </dialog>
+
+
+  <dialog id="newSongDialog" class="modal">
+    <div class="module-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CANCIONES</p>
+      <h3>Nueva canción</h3>
+      <p class="module-note">La canción se añadirá automáticamente a “Todas las canciones”.</p>
+      <form id="newSongForm" class="module-form" autocomplete="off">
+        <label class="field"><span>Título</span><input id="newSongTitle" required></label>
+        <label class="field"><span>Artista</span><input id="newSongArtist" required></label>
+        <label class="field"><span>Idioma</span><select id="newSongLanguage"><option>Español</option><option>Inglés</option><option>Portugués</option><option>Otro</option></select></label>
+        <div class="full"><strong>Géneros</strong><div id="newSongGenres" class="check-grid"></div></div>
+        <div class="full"><strong>Repertorios</strong><div id="newSongRepertoires" class="check-grid"></div></div>
+
+        <label class="lyric-field full">
+          <span>Letra visible para el cliente</span>
+          <textarea id="newSongPublicLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Pega aquí la letra visible para el cliente"></textarea>
+        </label>
+
+        <label class="lyric-field full">
+          <span>Cancionero Elena</span>
+          <textarea id="newSongElenaLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Pega aquí la letra del cancionero de Elena"></textarea>
+        </label>
+
+        <div class="photo-upload-field full">
+          <span class="photo-upload-title">Notas de Elena (imagen)</span>
+          <p class="photo-upload-help">Sube una foto de las anotaciones. Acepta JPG, JPEG, PNG, WEBP, HEIC, HEIF, AVIF y otros formatos de imagen compatibles con el dispositivo.</p>
+          <input id="newSongElenaNotes" class="photo-input" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.gif,.bmp,.tif,.tiff" hidden>
+          <div class="photo-upload-actions">
+            <button id="chooseElenaNotesBtn" class="secondary-btn" type="button">Subir foto</button>
+            <button id="removeElenaNotesBtn" class="secondary-btn photo-remove" type="button" hidden>Quitar foto</button>
+            <span id="elenaNotesFileName" class="photo-file-name">Ninguna foto seleccionada</span>
+          </div>
+          <div id="elenaNotesPreview" class="photo-preview" hidden>
+            <img id="elenaNotesPreviewImage" alt="Vista previa de las notas de Elena">
+          </div>
+        </div>
+
+        <label class="lyric-field full">
+          <span>Cancionero Daniel</span>
+          <textarea id="newSongDanielLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Pega aquí la letra del cancionero de Daniel"></textarea>
+        </label>
+
+        <div class="module-actions"><button type="button" class="secondary-btn" data-dialog-close>Cancelar</button><button type="submit" class="primary-btn">Guardar canción</button></div>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="editSongsDialog" class="modal">
+    <div class="module-card edit-list-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CANCIONES</p>
+      <h3>Editar canciones</h3>
+      <div class="edit-search"><input id="editSongsSearch" type="search" placeholder="Buscar por título o artista"><span id="editSongsCount"></span></div>
+      <div id="editSongsList" class="edit-songs-list"></div>
+    </div>
+  </dialog>
+
+  <dialog id="editSongDialog" class="modal">
+    <div class="module-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CANCIONES</p>
+      <h3>Editar canción</h3>
+      <form id="editSongForm" class="module-form" autocomplete="off">
+        <input id="editSongId" type="hidden">
+        <label class="field"><span>Título</span><input id="editSongTitle" required></label>
+        <label class="field"><span>Artista</span><input id="editSongArtist" required></label>
+        <label class="field"><span>Idioma</span><select id="editSongLanguage"><option>Español</option><option>Inglés</option><option>Portugués</option><option>Otro</option></select></label>
+        <div class="full"><strong>Géneros</strong><div id="editSongGenres" class="check-grid"></div></div>
+        <div class="full"><strong>Repertorios</strong><div id="editSongRepertoires" class="check-grid"></div></div>
+        <label class="lyric-field full"><span>Letra visible para el cliente</span><textarea id="editSongPublicLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
+        <label class="lyric-field full"><span>Cancionero Elena</span><textarea id="editSongElenaLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
+        <div class="photo-upload-field full">
+          <span class="photo-upload-title">Notas de Elena (imagen)</span>
+          <input id="editSongElenaNotes" class="photo-input" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.gif,.bmp,.tif,.tiff" hidden>
+          <div class="photo-upload-actions"><button id="chooseEditElenaNotesBtn" class="secondary-btn" type="button">Subir o reemplazar foto</button><button id="removeEditElenaNotesBtn" class="secondary-btn photo-remove" type="button">Quitar foto</button><span id="editElenaNotesFileName" class="photo-file-name">Sin imagen</span></div>
+          <div id="editElenaNotesPreview" class="photo-preview" hidden><img id="editElenaNotesPreviewImage" alt="Vista previa de las notas de Elena"></div>
+        </div>
+        <label class="lyric-field full"><span>Cancionero Daniel</span><textarea id="editSongDanielLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
+        <div class="module-actions"><button type="button" class="secondary-btn" data-dialog-close>Cancelar</button><button type="submit" class="primary-btn">Guardar cambios</button></div>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="repertoiresDialog" class="modal">
+    <div class="module-card repertoire-manager-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">ORGANIZACIÓN</p>
+      <h3>Repertorios</h3>
+      <p class="module-note">Organiza canciones sin eliminarlas de la lista maestra.</p>
+
+      <div class="repertoire-tools">
+        <input id="newRepertoireName" type="text" placeholder="Nombre del nuevo repertorio" autocomplete="off" spellcheck="false">
+        <button id="addRepertoireBtn" class="primary-btn" type="button">Crear</button>
+      </div>
+
+      <div class="repertoire-manager-layout">
+        <aside class="repertoire-sidebar">
+          <div class="repertoire-sidebar-title"><strong>Repertorios</strong><span id="repertoireTotalCount"></span></div>
+          <div id="repertoireManagerList" class="repertoire-list"></div>
+        </aside>
+
+        <section id="repertoireEditor" class="repertoire-editor" hidden>
+          <div class="repertoire-editor-head">
+            <label class="field repertoire-name-field"><span>Nombre</span><input id="selectedRepertoireName" type="text" spellcheck="false" autocomplete="off"></label>
+            <div class="repertoire-count-card"><strong id="selectedRepertoireCount">0</strong><span>canciones</span></div>
+          </div>
+
+          <div class="edit-search repertoire-song-search">
+            <input id="repertoireSongSearch" type="search" placeholder="Buscar canción o artista" spellcheck="false" autocomplete="off">
+            <span id="repertoireSongsVisibleCount"></span>
+          </div>
+
+          <div class="repertoire-selection-help">Marca para agregar. Desmarca para quitar del repertorio.</div>
+          <div id="repertoireSongsList" class="repertoire-songs-list"></div>
+
+          <div class="module-actions repertoire-actions">
+            <button id="deleteSelectedRepertoireBtn" class="danger-btn" type="button">Eliminar repertorio</button>
+            <button id="duplicateSelectedRepertoireBtn" class="secondary-btn" type="button">Duplicar</button>
+            <button id="saveRepertoireBtn" class="primary-btn" type="button">Guardar cambios</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="confirmDialog" class="modal">
+    <div class="modal-card compact">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CONFIRMACIÓN</p>
+      <h3 id="confirmTitle">¿Confirmar acción?</h3>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button id="confirmCancel" class="secondary-btn" type="button">Cancelar</button>
+        <button id="confirmAccept" class="danger-btn" type="button">Confirmar</button>
+      </div>
+    </div>
+  </dialog>
+
+
+  <dialog id="songbookListDialog" class="modal">
+    <div class="module-card songbook-list-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CANCIONERO</p>
+      <h3 id="songbookListTitle">Cancionero</h3>
+      <div class="edit-search"><input id="songbookSearch" type="search" placeholder="Buscar por título o artista" spellcheck="false"><span id="songbookCount"></span></div>
+      <div id="songbookSongsList" class="edit-songs-list"></div>
+    </div>
+  </dialog>
+
+  <dialog id="songbookEditorDialog" class="songbook-editor-dialog">
+    <div class="songbook-editor-shell">
+      <header class="songbook-editor-header">
+        <div><small id="songbookEditorOwner"></small><h3 id="songbookEditorTitle">Canción</h3></div>
+        <button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      </header>
+      <div class="songbook-toolbar" role="toolbar" aria-label="Formato del cancionero">
+        <div class="toolbar-popover-wrap">
+          <button id="songbookColorBtn" class="color-swatch-btn" type="button" aria-label="Color del texto" title="Color del texto"><span id="songbookColorSwatch"></span></button>
+          <div id="songbookColorMenu" class="compact-popover color-menu" hidden>
+            <button type="button" data-text-color="#d00000" aria-label="Rojo" style="--swatch:#d00000"></button>
+            <button type="button" data-text-color="#111111" aria-label="Negro" style="--swatch:#111111"></button>
+            <button type="button" data-text-color="#1565c0" aria-label="Azul" style="--swatch:#1565c0"></button>
+            <button type="button" data-text-color="#16833b" aria-label="Verde" style="--swatch:#16833b"></button>
+            <button type="button" data-text-color="#e87500" aria-label="Naranja" style="--swatch:#e87500"></button>
+          </div>
+        </div>
+        <select id="songbookFontSize" aria-label="Tamaño de texto" title="Tamaño de texto"><option value="18">18</option><option value="22">22</option><option value="26">26</option><option value="30" selected>30</option><option value="36">36</option></select>
+        <button id="songbookBold" type="button" data-editor-command="bold" aria-label="Negrita" class="is-active"><b>B</b></button>
+        <button id="songbookItalic" type="button" data-editor-command="italic" aria-label="Cursiva"><i>I</i></button>
+        <button id="songbookUndo" type="button" aria-label="Deshacer">↶</button>
+        <button id="songbookRedo" type="button" aria-label="Rehacer">↷</button>
+        <div class="toolbar-popover-wrap">
+          <button id="songbookDrawToggle" type="button" aria-label="Activar dibujo" title="Pulsar: activar. Mantener: opciones">➜</button>
+          <div id="songbookDrawOptions" class="compact-popover draw-options" hidden>
+            <select id="songbookDrawMode" aria-label="Tipo de trazo" title="Tipo de trazo">
+              <option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option>
+            </select>
+            <div id="songbookDrawColorMenu" class="draw-color-menu" role="group" aria-label="Color del trazo">
+              <button type="button" data-draw-color="#d00000" aria-label="Rojo" title="Rojo" style="--draw-swatch:#d00000" class="is-active"></button>
+              <button type="button" data-draw-color="#111111" aria-label="Negro" title="Negro" style="--draw-swatch:#111111"></button>
+              <button type="button" data-draw-color="#1565c0" aria-label="Azul" title="Azul" style="--draw-swatch:#1565c0"></button>
+              <button type="button" data-draw-color="#16833b" aria-label="Verde" title="Verde" style="--draw-swatch:#16833b"></button>
+              <button type="button" data-draw-color="#e87500" aria-label="Naranja" title="Naranja" style="--draw-swatch:#e87500"></button>
+              <input id="songbookDrawColor" type="hidden" value="#d00000">
+            </div>
+            <select id="songbookDrawWidth" aria-label="Grosor" title="Grosor"><option value="2">Fino</option><option value="5" selected>Medio</option><option value="9">Grueso</option></select>
+            <button id="songbookClearDrawing" type="button" title="Borrar dibujo">⌫</button>
+          </div>
+        </div>
+      </div>
+      <main class="songbook-paper-wrap">
+        <div id="songbookPaperStage" class="songbook-paper-stage">
+          <div id="songbookEditor" class="songbook-paper" contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Pega aquí el texto del cancionero"></div>
+          <canvas id="songbookDrawingCanvas" class="songbook-drawing-canvas" aria-label="Capa de dibujo"></canvas>
+        </div>
+      </main>
+      <footer class="songbook-editor-footer"><button id="saveSongbookBtn" class="primary-btn" type="button">Guardar</button></footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="exportContactsDialog" class="modal">
+    <div class="module-card export-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">CONTACTOS</p><h3>Exportar contactos</h3>
+      <div class="export-grid">
+        <label class="field"><span>Contenido</span><select id="exportContent"><option value="complete">Exportación completa</option><option value="phones">Solo teléfonos</option></select></label>
+        <label class="field"><span>Formato</span><select id="exportFormat"><option value="excel">Excel</option><option value="text">Texto</option></select></label>
+        <label class="field"><span>Show</span><select id="exportShow"><option value="all">Todos</option></select></label>
+        <label class="field"><span>Lugar</span><select id="exportVenue"><option value="all">Todos</option></select></label>
+        <label class="field"><span>Perfil</span><select id="exportProfile"><option value="all">Todos</option><option value="alto">Alto potencial</option><option value="medio">Potencial medio</option><option value="bajo">Bajo potencial</option></select></label>
+        <label class="field"><span>Desde</span><input id="exportDateFrom" type="date"></label>
+        <label class="field"><span>Hasta</span><input id="exportDateTo" type="date"></label>
+      </div>
+      <div class="export-count"><strong id="exportCount">0</strong><span>contactos únicos listos para exportar</span></div>
+      <div class="module-actions export-actions">
+        <button id="downloadContactsBtn" class="primary-btn" type="button">Descargar</button>
+        <button id="whatsappDanielBtn" class="secondary-btn" type="button">WhatsApp Daniel</button>
+        <button id="whatsappElenaBtn" class="secondary-btn" type="button">WhatsApp Elena</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="photoManagerDialog" class="modal photo-manager-dialog">
+    <div class="module-card photo-manager-card">
+      <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">IMÁGENES</p><h3>Subir fotos</h3>
+      <div class="photo-tabs"><button type="button" data-photo-slot="inicio" class="is-active">Foto inicio</button><button type="button" data-photo-slot="hero">Foto Hero</button></div>
+      <label class="photo-file-picker"><span>Seleccionar imagen original</span><input id="photoSourceInput" type="file" accept="image/*"></label>
+      <div id="photoPreview" class="photo-preview is-inicio" tabindex="0" aria-label="Vista previa de la imagen. Arrastra para cambiar el encuadre."><div class="photo-preview-image"></div><div class="photo-preview-gradient"></div><div class="photo-preview-badge"><strong id="photoPreviewLabel">Foto inicio</strong><span>Arrastra para encuadrar</span></div></div>
+      <div class="photo-controls">
+        <label>Posición X <input id="photoPosX" type="range" min="0" max="100" value="50"><output>50%</output></label>
+        <label>Posición Y <input id="photoPosY" type="range" min="0" max="100" value="50"><output>50%</output></label>
+        <label>Zoom <input id="photoZoom" type="range" min="100" max="250" value="100"><output>100%</output></label>
+        <label>Intensidad <input id="gradientIntensity" type="range" min="0" max="100" value="55"><output>55%</output></label>
+        <label>Dirección <select id="gradientDirection"><option value="to bottom">Arriba → abajo</option><option value="to top">Abajo → arriba</option><option value="to right">Izquierda → derecha</option><option value="to left">Derecha → izquierda</option></select></label>
+        <label>Color <input id="gradientColor" type="color" value="#000000"></label>
+        <label>Opacidad <input id="gradientOpacity" type="range" min="0" max="100" value="70"><output>70%</output></label>
+      </div>
+      <div class="module-actions"><button id="resetPhotoFrameBtn" class="secondary-btn" type="button">Restablecer encuadre</button><button id="savePhotoSettingsBtn" class="primary-btn" type="button">Guardar</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="viewerDialog" class="modal viewer-modal">
+    <div class="viewer-card">
+      <div class="viewer-topbar"><strong id="viewerTitle">Vista</strong><button class="modal-x static" type="button" data-dialog-close>×</button></div>
+      <div id="viewerContent" class="viewer-content"></div>
+    </div>
+  </dialog>
+
+  <dialog id="noticeDialog" class="modal">
+    <div class="modal-card compact">
+      <button class="modal-x" type="button" data-dialog-close>×</button>
+      <p class="eyebrow">ENTREGA 1</p>
+      <h3 id="noticeTitle">Módulo preparado</h3>
+      <p>Esta sección se conectará en una próxima entrega. La navegación y el diseño base ya están listos.</p>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
