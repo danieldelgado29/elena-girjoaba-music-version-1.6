@@ -1,6 +1,13 @@
 (() => {
   "use strict";
 
+  const APP_VERSION = "6.33.0";
+  const VERSION_URL = "./version.json";
+  const UPDATE_INTERVAL = 5 * 60 * 1000;
+  let targetVersion = APP_VERSION;
+  let registrationRef = null;
+  let reloading = false;
+
   function showConnectionStatus() {
     let banner = document.getElementById("pwaConnectionStatus");
     if (!banner) {
@@ -24,47 +31,76 @@
     if (navigator.onLine) showConnectionStatus.timer = setTimeout(() => banner.style.opacity = "0", 2400);
   }
 
+  function requestActivation(worker) {
+    if (!worker) return;
+    worker.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  async function readRemoteVersion() {
+    if (!navigator.onLine) return APP_VERSION;
+    const response = await fetch(`${VERSION_URL}?t=${Date.now()}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" }
+    });
+    if (!response.ok) throw new Error(`Version HTTP ${response.status}`);
+    const info = await response.json();
+    return String(info.version || APP_VERSION);
+  }
+
+  async function checkForUpdate() {
+    if (!registrationRef || !navigator.onLine) return;
+    try {
+      targetVersion = await readRemoteVersion();
+      await registrationRef.update();
+      if (registrationRef.waiting) requestActivation(registrationRef.waiting);
+    } catch (error) {
+      console.warn("No se pudo comprobar la actualización", error);
+    }
+  }
+
   window.addEventListener("offline", showConnectionStatus);
-  window.addEventListener("online", showConnectionStatus);
+  window.addEventListener("online", () => {
+    showConnectionStatus();
+    checkForUpdate();
+  });
   if (!navigator.onLine) window.addEventListener("DOMContentLoaded", showConnectionStatus, { once: true });
 
   if (!("serviceWorker" in navigator)) return;
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return;
+    reloading = true;
+    const url = new URL(location.href);
+    url.searchParams.set("appv", targetVersion || Date.now().toString());
+    location.replace(url.href);
+  });
+
   window.addEventListener("load", async () => {
     try {
       const registration = await navigator.serviceWorker.register("./service-worker.js", {
         scope: "./",
         updateViaCache: "none"
       });
+      registrationRef = registration;
 
-      const activateUpdate = worker => {
-        if (worker?.state === "installed" && navigator.serviceWorker.controller) {
-          worker.postMessage({ type: "SKIP_WAITING" });
-        }
-      };
+      if (registration.waiting) requestActivation(registration.waiting);
 
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
         if (!worker) return;
-        worker.addEventListener("statechange", () => activateUpdate(worker));
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            requestActivation(worker);
+          }
+        });
       });
 
-      const checkUpdate = () => {
-        if (navigator.onLine) registration.update().catch(() => {});
-      };
-      checkUpdate();
-      window.addEventListener("online", checkUpdate);
-      window.addEventListener("focus", checkUpdate);
+      await checkForUpdate();
+      window.addEventListener("focus", checkForUpdate);
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") checkUpdate();
+        if (document.visibilityState === "visible") checkForUpdate();
       });
-      setInterval(checkUpdate, 30 * 60 * 1000);
-
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (refreshing) return;
-        refreshing = true;
-        location.reload();
-      });
+      setInterval(checkForUpdate, UPDATE_INTERVAL);
     } catch (error) {
       console.warn("No se pudo activar el modo offline", error);
     }

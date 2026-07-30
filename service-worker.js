@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v5-20260730-queue-doubletap-egp-icon";
+const VERSION = "egm-offline-v6-20260730-auto-update";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
@@ -12,6 +12,7 @@ const CORE = [
   "./panel.js",
   "./pwa.js",
   "./manifest.json",
+  "./version.json",
   "./canciones.json",
   "./configuracion.json",
   "./assets/favicon.png",
@@ -128,6 +129,7 @@ const LOCAL_ASSETS = [
   "./hero.jpg",
   "./index.html",
   "./manifest.json",
+  "./version.json",
   "./panel.css",
   "./panel.html",
   "./panel.js",
@@ -155,9 +157,12 @@ async function cacheOne(cache, url) {
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(STATIC_CACHE);
-    for (const item of CORE) await cacheOne(cache, scopedUrl(item));
-    for (const item of EXTERNAL_MODULES) await cacheOne(cache, item);
-    for (const item of LOCAL_ASSETS) await cacheOne(cache, scopedUrl(item));
+    const urls = [
+      ...CORE.map(scopedUrl),
+      ...LOCAL_ASSETS.map(scopedUrl),
+      ...EXTERNAL_MODULES
+    ];
+    await Promise.allSettled(urls.map(url => cacheOne(cache, url)));
     await self.skipWaiting();
   })());
 });
@@ -177,7 +182,8 @@ self.addEventListener("message", event => {
 async function networkFirst(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
-    const response = await fetch(request);
+    const freshRequest = new Request(request, { cache: "no-store" });
+    const response = await fetch(freshRequest);
     if (response && (response.ok || response.type === "opaque")) cache.put(request, response.clone());
     return response;
   } catch (error) {
