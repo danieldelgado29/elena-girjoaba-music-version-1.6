@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260730-notes-zoom-6334";
+const VERSION = "egm-offline-v6-20260730-notes-pinch-6335";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
@@ -14,19 +14,18 @@ const CORE = [
   "./manifest.json",
   "./version.json",
   "./canciones.json",
-  "./configuracion.json",
-  "./assets/favicon.png",
-  "./assets/app-icon-192.png",
-  "./assets/app-icon-512.png",
-  "./assets/apple-touch-icon-180.png"
+  "./configuracion.json"
 ];
 const LOCAL_ASSETS = [
+  "./assets/anotaciones/LISTADO.txt",
   "./assets/anotaciones/afuera.jpeg",
   "./assets/anotaciones/ahora-te-puedes-marchar.jpeg",
   "./assets/anotaciones/aint-no-sunshine.jpeg",
   "./assets/anotaciones/all-about-that-bass.jpeg",
+  "./assets/anotaciones/american-woman.jpeg",
   "./assets/anotaciones/amor-prohibido.jpeg",
   "./assets/anotaciones/amy-amy-amy.jpeg",
+  "./assets/anotaciones/another-one-bites-the-dust.jpeg",
   "./assets/anotaciones/asi-es-la-vida.jpeg",
   "./assets/anotaciones/at-last-2.jpeg",
   "./assets/anotaciones/at-last.jpeg",
@@ -34,13 +33,16 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/baracunatana.jpeg",
   "./assets/anotaciones/chica-de-humo.jpeg",
   "./assets/anotaciones/clavado-en-un-bar.jpeg",
+  "./assets/anotaciones/come-together.jpeg",
   "./assets/anotaciones/como-la-flor.jpeg",
   "./assets/anotaciones/como-te-voy-a-olvidar.jpeg",
   "./assets/anotaciones/corazon.jpeg",
   "./assets/anotaciones/dont-look-back-in-anger.jpeg",
   "./assets/anotaciones/dont-stop-me-now.jpeg",
   "./assets/anotaciones/el-embrujo.jpeg",
+  "./assets/anotaciones/enter-sandman.jpeg",
   "./assets/anotaciones/es-mejor-asi.jpeg",
+  "./assets/anotaciones/every-breath-you-take.jpeg",
   "./assets/anotaciones/feeling-good.jpeg",
   "./assets/anotaciones/felicidad.jpeg",
   "./assets/anotaciones/fever 2.jpeg",
@@ -48,11 +50,13 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/fuck me.jpeg",
   "./assets/anotaciones/fuck-me-pumps.jpeg",
   "./assets/anotaciones/godspeed.jpeg",
+  "./assets/anotaciones/heart-of-glass.jpeg",
   "./assets/anotaciones/hey-little-rich-girl.jpeg",
   "./assets/anotaciones/hit-me-with-your-best-shot.jpeg",
   "./assets/anotaciones/hit-the-road-jack.jpeg",
   "./assets/anotaciones/i am not the only one.jpeg",
   "./assets/anotaciones/i love you more.jpeg",
+  "./assets/anotaciones/i-don-t-want-to-miss.jpeg",
   "./assets/anotaciones/i-put-a-spell-on-you.jpeg",
   "./assets/anotaciones/i-will-survive.jpeg",
   "./assets/anotaciones/id-rather-go-blind.jpeg",
@@ -65,6 +69,7 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/la-muralla.jpeg",
   "./assets/anotaciones/lamento-boliviano.jpeg",
   "./assets/anotaciones/let-it-be.jpeg",
+  "./assets/anotaciones/like-a-stone.jpeg",
   "./assets/anotaciones/love is a losing game.jpeg",
   "./assets/anotaciones/love-is-a-losing-game.jpeg",
   "./assets/anotaciones/luna-de-miel.jpeg",
@@ -79,8 +84,10 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/oye-mi-amor.jpeg",
   "./assets/anotaciones/para-no-verte-mas.jpeg",
   "./assets/anotaciones/persiana-americana.jpeg",
+  "./assets/anotaciones/personal-jesus.jpeg",
   "./assets/anotaciones/puto.jpeg",
   "./assets/anotaciones/que-bello.jpeg",
+  "./assets/anotaciones/red-red-wine.jpeg",
   "./assets/anotaciones/sent me.jpeg",
   "./assets/anotaciones/sentimiento-original.jpeg",
   "./assets/anotaciones/si-antes-te-hubiera-conocido.jpeg",
@@ -94,6 +101,7 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/still-got-the-blues.jpeg",
   "./assets/anotaciones/stronger-than-me.jpeg",
   "./assets/anotaciones/summertime.jpeg",
+  "./assets/anotaciones/sweet-dreams.jpeg",
   "./assets/anotaciones/take-the-box.jpeg",
   "./assets/anotaciones/te-vas.jpeg",
   "./assets/anotaciones/tears-dry-on-their-own.jpeg",
@@ -103,10 +111,13 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/toxic.jpeg",
   "./assets/anotaciones/tu-carcel.jpeg",
   "./assets/anotaciones/tu-sin-mi.jpeg",
+  "./assets/anotaciones/valio-la-pena.jpeg",
   "./assets/anotaciones/wake-up-alone.jpeg",
+  "./assets/anotaciones/we-will-rock-you.jpeg",
   "./assets/anotaciones/what a wonderful world.jpeg",
   "./assets/anotaciones/why-dont-you-do-right.jpeg",
   "./assets/anotaciones/will-you-still-love-me-tomorrow.jpeg",
+  "./assets/anotaciones/wonderwall.jpeg",
   "./assets/anotaciones/work-song.jpeg",
   "./assets/anotaciones/yesterday.jpeg",
   "./assets/anotaciones/you-dont-love-me.jpeg",
@@ -114,115 +125,22 @@ const LOCAL_ASSETS = [
   "./assets/anotaciones/you-sent-me-flying.jpeg",
   "./assets/app-icon-192.png",
   "./assets/app-icon-512.png",
+  "./assets/apple-touch-icon-180.png",
   "./assets/favicon.png",
   "./assets/foto-banda-mobile.jpg",
   "./assets/foto-banda.jpg",
   "./assets/hero-mobile.jpg",
   "./assets/hero.jpg"
-  "./assets/anotaciones/american-woman.jpeg",
-  "./assets/anotaciones/another-one-bites-the-dust.jpeg",
-  "./assets/anotaciones/come-together.jpeg",
-  "./assets/anotaciones/enter-sandman.jpeg",
-  "./assets/anotaciones/every-breath-you-take.jpeg",
-  "./assets/anotaciones/heart-of-glass.jpeg",
-  "./assets/anotaciones/i-don-t-want-to-miss.jpeg",
-  "./assets/anotaciones/like-a-stone.jpeg",
-  "./assets/anotaciones/personal-jesus.jpeg",
-  "./assets/anotaciones/red-red-wine.jpeg",
-  "./assets/anotaciones/sweet-dreams.jpeg",
-  "./assets/anotaciones/valio-la-pena.jpeg",
-  "./assets/anotaciones/we-will-rock-you.jpeg",
-  "./assets/anotaciones/wonderwall.jpeg",
 ];
 const EXTERNAL_MODULES = [
   "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js",
   "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js"
 ];
-
 const scopedUrl = path => new URL(path, self.registration.scope).href;
-
-async function cacheOne(cache, url) {
-  try {
-    const request = new Request(url, { cache: "reload" });
-    const response = await fetch(request);
-    if (response && (response.ok || response.type === "opaque")) await cache.put(request, response);
-  } catch (error) {
-    console.warn("No se pudo precargar", url);
-  }
-}
-
-self.addEventListener("install", event => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(STATIC_CACHE);
-    const urls = [
-      ...CORE.map(scopedUrl),
-      ...LOCAL_ASSETS.map(scopedUrl),
-      ...EXTERNAL_MODULES
-    ];
-    await Promise.allSettled(urls.map(url => cacheOne(cache, url)));
-    await self.skipWaiting();
-  })());
-});
-
-self.addEventListener("activate", event => {
-  event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(names.filter(name => ![STATIC_CACHE, RUNTIME_CACHE].includes(name)).map(name => caches.delete(name)));
-    await self.clients.claim();
-  })());
-});
-
-self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
-});
-
-async function networkFirst(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  try {
-    const freshRequest = new Request(request, { cache: "no-store" });
-    const response = await fetch(freshRequest);
-    if (response && (response.ok || response.type === "opaque")) cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    const cached = await caches.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-    const url = new URL(request.url);
-    const fallback = url.pathname.endsWith("panel.html") ? "./panel.html" : "./index.html";
-    return (await caches.match(scopedUrl(fallback), { ignoreSearch: true })) || Response.error();
-  }
-}
-
-async function cacheFirst(request) {
-  const cached = await caches.match(request, { ignoreSearch: true });
-  if (cached) return cached;
-  const cache = await caches.open(RUNTIME_CACHE);
-  try {
-    const response = await fetch(request);
-    if (response && (response.ok || response.type === "opaque")) cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    return Response.error();
-  }
-}
-
-self.addEventListener("fetch", event => {
-  const request = event.request;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
-
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  if (url.origin === self.location.origin) {
-    const path = url.pathname;
-    const isFreshCode = /\.(?:html|css|js|json)$/.test(path) || path.endsWith("/");
-    event.respondWith(isFreshCode ? networkFirst(request) : cacheFirst(request));
-    return;
-  }
-
-  if (url.hostname === "www.gstatic.com" || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
-    event.respondWith(cacheFirst(request));
-  }
-});
+async function cacheOne(cache,url){try{const request=new Request(url,{cache:"reload"});const response=await fetch(request);if(response&&(response.ok||response.type==="opaque"))await cache.put(request,response);}catch(error){console.warn("No se pudo precargar",url);}}
+self.addEventListener("install",event=>{event.waitUntil((async()=>{const cache=await caches.open(STATIC_CACHE);const urls=[...CORE.map(scopedUrl),...LOCAL_ASSETS.map(scopedUrl),...EXTERNAL_MODULES];await Promise.allSettled(urls.map(url=>cacheOne(cache,url)));await self.skipWaiting();})());});
+self.addEventListener("activate",event=>{event.waitUntil((async()=>{const names=await caches.keys();await Promise.all(names.filter(name=>![STATIC_CACHE,RUNTIME_CACHE].includes(name)).map(name=>caches.delete(name)));await self.clients.claim();})());});
+self.addEventListener("message",event=>{if(event.data?.type==="SKIP_WAITING")self.skipWaiting();});
+async function networkFirst(request){const cache=await caches.open(RUNTIME_CACHE);try{const freshRequest=new Request(request,{cache:"no-store"});const response=await fetch(freshRequest);if(response&&(response.ok||response.type==="opaque"))cache.put(request,response.clone());return response;}catch(error){const cached=await caches.match(request,{ignoreSearch:true});if(cached)return cached;const url=new URL(request.url);const fallback=url.pathname.endsWith("panel.html")?"./panel.html":"./index.html";return(await caches.match(scopedUrl(fallback),{ignoreSearch:true}))||Response.error();}}
+async function cacheFirst(request){const cached=await caches.match(request,{ignoreSearch:true});if(cached)return cached;const cache=await caches.open(RUNTIME_CACHE);try{const response=await fetch(request);if(response&&(response.ok||response.type==="opaque"))cache.put(request,response.clone());return response;}catch(error){return Response.error();}}
+self.addEventListener("fetch",event=>{const request=event.request;if(request.method!=="GET")return;const url=new URL(request.url);if(request.mode==="navigate"){event.respondWith(networkFirst(request));return;}if(url.origin===self.location.origin){const path=url.pathname;const isFreshCode=/\.(?:html|css|js|json)$/.test(path)||path.endsWith("/");event.respondWith(isFreshCode?networkFirst(request):cacheFirst(request));return;}if(url.hostname==="www.gstatic.com"||url.hostname==="fonts.googleapis.com"||url.hostname==="fonts.gstatic.com")event.respondWith(cacheFirst(request));});

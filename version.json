@@ -1,5 +1,4 @@
 {
-  "version": "6.33.4-notes-zoom-fix",
-  "released": "2026-07-30",
-  "mode": "automatic-notes-and-double-tap-fix"
+  "version": "6.33.5",
+  "build": "2026-07-30-notes-pinch-offline"
 }

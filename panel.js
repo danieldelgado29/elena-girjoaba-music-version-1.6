@@ -308,10 +308,60 @@
   }
 
 
+  const noteViewerState={scale:1,minScale:1,maxScale:5,x:0,y:0,pointers:new Map(),startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0};
+  function resetNoteViewer(){
+    Object.assign(noteViewerState,{scale:1,minScale:1,maxScale:5,x:0,y:0,startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0});
+    noteViewerState.pointers.clear();
+  }
+  function applyNoteTransform(img){
+    img.style.transform=`translate3d(${noteViewerState.x}px,${noteViewerState.y}px,0) scale(${noteViewerState.scale})`;
+  }
+  function clampNotePosition(img){
+    const stage=$('#viewerContent');
+    const maxX=Math.max(0,(img.clientWidth*noteViewerState.scale-stage.clientWidth)/2+24);
+    const maxY=Math.max(0,(img.clientHeight*noteViewerState.scale-stage.clientHeight)/2+24);
+    noteViewerState.x=Math.max(-maxX,Math.min(maxX,noteViewerState.x));
+    noteViewerState.y=Math.max(-maxY,Math.min(maxY,noteViewerState.y));
+  }
+  function setNoteScale(img,nextScale,centerX=0,centerY=0){
+    const previous=noteViewerState.scale;
+    const next=Math.max(noteViewerState.minScale,Math.min(noteViewerState.maxScale,nextScale));
+    if(previous!==next){
+      const ratio=next/previous;
+      noteViewerState.x=centerX-(centerX-noteViewerState.x)*ratio;
+      noteViewerState.y=centerY-(centerY-noteViewerState.y)*ratio;
+      noteViewerState.scale=next;
+      if(next===noteViewerState.minScale){noteViewerState.x=0;noteViewerState.y=0;}
+      clampNotePosition(img);applyNoteTransform(img);
+    }
+  }
+  function installNoteGestures(img){
+    const stage=$('#viewerContent');
+    resetNoteViewer();
+    stage.classList.add('is-note-viewer');
+    img.classList.add('note-photo');
+    img.draggable=false;
+    const distance=()=>{const [a,b]=[...noteViewerState.pointers.values()];return Math.hypot(a.x-b.x,a.y-b.y);};
+    const midpoint=()=>{const [a,b]=[...noteViewerState.pointers.values()];return {x:(a.x+b.x)/2-stage.clientWidth/2,y:(a.y+b.y)/2-stage.clientHeight/2};};
+    img.addEventListener('pointerdown',e=>{
+      e.preventDefault();img.setPointerCapture(e.pointerId);noteViewerState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(noteViewerState.pointers.size===1){noteViewerState.startX=e.clientX;noteViewerState.startY=e.clientY;noteViewerState.originX=noteViewerState.x;noteViewerState.originY=noteViewerState.y;}
+      if(noteViewerState.pointers.size===2){noteViewerState.startDistance=distance();noteViewerState.startScale=noteViewerState.scale;}
+    });
+    img.addEventListener('pointermove',e=>{
+      if(!noteViewerState.pointers.has(e.pointerId))return;e.preventDefault();noteViewerState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(noteViewerState.pointers.size===2){const mid=midpoint();setNoteScale(img,noteViewerState.startScale*(distance()/Math.max(1,noteViewerState.startDistance)),mid.x,mid.y);}
+      else if(noteViewerState.pointers.size===1&&noteViewerState.scale>1){noteViewerState.x=noteViewerState.originX+(e.clientX-noteViewerState.startX);noteViewerState.y=noteViewerState.originY+(e.clientY-noteViewerState.startY);clampNotePosition(img);applyNoteTransform(img);}
+    });
+    const finish=e=>{noteViewerState.pointers.delete(e.pointerId);if(noteViewerState.pointers.size===1){const p=[...noteViewerState.pointers.values()][0];noteViewerState.startX=p.x;noteViewerState.startY=p.y;noteViewerState.originX=noteViewerState.x;noteViewerState.originY=noteViewerState.y;}clampNotePosition(img);applyNoteTransform(img);};
+    img.addEventListener('pointerup',finish);img.addEventListener('pointercancel',finish);
+    img.addEventListener('dblclick',e=>{e.preventDefault();setNoteScale(img,noteViewerState.scale>1?1:2,e.clientX-stage.getBoundingClientRect().left-stage.clientWidth/2,e.clientY-stage.getBoundingClientRect().top-stage.clientHeight/2);});
+  }
+
   function openViewer(song,type){
     const label=type==='notes'?'Notas':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
-    const content=$('#viewerContent');content.innerHTML='';
+    const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'){
       const key=slug(song.titulo);let file=song.elenaNotesDataUrl||song.elenaNotes||song.notasElena||state.notes[key];
       if(Array.isArray(file)) file=file[0];
@@ -320,20 +370,15 @@
         const img=new Image();
         img.alt=`Notas de ${song.titulo}`;
         img.src=String(file).startsWith('data:')||String(file).startsWith('blob:')||String(file).startsWith('assets/')?file:`assets/anotaciones/${file}`;
-        img.addEventListener('error',()=>{content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';},{once:true});
+        img.addEventListener('load',()=>installNoteGestures(img),{once:true});
+        img.addEventListener('error',()=>{content.classList.remove('is-note-viewer');content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';},{once:true});
         content.append(img);
       } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
     } else {
       const isDaniel=type==='daniel';
       const html=isDaniel ? (song.cancioneroDaniel || song.danielLyrics || song.letraDaniel || '') : (song.elenaLyrics || song.cancioneroElena || song.letraElena || '');
-      if(html){
-        const page=document.createElement('article');
-        page.className='live-songbook-page';
-        page.innerHTML=html;
-        content.append(page);
-      } else {
-        content.innerHTML=`<div class="viewer-empty"><h3>Sin contenido disponible</h3><p>Esta canción todavía no tiene contenido en el Cancionero ${isDaniel?'Daniel':'Elena'}.</p></div>`;
-      }
+      if(html){const page=document.createElement('article');page.className='live-songbook-page';page.innerHTML=html;content.append(page);}
+      else content.innerHTML=`<div class="viewer-empty"><h3>Sin contenido disponible</h3><p>Esta canción todavía no tiene contenido en el Cancionero ${isDaniel?'Daniel':'Elena'}.</p></div>`;
     }
     $('#viewerDialog').showModal();
   }
@@ -368,6 +413,7 @@
   $$('[data-dialog-close]').forEach(btn=>btn.addEventListener('click',()=>{
     const dialog=btn.closest('dialog');
     if(dialog.id==='confirmDialog'){dialog.close();state.pendingConfirm=null;return;}
+    if(dialog.id==='viewerDialog'){askConfirm('Cerrar visor','¿Seguro que deseas cerrar las notas?',()=>closeDialogDirect(dialog),'Cerrar');return;}
     requestDialogClose(dialog);
   }));
   $$('dialog').forEach(d=>{
@@ -969,10 +1015,18 @@
   },'Guardar'));
 
 
-  // Evita que el doble toque requerido por los botones active el zoom de Safari/iPhone.
+  // Evita que el segundo toque rápido de los controles amplíe la pantalla en Safari/iPhone.
+  let lastControlTouch={time:0,target:null};
+  document.addEventListener('touchend',event=>{
+    const control=event.target.closest('button,.song-action,.mini-btn,[role="button"]');
+    if(!control)return;
+    const now=Date.now();
+    if(lastControlTouch.target===control&&now-lastControlTouch.time<500) event.preventDefault();
+    lastControlTouch={time:now,target:control};
+  },{passive:false,capture:true});
   document.addEventListener('dblclick',event=>{
-    if(event.target.closest('button,.song-action,.mini-btn')) event.preventDefault();
-  },{passive:false});
+    if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
+  },{passive:false,capture:true});
 
   Promise.all([loadData(),initRemoteSync()]).then(()=>{
     // Siempre abrir primero la ventana de configuración del show.
