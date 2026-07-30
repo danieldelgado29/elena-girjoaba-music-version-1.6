@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v3-20260730-doubletap";
+const VERSION = "egm-offline-v5-20260730-queue-doubletap-egp-icon";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
@@ -16,7 +16,8 @@ const CORE = [
   "./configuracion.json",
   "./assets/favicon.png",
   "./assets/app-icon-192.png",
-  "./assets/app-icon-512.png"
+  "./assets/app-icon-512.png",
+  "./assets/apple-touch-icon-180.png"
 ];
 const LOCAL_ASSETS = [
   "./assets/anotaciones/afuera.jpeg",
@@ -211,7 +212,14 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  if (url.origin === self.location.origin || url.hostname === "www.gstatic.com" || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
+  if (url.origin === self.location.origin) {
+    const path = url.pathname;
+    const isFreshCode = /\.(?:html|css|js|json)$/.test(path) || path.endsWith("/");
+    event.respondWith(isFreshCode ? networkFirst(request) : cacheFirst(request));
+    return;
+  }
+
+  if (url.hostname === "www.gstatic.com" || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
     event.respondWith(cacheFirst(request));
   }
 });

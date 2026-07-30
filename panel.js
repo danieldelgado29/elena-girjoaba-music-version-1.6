@@ -211,11 +211,10 @@
         const button=e.target.closest('[data-act]');
         if(!button) return;
         const act=button.dataset.act;
-        if(act==='lyrics'||act==='notes'||act==='daniel'){
+        if(['queue','played','lyrics','notes','daniel'].includes(act)){
           requireSecondTap(song,act,button);
           return;
         }
-        handleSongAction(song,act);
       });
       list.append(card);
     });
@@ -237,8 +236,9 @@
       pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
     }
     button.classList.add('is-awaiting-second-tap');
-    const label=act==='lyrics'?'Letra':act==='notes'?'Notas':'Daniel';
-    toast(`Toca otra vez para abrir ${label}`);
+    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Notas',daniel:'Daniel'};
+    const label=labels[act]||'esta acción';
+    toast(`Toca otra vez: ${label}`);
     const entry={key,time:now,button,timer:null};
     entry.timer=setTimeout(()=>{
       if(pendingViewerTap===entry) pendingViewerTap=null;
@@ -272,13 +272,41 @@
       const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;
       item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
       item.addEventListener('click',e=>{
-        const act=e.target.closest('[data-q]')?.dataset.q;if(!act)return;
-        if(act==='played'){state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);}
-        if(act==='remove') state.queue=state.queue.filter(id=>id!==song.id);
-        saveState();renderQueue();renderSongs();
+        const button=e.target.closest('[data-q]');
+        if(!button)return;
+        requireSecondQueueTap(song,button.dataset.q,button);
       });list.append(item);
     });
   }
+
+  let pendingQueueTap=null;
+  function requireSecondQueueTap(song,act,button){
+    const key=`${song.id}:queue:${act}`;
+    const now=Date.now();
+    if(pendingQueueTap?.key===key && now-pendingQueueTap.time<=900){
+      clearTimeout(pendingQueueTap.timer);
+      pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
+      pendingQueueTap=null;
+      if(act==='played') state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
+      if(act==='remove') state.queue=state.queue.filter(id=>id!==song.id);
+      saveState();renderQueue();renderSongs();
+      toast(act==='remove'?'Canción retirada de la cola':state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
+      return;
+    }
+    if(pendingQueueTap){
+      clearTimeout(pendingQueueTap.timer);
+      pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
+    }
+    button.classList.add('is-awaiting-second-tap');
+    toast(act==='remove'?'Toca otra vez para quitar':'Toca otra vez: Tocada');
+    const entry={key,time:now,button,timer:null};
+    entry.timer=setTimeout(()=>{
+      if(pendingQueueTap===entry) pendingQueueTap=null;
+      button.classList.remove('is-awaiting-second-tap');
+    },900);
+    pendingQueueTap=entry;
+  }
+
 
   function openViewer(song,type){
     const label=type==='notes'?'Notas':type==='daniel'?'Daniel':'Letra';

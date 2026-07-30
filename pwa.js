@@ -31,18 +31,33 @@
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
-      registration.update().catch(() => {});
+      const registration = await navigator.serviceWorker.register("./service-worker.js", {
+        scope: "./",
+        updateViaCache: "none"
+      });
+
+      const activateUpdate = worker => {
+        if (worker?.state === "installed" && navigator.serviceWorker.controller) {
+          worker.postMessage({ type: "SKIP_WAITING" });
+        }
+      };
 
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
         if (!worker) return;
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            worker.postMessage({ type: "SKIP_WAITING" });
-          }
-        });
+        worker.addEventListener("statechange", () => activateUpdate(worker));
       });
+
+      const checkUpdate = () => {
+        if (navigator.onLine) registration.update().catch(() => {});
+      };
+      checkUpdate();
+      window.addEventListener("online", checkUpdate);
+      window.addEventListener("focus", checkUpdate);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") checkUpdate();
+      });
+      setInterval(checkUpdate, 30 * 60 * 1000);
 
       let refreshing = false;
       navigator.serviceWorker.addEventListener("controllerchange", () => {
