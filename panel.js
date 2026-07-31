@@ -821,6 +821,7 @@
   $('#songbookFontSize').addEventListener('mousedown',saveEditorSelection);
   $('#songbookFontSize').addEventListener('change',e=>applyFontSize(e.target.value));
   $('#songbookUndo').addEventListener('click',undoEditor);$('#songbookRedo').addEventListener('click',redoEditor);
+  $('#songbookTextTool').addEventListener('click',()=>{songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookEraserToggle').classList.remove('is-active');$('#songbookTextTool').classList.add('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');$('#songbookEditor').contentEditable='true';$('#songbookEditor').focus();});
 
   $('#songbookDrawToggle').addEventListener('pointerdown',e=>{e.preventDefault();drawHoldTriggered=false;drawHoldTimer=setTimeout(()=>{drawHoldTriggered=true;closeToolbarPopovers($('#songbookDrawOptions'));positionPopover($('#songbookDrawOptions'),$('#songbookDrawToggle'));},480);});
   function finishDrawButtonPress(){clearTimeout(drawHoldTimer);if(!drawHoldTriggered)toggleDrawing();}
@@ -1138,7 +1139,9 @@
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');
     $('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
-  $('#imageSourceInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=()=>{imageEditorState.original=r.result;imageEditorState.overlay='';renderImageEditor();};r.readAsDataURL(file);});
+  $('#imageUploadTrigger').addEventListener('click',()=>{const input=$('#imageSourceInput');input.value='';input.click();});
+  $('#imageSourceInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;if(!/^image\/(jpeg|png|webp)$/i.test(file.type)){toast('Selecciona una imagen JPG, PNG o WEBP');e.target.value='';return;}if(file.size>12*1024*1024){toast('La imagen supera 12 MB');e.target.value='';return;}const r=new FileReader();r.onerror=()=>toast('No se pudo leer la imagen');r.onload=()=>{imageEditorState.original=String(r.result||'');imageEditorState.overlay='';renderImageEditor();toast('Imagen cargada');};r.readAsDataURL(file);});
+  $('#imageTextTool').addEventListener('click',()=>{const text=prompt('Escribe el texto que deseas agregar sobre la imagen:','');if(!text)return;const c=imageEditorCanvas(),ctx=imageEditorContext();ctx.save();ctx.globalCompositeOperation='source-over';ctx.fillStyle=imageEditorState.color;ctx.font=`700 ${Math.max(28,imageEditorState.size*5)}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,c.width/2,c.height/2,Math.max(100,c.width-80));ctx.restore();pushImageHistory();$('#imageTextTool').classList.add('is-active');setTimeout(()=>$('#imageTextTool').classList.remove('is-active'),500);});
   $('#imageToolPencil').addEventListener('click',()=>{imageEditorState.tool='pencil';$('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');});
   let imageEraserHold=0;
   $('#imageToolEraser').addEventListener('pointerdown',e=>{imageEraserHold=setTimeout(()=>positionPopover($('#imageEraserOptions'),e.currentTarget),550);});
