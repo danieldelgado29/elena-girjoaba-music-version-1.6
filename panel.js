@@ -3,7 +3,7 @@
   const $ = (s, p=document) => p.querySelector(s);
   const $$ = (s, p=document) => [...p.querySelectorAll(s)];
   const state = {
-    songs: [], filtered: [], queue: [], played: new Set(), notes: {},
+    songs: [], filtered: [], queue: [], played: new Set(), notes: {}, lyrics: {},
     config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, songEdits: {}, editSongElenaNotes: null
   };
   const dialogBaselines = new WeakMap();
@@ -71,9 +71,10 @@
 
   async function loadData(){
     try{
-      const [songsRes, notesRes] = await Promise.all([fetch('canciones.json'),fetch('assets/anotaciones/index.json')]);
+      const [songsRes, notesRes, lyricsRes] = await Promise.all([fetch('canciones.json'),fetch('assets/anotaciones/index.json'),fetch('data/letras.json')]);
       state.songs = await songsRes.json();
       if(notesRes.ok) state.notes = await notesRes.json();
+      if(lyricsRes.ok) state.lyrics = await lyricsRes.json();
     }catch(err){
       console.warn('No se pudo usar fetch; cargando demostración.',err);
       state.songs = [
@@ -200,13 +201,23 @@
     }
     renderSongs();
   }
+  function hasMeaningfulContent(value){
+    if(value===null||value===undefined) return false;
+    const text=String(value).replace(/<[^>]*>/g,' ').replace(/&nbsp;/gi,' ').replace(/\s+/g,' ').trim();
+    return text.length>0;
+  }
   function renderSongs(){
     const list=$('#songList');list.innerHTML='';
     $('#songCount').textContent=`${state.filtered.length} temas`;
     state.filtered.forEach((song,index)=>{
       const queued=state.queue.includes(song.id), played=state.played.has(song.id);
+      const noteFile=state.notes[slug(song.titulo)];
+      const storedLyrics=state.lyrics[song.id]||{};
+      const hasNotes=Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||song.notasElena);
+      const hasElena=hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
+      const hasDaniel=hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel);
       const card=document.createElement('article');card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
-      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics" data-act="lyrics" title="Letra">Letra</button><button class="song-action notes" data-act="notes" title="Notas">Notas</button><button class="song-action daniel" data-act="daniel" title="Cancionero Daniel">Daniel</button></div>`;
+      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Notas</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
       const handleCardControl=e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
@@ -331,9 +342,9 @@
   }
 
 
-  const noteViewerState={scale:1,minScale:1,maxScale:5,x:0,y:0,pointers:new Map(),startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0};
+  const noteViewerState={scale:1,minScale:0.1,maxScale:8,x:0,y:0,pointers:new Map(),startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0};
   function resetNoteViewer(){
-    Object.assign(noteViewerState,{scale:1,minScale:1,maxScale:5,x:0,y:0,startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0});
+    Object.assign(noteViewerState,{scale:1,minScale:0.1,maxScale:8,x:0,y:0,startDistance:0,startScale:1,startX:0,startY:0,originX:0,originY:0,lastTap:0});
     noteViewerState.pointers.clear();
   }
   function applyNoteTransform(img){
@@ -341,10 +352,14 @@
   }
   function clampNotePosition(img){
     const stage=$('#viewerContent');
-    const maxX=Math.max(0,(img.clientWidth*noteViewerState.scale-stage.clientWidth)/2+24);
-    const maxY=Math.max(0,(img.clientHeight*noteViewerState.scale-stage.clientHeight)/2+24);
-    noteViewerState.x=Math.max(-maxX,Math.min(maxX,noteViewerState.x));
-    noteViewerState.y=Math.max(-maxY,Math.min(maxY,noteViewerState.y));
+    // El visor permite mover libremente la hoja incluso cuando está alejada.
+    // El margen amplio evita la sensación de que la imagen se "traba" al llegar al ajuste completo.
+    const scaledW=img.clientWidth*noteViewerState.scale;
+    const scaledH=img.clientHeight*noteViewerState.scale;
+    const freeX=Math.max(stage.clientWidth*0.85,(scaledW+stage.clientWidth)/2);
+    const freeY=Math.max(stage.clientHeight*0.85,(scaledH+stage.clientHeight)/2);
+    noteViewerState.x=Math.max(-freeX,Math.min(freeX,noteViewerState.x));
+    noteViewerState.y=Math.max(-freeY,Math.min(freeY,noteViewerState.y));
   }
   function setNoteScale(img,nextScale,centerX=0,centerY=0){
     const previous=noteViewerState.scale;
@@ -354,7 +369,7 @@
       noteViewerState.x=centerX-(centerX-noteViewerState.x)*ratio;
       noteViewerState.y=centerY-(centerY-noteViewerState.y)*ratio;
       noteViewerState.scale=next;
-      if(next===noteViewerState.minScale){noteViewerState.x=0;noteViewerState.y=0;}
+      
       clampNotePosition(img);applyNoteTransform(img);
     }
   }
@@ -374,11 +389,18 @@
     img.addEventListener('pointermove',e=>{
       if(!noteViewerState.pointers.has(e.pointerId))return;e.preventDefault();noteViewerState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(noteViewerState.pointers.size===2){const mid=midpoint();setNoteScale(img,noteViewerState.startScale*(distance()/Math.max(1,noteViewerState.startDistance)),mid.x,mid.y);}
-      else if(noteViewerState.pointers.size===1&&noteViewerState.scale>1){noteViewerState.x=noteViewerState.originX+(e.clientX-noteViewerState.startX);noteViewerState.y=noteViewerState.originY+(e.clientY-noteViewerState.startY);clampNotePosition(img);applyNoteTransform(img);}
+      else if(noteViewerState.pointers.size===1){noteViewerState.x=noteViewerState.originX+(e.clientX-noteViewerState.startX);noteViewerState.y=noteViewerState.originY+(e.clientY-noteViewerState.startY);clampNotePosition(img);applyNoteTransform(img);}
     });
     const finish=e=>{noteViewerState.pointers.delete(e.pointerId);if(noteViewerState.pointers.size===1){const p=[...noteViewerState.pointers.values()][0];noteViewerState.startX=p.x;noteViewerState.startY=p.y;noteViewerState.originX=noteViewerState.x;noteViewerState.originY=noteViewerState.y;}clampNotePosition(img);applyNoteTransform(img);};
     img.addEventListener('pointerup',finish);img.addEventListener('pointercancel',finish);
     img.addEventListener('dblclick',e=>{e.preventDefault();setNoteScale(img,noteViewerState.scale>1?1:2,e.clientX-stage.getBoundingClientRect().left-stage.clientWidth/2,e.clientY-stage.getBoundingClientRect().top-stage.clientHeight/2);});
+    stage.addEventListener('wheel',e=>{
+      if(!stage.classList.contains('is-note-viewer'))return;
+      e.preventDefault();
+      const rect=stage.getBoundingClientRect();
+      const factor=e.deltaY<0?1.12:0.88;
+      setNoteScale(img,noteViewerState.scale*factor,e.clientX-rect.left-stage.clientWidth/2,e.clientY-rect.top-stage.clientHeight/2);
+    },{passive:false,once:false});
   }
 
   function openViewer(song,type){
@@ -399,7 +421,8 @@
       } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
     } else {
       const isDaniel=type==='daniel';
-      const html=isDaniel ? (song.cancioneroDaniel || song.danielLyrics || song.letraDaniel || '') : (song.elenaLyrics || song.cancioneroElena || song.letraElena || '');
+      const storedLyrics=state.lyrics[song.id]||{};
+      const html=isDaniel ? (song.cancioneroDaniel || song.danielLyrics || song.letraDaniel || '') : (song.elenaLyrics || song.cancioneroElena || song.letraElena || storedLyrics.escenarioHtml || storedLyrics.publicaHtml || '');
       if(html){const page=document.createElement('article');page.className='live-songbook-page';page.innerHTML=html;content.append(page);}
       else content.innerHTML=`<div class="viewer-empty"><h3>Sin contenido disponible</h3><p>Esta canción todavía no tiene contenido en el Cancionero ${isDaniel?'Daniel':'Elena'}.</p></div>`;
     }
