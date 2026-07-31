@@ -344,44 +344,48 @@
         <div><small id="songbookEditorOwner"></small><h3 id="songbookEditorTitle">Canción</h3></div>
         <button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
       </header>
-      <div class="songbook-toolbar" role="toolbar" aria-label="Formato del cancionero">
-        <button id="songbookTextTool" type="button" class="is-active toolbar-icon-btn" aria-label="Herramienta de texto" title="Texto"><span class="tool-letter">T</span></button>
-        <div class="toolbar-popover-wrap">
-          <button id="songbookColorBtn" class="color-swatch-btn" type="button" aria-label="Color del texto" title="Color del texto"><span id="songbookColorSwatch"></span></button>
-          <div id="songbookColorMenu" class="compact-popover color-menu" hidden>
-            <button type="button" data-text-color="#d00000" aria-label="Rojo" style="--swatch:#d00000"></button>
-            <button type="button" data-text-color="#111111" aria-label="Negro" style="--swatch:#111111"></button>
-            <button type="button" data-text-color="#1565c0" aria-label="Azul" style="--swatch:#1565c0"></button>
-            <button type="button" data-text-color="#16833b" aria-label="Verde" style="--swatch:#16833b"></button>
-            <button type="button" data-text-color="#e87500" aria-label="Naranja" style="--swatch:#e87500"></button>
+      <div class="songbook-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de texto">
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="songbookTextTool" type="button" class="egm-editor-tool is-active" aria-label="Texto" title="Texto: mantener para color y tamaño"><span class="tool-letter">T</span><span id="songbookColorSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
+          <div id="songbookTextOptions" class="compact-popover egm-tool-popover" hidden>
+            <div id="songbookColorMenu" class="color-menu egm-color-grid">
+              <button type="button" data-text-color="#d00000" aria-label="Rojo" style="--swatch:#d00000"></button>
+              <button type="button" data-text-color="#111111" aria-label="Negro" style="--swatch:#111111"></button>
+              <button type="button" data-text-color="#1565c0" aria-label="Azul" style="--swatch:#1565c0"></button>
+              <button type="button" data-text-color="#16833b" aria-label="Verde" style="--swatch:#16833b"></button>
+              <button type="button" data-text-color="#e87500" aria-label="Naranja" style="--swatch:#e87500"></button>
+            </div>
+            <select id="songbookFontSize" aria-label="Tamaño de texto"><option value="18">18</option><option value="22">22</option><option value="26">26</option><option value="30" selected>30</option><option value="36">36</option></select>
           </div>
+          <button id="songbookColorBtn" type="button" hidden tabindex="-1" aria-hidden="true"></button>
         </div>
-        <select id="songbookFontSize" aria-label="Tamaño de texto" title="Tamaño de texto"><option value="18">18</option><option value="22">22</option><option value="26">26</option><option value="30" selected>30</option><option value="36">36</option></select>
-        <button id="songbookBold" type="button" data-editor-command="bold" aria-label="Negrita" class="is-active"><b>B</b></button>
-        <button id="songbookItalic" type="button" data-editor-command="italic" aria-label="Cursiva" title="Cursiva"><i>C</i></button>
-        <button id="songbookUndo" class="history-icon-btn" type="button" aria-label="Deshacer" title="Deshacer"><span aria-hidden="true">↶</span></button>
-        <button id="songbookRedo" class="history-icon-btn" type="button" aria-label="Rehacer" title="Rehacer"><span aria-hidden="true">↷</span></button>
-        <div class="toolbar-popover-wrap">
-          <button id="songbookDrawToggle" class="toolbar-icon-btn" type="button" aria-label="Activar dibujo" title="Pulsar: activar lápiz. Mantener: opciones"><span aria-hidden="true">✎</span></button>
-          <button id="songbookEraserToggle" type="button" aria-label="Borrador" title="Pulsar: activar. Mantener: tamaños">⌫</button>
-          <div id="songbookEraserOptions" class="compact-popover eraser-options" hidden>
-            <button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button>
-          </div>
-          <div id="songbookDrawOptions" class="compact-popover draw-options" hidden>
-            <select id="songbookDrawMode" aria-label="Tipo de trazo" title="Tipo de trazo">
-              <option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option><option value="eraser">Borrador</option>
-            </select>
-            <div id="songbookDrawColorMenu" class="draw-color-menu" role="group" aria-label="Color del trazo">
-              <button type="button" data-draw-color="#d00000" aria-label="Rojo" title="Rojo" style="--draw-swatch:#d00000" class="is-active"></button>
-              <button type="button" data-draw-color="#111111" aria-label="Negro" title="Negro" style="--draw-swatch:#111111"></button>
-              <button type="button" data-draw-color="#1565c0" aria-label="Azul" title="Azul" style="--draw-swatch:#1565c0"></button>
-              <button type="button" data-draw-color="#16833b" aria-label="Verde" title="Verde" style="--draw-swatch:#16833b"></button>
-              <button type="button" data-draw-color="#e87500" aria-label="Naranja" title="Naranja" style="--draw-swatch:#e87500"></button>
+        <button id="songbookBold" type="button" class="egm-editor-tool" data-editor-command="bold" aria-label="Negrita"><b>N</b></button>
+        <button id="songbookItalic" type="button" class="egm-editor-tool" data-editor-command="italic" aria-label="Cursiva"><i>K</i></button>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="songbookAlign" type="button" class="egm-editor-tool" aria-label="Alineación" title="Alineación: mantener para opciones"><span aria-hidden="true">≡</span></button>
+          <div id="songbookAlignOptions" class="compact-popover egm-align-options" hidden><button type="button" data-align="left">Izq.</button><button type="button" data-align="center">Centro</button><button type="button" data-align="right">Der.</button></div>
+        </div>
+        <button id="songbookUndo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Deshacer"><span aria-hidden="true">↶</span></button>
+        <button id="songbookRedo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Rehacer"><span aria-hidden="true">↷</span></button>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="songbookDrawToggle" class="egm-editor-tool" type="button" aria-label="Lápiz" title="Lápiz: mantener para color, grosor y tipo"><span class="egm-pencil-icon" aria-hidden="true">✎</span></button>
+          <div id="songbookDrawOptions" class="compact-popover egm-draw-options" hidden>
+            <div id="songbookDrawColorMenu" class="draw-color-menu egm-color-grid" role="group" aria-label="Color del trazo">
+              <button type="button" data-draw-color="#d00000" aria-label="Rojo" style="--draw-swatch:#d00000" class="is-active"></button>
+              <button type="button" data-draw-color="#111111" aria-label="Negro" style="--draw-swatch:#111111"></button>
+              <button type="button" data-draw-color="#1565c0" aria-label="Azul" style="--draw-swatch:#1565c0"></button>
+              <button type="button" data-draw-color="#16833b" aria-label="Verde" style="--draw-swatch:#16833b"></button>
+              <button type="button" data-draw-color="#e87500" aria-label="Naranja" style="--draw-swatch:#e87500"></button>
               <input id="songbookDrawColor" type="hidden" value="#d00000">
             </div>
-            <select id="songbookDrawWidth" aria-label="Grosor" title="Grosor"><option value="2">Fino</option><option value="5" selected>Medio</option><option value="9">Grueso</option></select>
-            <button id="songbookClearDrawing" type="button" title="Borrar dibujo">⌫</button>
+            <select id="songbookDrawWidth" aria-label="Grosor"><option value="2">Fino</option><option value="5" selected>Medio</option><option value="9">Grueso</option></select>
+            <select id="songbookDrawMode" aria-label="Tipo de trazo"><option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option><option value="eraser">Borrador</option></select>
+            <button id="songbookClearDrawing" type="button" title="Borrar dibujo">Limpiar</button>
           </div>
+        </div>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="songbookEraserToggle" class="egm-editor-tool" type="button" aria-label="Borrador" title="Borrador: mantener para tamaños"><span aria-hidden="true">⌫</span></button>
+          <div id="songbookEraserOptions" class="compact-popover egm-eraser-options" hidden><button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button></div>
         </div>
       </div>
       <main class="songbook-paper-wrap">
@@ -441,14 +445,30 @@
   <dialog id="imageEditorDialog" class="songbook-editor-dialog image-editor-dialog">
     <div class="songbook-editor-shell image-editor-shell">
       <header class="songbook-editor-header"><div><small>EDITOR DE IMAGEN</small><h3 id="imageEditorTitle">Imagen</h3></div><button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
-      <div class="songbook-toolbar image-editor-toolbar" role="toolbar">
-        <button id="imageUploadTrigger" class="image-upload-btn" type="button" title="Subir o reemplazar imagen"><span aria-hidden="true">▧+</span><span>Subir imagen</span></button><input id="imageSourceInput" class="visually-hidden-file" type="file" accept="image/jpeg,image/png,image/webp">
-        <button id="imageTextTool" class="toolbar-icon-btn" type="button" title="Texto"><span class="tool-letter">T</span></button>
-        <button id="imageToolPencil" class="toolbar-icon-btn is-active" type="button" title="Lápiz"><span aria-hidden="true">✎</span></button>
-        <span class="toolbar-popover-wrap"><button id="imageToolEraser" type="button" title="Pulsar: borrador. Mantener: tamaños">Borrador</button><span id="imageEraserOptions" class="compact-popover eraser-options" hidden><button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="60">XL</button></span></span>
-        <input id="imageDrawColor" type="color" value="#d00000" aria-label="Color">
-        <select id="imageDrawSize" aria-label="Tamaño"><option value="4">Fino</option><option value="8" selected>Medio</option><option value="16">Grande</option><option value="30">Extra grande</option></select>
-        <button id="imageUndo" class="history-icon-btn" type="button" aria-label="Deshacer" title="Deshacer"><span aria-hidden="true">↶</span></button><button id="imageRedo" class="history-icon-btn" type="button" aria-label="Rehacer" title="Rehacer"><span aria-hidden="true">↷</span></button>
+      <div class="songbook-toolbar image-editor-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de imagen">
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="imageTextTool" class="egm-editor-tool" type="button" aria-label="Texto" title="Texto"><span class="tool-letter">T</span></button>
+        </div>
+        <button id="imageBold" class="egm-editor-tool" type="button" aria-label="Negrita"><b>N</b></button>
+        <button id="imageItalic" class="egm-editor-tool" type="button" aria-label="Cursiva"><i>K</i></button>
+        <button id="imageUndo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Deshacer"><span aria-hidden="true">↶</span></button>
+        <button id="imageRedo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Rehacer"><span aria-hidden="true">↷</span></button>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="imageToolPencil" class="egm-editor-tool is-active" type="button" aria-label="Lápiz" title="Lápiz: mantener para opciones"><span class="egm-pencil-icon" aria-hidden="true">✎</span></button>
+          <div id="imagePencilOptions" class="compact-popover egm-draw-options" hidden>
+            <input id="imageDrawColor" type="color" value="#d00000" aria-label="Color">
+            <select id="imageDrawSize" aria-label="Grosor"><option value="4">Fino</option><option value="8" selected>Medio</option><option value="16">Grande</option><option value="30">Extra grande</option></select>
+            <select id="imageDrawMode" aria-label="Tipo de trazo"><option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option></select>
+          </div>
+        </div>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="imageToolEraser" class="egm-editor-tool" type="button" aria-label="Borrador" title="Borrador: mantener para tamaños"><span aria-hidden="true">⌫</span></button>
+          <div id="imageEraserOptions" class="compact-popover egm-eraser-options" hidden><button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="60">XL</button></div>
+        </div>
+        <div class="toolbar-popover-wrap egm-tool-wrap">
+          <button id="imageUploadTrigger" class="egm-editor-tool" type="button" aria-label="Imagen" title="Mantener para insertar o reemplazar imagen"><span aria-hidden="true">▧</span></button>
+          <input id="imageSourceInput" class="visually-hidden-file" type="file" accept="image/jpeg,image/png,image/webp">
+        </div>
       </div>
       <main id="imageEditorStage" class="image-editor-stage"><canvas id="imageEditorCanvas"></canvas></main>
       <footer class="songbook-editor-footer"><button id="saveImageEditorBtn" class="primary-btn" type="button">Guardar</button></footer>

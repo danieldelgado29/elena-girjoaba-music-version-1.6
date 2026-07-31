@@ -1244,45 +1244,57 @@
   });
 })();
 
-/* Entrega 6.14: la barra permanece fija; solo la hoja usa zoom interno */
+
+
+/* Entrega 6.36 · controlador base de la barra nueva */
 (function(){
-  const dialog=document.getElementById('songbookEditorDialog');
-  const toolbar=dialog&&dialog.querySelector('.songbook-toolbar');
-  const stage=dialog&&dialog.querySelector('.songbook-paper-stage');
-  if(!dialog||!toolbar||!stage)return;
+  const $id=id=>document.getElementById(id);
+  const textDialog=$id('songbookEditorDialog');
+  const imageDialog=$id('imageEditorDialog');
+  if(!textDialog||!imageDialog)return;
 
-  let paperZoom=1;
-  const controls=document.createElement('div');
-  controls.className='songbook-zoom-controls';
-  controls.setAttribute('aria-label','Zoom de la hoja');
-  controls.innerHTML='<button type="button" data-paper-zoom="out" aria-label="Alejar hoja">−</button><span class="songbook-zoom-value">100%</span><button type="button" data-paper-zoom="in" aria-label="Acercar hoja">+</button>';
-  toolbar.appendChild(controls);
-  const value=controls.querySelector('.songbook-zoom-value');
-
-  function applyPaperZoom(next){
-    paperZoom=Math.min(2,Math.max(.5,Math.round(next*10)/10));
-    stage.style.setProperty('--songbook-paper-zoom',String(paperZoom));
-    value.textContent=`${Math.round(paperZoom*100)}%`;
-    requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));
+  function closeAllPopovers(except){
+    document.querySelectorAll('.egm-editor-toolbar .compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
   }
-  controls.addEventListener('click',e=>{
-    const action=e.target.closest('[data-paper-zoom]')?.dataset.paperZoom;
-    if(action==='in')applyPaperZoom(paperZoom+.1);
-    if(action==='out')applyPaperZoom(paperZoom-.1);
+  function showHeldPopover(button,popover){
+    if(!button||!popover)return;
+    closeAllPopovers(popover);
+    const r=button.getBoundingClientRect();
+    popover.hidden=false;
+    requestAnimationFrame(()=>{
+      const pr=popover.getBoundingClientRect();
+      const left=Math.max(8,Math.min(innerWidth-pr.width-8,r.left+r.width/2-pr.width/2));
+      const top=Math.max(8,r.top-pr.height-8);
+      popover.style.left=left+'px';popover.style.top=top+'px';
+    });
+  }
+  function bindHold(button,popover,delay=520){
+    if(!button||!popover)return;
+    let timer=0,held=false;
+    button.addEventListener('pointerdown',e=>{held=false;timer=setTimeout(()=>{held=true;showHeldPopover(button,popover);},delay);});
+    ['pointerup','pointercancel','pointerleave'].forEach(type=>button.addEventListener(type,()=>clearTimeout(timer)));
+    button.addEventListener('click',e=>{if(held){e.preventDefault();e.stopImmediatePropagation();held=false;}},true);
+  }
+  bindHold($id('songbookTextTool'),$id('songbookTextOptions'));
+  bindHold($id('songbookAlign'),$id('songbookAlignOptions'));
+  bindHold($id('songbookDrawToggle'),$id('songbookDrawOptions'));
+  bindHold($id('songbookEraserToggle'),$id('songbookEraserOptions'));
+  bindHold($id('imageToolPencil'),$id('imagePencilOptions'));
+  bindHold($id('imageToolEraser'),$id('imageEraserOptions'));
+  bindHold($id('imageUploadTrigger'),null);
+
+  const textModeButtons=[$id('songbookTextTool'),$id('songbookDrawToggle'),$id('songbookEraserToggle')].filter(Boolean);
+  function setExclusive(button,buttons){buttons.forEach(b=>b.classList.toggle('is-active',b===button));}
+  textModeButtons.forEach(b=>b.addEventListener('click',()=>setExclusive(b,textModeButtons)));
+  const imageModeButtons=[$id('imageTextTool'),$id('imageToolPencil'),$id('imageToolEraser')].filter(Boolean);
+  imageModeButtons.forEach(b=>b.addEventListener('click',()=>setExclusive(b,imageModeButtons)));
+
+  $id('songbookAlignOptions')?.addEventListener('click',e=>{
+    const align=e.target.closest('[data-align]')?.dataset.align;if(!align)return;
+    const command=align==='left'?'justifyLeft':align==='center'?'justifyCenter':'justifyRight';
+    document.execCommand(command,false,null);$id('songbookAlignOptions').hidden=true;$id('songbookEditor')?.focus();
   });
 
-  document.addEventListener('keydown',e=>{
-    if(!dialog.open||!(e.ctrlKey||e.metaKey))return;
-    if(e.key==='+'||e.key==='='){e.preventDefault();applyPaperZoom(paperZoom+.1);}
-    else if(e.key==='-'){e.preventDefault();applyPaperZoom(paperZoom-.1);}
-    else if(e.key==='0'){e.preventDefault();applyPaperZoom(1);}
-  },{capture:true});
-
-  dialog.addEventListener('wheel',e=>{
-    if(!dialog.open||!(e.ctrlKey||e.metaKey))return;
-    e.preventDefault();
-    applyPaperZoom(paperZoom+(e.deltaY<0?.1:-.1));
-  },{passive:false,capture:true});
-
-  applyPaperZoom(1);
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover'))closeAllPopovers();});
+  [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',closeAllPopovers));
 })();
