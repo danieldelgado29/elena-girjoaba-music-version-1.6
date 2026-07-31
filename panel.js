@@ -87,7 +87,13 @@
   async function loadData(){
     try{
       const [songsRes, notesRes, lyricsRes] = await Promise.all([fetch('canciones.json'),fetch('assets/anotaciones/index.json'),fetch('data/letras.json')]);
-      state.songs = (await songsRes.json()).map((song,index)=>({...song,_sourceIndex:index}));
+      state.songs = (await songsRes.json()).map((song,index)=>({
+        ...song,
+        _sourceIndex:index,
+        _searchTitle:norm(song.titulo),
+        _searchArtist:norm(song.artista)
+      }));
+      invalidateRepertoireCache();
       if(notesRes.ok) state.notes = await notesRes.json();
       if(lyricsRes.ok) state.lyrics = await lyricsRes.json();
     }catch(err){
@@ -195,18 +201,27 @@
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 
-  $('#songSearch').addEventListener('input',filterSongs);
+  let filterFrame=0;
+  function scheduleFilterSongs(){
+    cancelAnimationFrame(filterFrame);
+    filterFrame=requestAnimationFrame(filterSongs);
+  }
+  $('#songSearch').addEventListener('input',scheduleFilterSongs);
+  let repertoireCache={key:'',songs:[],numbers:new Map()};
+  function invalidateRepertoireCache(){repertoireCache={key:'',songs:[],numbers:new Map()};}
   function repertoireSongs(){
     const rep=state.config?.repertoire || 'todas';
-    // El cliente ordena su base alfabéticamente. El panel debe usar exactamente
-    // el mismo orden para que el número visible coincida en ambos dispositivos.
-    return state.songs
+    const key=`${rep}|${state.songs.length}|${state.songs.map(s=>`${s.id}:${s.titulo}:${(s.listas||[]).join(',')}`).join(';')}`;
+    if(repertoireCache.key===key) return repertoireCache.songs;
+    const songs=state.songs
       .filter(s=>rep==='todas'||(s.listas||[]).includes(rep))
       .sort((a,b)=>String(a.titulo||'').localeCompare(String(b.titulo||''),'es',{sensitivity:'base'}) || String(a.artista||'').localeCompare(String(b.artista||''),'es',{sensitivity:'base'}));
+    repertoireCache={key,songs,numbers:new Map(songs.map((song,index)=>[song.id,index+1]))};
+    return songs;
   }
   function activeRepertoireNumber(songId){
-    const i=repertoireSongs().findIndex(s=>s.id===songId);
-    return i>=0?i+1:null;
+    repertoireSongs();
+    return repertoireCache.numbers.get(songId)||null;
   }
   function filterSongs(){
     const q=norm($('#songSearch').value);
@@ -216,9 +231,9 @@
     }else{
       const isNumber=/^\d+$/.test(q);
       state.filtered=songs.map((song,index)=>{
-        const title=norm(song.titulo);
-        const artist=norm(song.artista);
-        const number=String(activeRepertoireNumber(song.id)||'');
+        const title=song._searchTitle||(song._searchTitle=norm(song.titulo));
+        const artist=song._searchArtist||(song._searchArtist=norm(song.artista));
+        const number=String(repertoireCache.numbers.get(song.id)||'');
         let score=Infinity;
         if(isNumber){
           if(number===q) score=0;
@@ -446,14 +461,35 @@
   function imageField(owner){ return owner==='daniel'?'notasDaniel':'notasElena'; }
   function imagePayload(song,owner){
     const value=song[imageField(owner)];
-    if(value&&typeof value==='object') return value.composite||value.dataUrl||value.src||value.original||value.archivo||value.file||value.ruta||'';
-    if(value) return value;
+    let candidate='';
+    if(value&&typeof value==='object') candidate=value.composite||value.dataUrl||value.src||value.original||value.archivo||value.file||value.ruta||'';
+    else if(value) candidate=value;
+    if(candidate) return candidate;
     if(owner==='elena'){
       const fallback=state.notes[slug(song.titulo)];
       return Array.isArray(fallback)?fallback[0]:fallback;
     }
     return '';
   }
+  function imageCandidates(song,owner){
+    const candidates=[];
+    const add=value=>{
+      if(!value) return;
+      const raw=String(value);
+      if(raw.startsWith('blob:')) return;
+      const src=raw.startsWith('data:')||raw.startsWith('http:')||raw.startsWith('https:')||raw.startsWith('assets/')
+        ? raw
+        : `assets/anotaciones/${raw}`;
+      if(!candidates.includes(src)) candidates.push(src);
+    };
+    add(imagePayload(song,owner));
+    if(owner==='elena'){
+      const fallback=state.notes[slug(song.titulo)];
+      (Array.isArray(fallback)?fallback:[fallback]).forEach(add);
+    }
+    return candidates;
+  }
+
 
   function openViewer(song,type){
     activeViewerSongId=song.id;activeViewerType=type;
@@ -462,14 +498,23 @@
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'||type==='daniel-image'){
       const owner=type==='daniel-image'?'daniel':'elena';
-      let file=imagePayload(song,owner);
-      if(file){
+      const files=imageCandidates(song,owner);
+      if(files.length){
         const img=new Image();
         img.alt=`Notas de ${song.titulo}`;
-        img.src=String(file).startsWith('data:')||String(file).startsWith('blob:')||String(file).startsWith('assets/')?file:`assets/anotaciones/${file}`;
+        let fileIndex=0;
+        const tryNext=()=>{
+          if(fileIndex>=files.length){
+            content.classList.remove('is-note-viewer');
+            content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';
+            return;
+          }
+          img.src=encodeURI(files[fileIndex++]);
+        };
         img.addEventListener('load',()=>installNoteGestures(img),{once:true});
-        img.addEventListener('error',()=>{content.classList.remove('is-note-viewer');content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';},{once:true});
+        img.addEventListener('error',tryNext);
         content.append(img);
+        tryNext();
       } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
     } else {
       const isDaniel=type==='daniel';

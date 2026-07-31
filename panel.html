@@ -29,7 +29,7 @@
     <form id="panelLoginForm" class="panel-login__card" autocomplete="off">
       <strong class="panel-login__brand">EGM</strong>
       <span class="panel-login__subtitle">Panel</span>
-      <label><span>Contraseña</span><input id="panelLoginPassword" type="password" inputmode="numeric" autocomplete="current-password" required></label>
+      <label><span>Contraseña</span><input id="panelLoginPassword" name="egm-panel-code" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" aria-autocomplete="none" required></label>
       <p id="panelLoginError" class="panel-login__error" hidden>Contraseña incorrecta</p>
       <button type="submit">Entrar</button>
     </form>

@@ -628,3 +628,9 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-editor-toolbar input[type=color]{appearance:none;-webkit-appearance:none;width:38px!important;height:34px!important;padding:3px!important;border:1px solid #bbb!important;border-radius:8px!important;background:#fff!important;overflow:hidden!important}
 .image-editor-toolbar input[type=color]::-webkit-color-swatch-wrapper{padding:0}.image-editor-toolbar input[type=color]::-webkit-color-swatch{border:0;border-radius:5px}
 @media(max-width:760px){.song-action.notes,.song-action.lyrics,.song-action.daniel{min-width:0!important;width:auto!important}.image-upload-btn span:last-child{display:none}.image-upload-btn{min-width:38px!important;padding:0 8px!important}}
+
+/* 6.35.3 · PIN del panel sin sugerencias del llavero de Safari */
+#panelLoginPassword{
+  -webkit-text-security:disc;
+  text-security:disc;
+}
