@@ -570,6 +570,7 @@ async function guardarCancionDesdePanel() {
 function capturarDOM() {
   Object.assign(DOM, {
     landing: $("#landing"),
+    panelBackButton: $("#panelBackButton"),
     app: $("#app"),
     seguirInstagram: $("#seguirInstagram"),
     continuar: $("#continuarExperiencia"),
@@ -2831,6 +2832,12 @@ function registrarEventos() {
 
 async function iniciar() {
   capturarDOM();
+  const panelMode=new URLSearchParams(location.search).get("panel")==="1";
+  if(panelMode){
+    sessionStorage.setItem("egm-panel-auth","1");
+    DOM.landing.hidden=true;DOM.app.hidden=false;
+    if(DOM.panelBackButton){DOM.panelBackButton.hidden=false;DOM.panelBackButton.addEventListener("click",()=>{location.href="panel.html?trusted=1&live=1";});}
+  }
   await cargarLetras();
 
   DOM.anio.textContent = String(new Date().getFullYear());
@@ -2844,6 +2851,7 @@ async function iniciar() {
 
   try {
     await cargarDatos();
+    if(panelMode){DOM.landing.hidden=true;DOM.app.hidden=false;estado.mostrar=true;renderizar();}
   } catch (error) {
     console.error(error);
     DOM.errorCarga.hidden = false;

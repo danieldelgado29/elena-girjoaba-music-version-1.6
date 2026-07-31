@@ -14,6 +14,15 @@
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
+  <section id="panelLogin" class="panel-login" aria-label="Acceso al panel">
+    <form id="panelLoginForm" class="panel-login__card">
+      <strong class="panel-login__brand">EGM</strong>
+      <span class="panel-login__subtitle">Panel</span>
+      <label><span>Contraseña</span><input id="panelLoginPassword" type="password" inputmode="numeric" autocomplete="current-password" required></label>
+      <p id="panelLoginError" class="panel-login__error" hidden>Contraseña incorrecta</p>
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
   <div class="app-shell">
     <header class="brandbar">
       <h1>Panel de control</h1>
@@ -185,7 +194,7 @@
         </label>
 
         <div class="photo-upload-field full">
-          <span class="photo-upload-title">Notas de Elena (imagen)</span>
+          <span class="photo-upload-title">Imagen de Elena</span>
           <p class="photo-upload-help">Sube una foto de las anotaciones. Acepta JPG, JPEG, PNG, WEBP, HEIC, HEIF, AVIF y otros formatos de imagen compatibles con el dispositivo.</p>
           <input id="newSongElenaNotes" class="photo-input" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.gif,.bmp,.tif,.tiff" hidden>
           <div class="photo-upload-actions">
@@ -201,6 +210,10 @@
         <label class="lyric-field full">
           <span>Cancionero Daniel</span>
           <textarea id="newSongDanielLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Pega aquí la letra del cancionero de Daniel"></textarea>
+        </label>
+        <label class="photo-upload full">
+          <span class="photo-upload-title">Imagen de Daniel</span>
+          <input id="newSongDanielNotes" type="file" accept="image/jpeg,image/png,image/webp">
         </label>
 
         <div class="module-actions"><button type="button" class="secondary-btn" data-dialog-close>Cancelar</button><button type="submit" class="primary-btn">Guardar canción</button></div>
@@ -233,12 +246,16 @@
         <label class="lyric-field full"><span>Letra visible para el cliente</span><textarea id="editSongPublicLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
         <label class="lyric-field full"><span>Cancionero Elena</span><textarea id="editSongElenaLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
         <div class="photo-upload-field full">
-          <span class="photo-upload-title">Notas de Elena (imagen)</span>
+          <span class="photo-upload-title">Imagen de Elena</span>
           <input id="editSongElenaNotes" class="photo-input" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.gif,.bmp,.tif,.tiff" hidden>
           <div class="photo-upload-actions"><button id="chooseEditElenaNotesBtn" class="secondary-btn" type="button">Subir o reemplazar foto</button><button id="removeEditElenaNotesBtn" class="secondary-btn photo-remove" type="button">Quitar foto</button><span id="editElenaNotesFileName" class="photo-file-name">Sin imagen</span></div>
           <div id="editElenaNotesPreview" class="photo-preview" hidden><img id="editElenaNotesPreviewImage" alt="Vista previa de las notas de Elena"></div>
         </div>
         <label class="lyric-field full"><span>Cancionero Daniel</span><textarea id="editSongDanielLyrics" class="lyric-input" rows="10" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea></label>
+        <label class="photo-upload full">
+          <span class="photo-upload-title">Imagen de Daniel</span>
+          <input id="editSongDanielNotes" type="file" accept="image/jpeg,image/png,image/webp">
+        </label>
         <div class="module-actions"><button type="button" class="secondary-btn" data-dialog-close>Cancelar</button><button type="submit" class="primary-btn">Guardar cambios</button></div>
       </form>
     </div>

@@ -4,7 +4,7 @@
   const $$ = (s, p=document) => [...p.querySelectorAll(s)];
   const state = {
     songs: [], filtered: [], queue: [], played: new Set(), notes: {}, lyrics: {},
-    config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, songEdits: {}, editSongElenaNotes: null
+    config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, newSongDanielNotes: null, songEdits: {}, editSongElenaNotes: null, editSongDanielNotes: null
   };
   const dialogBaselines = new WeakMap();
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog']);
@@ -32,6 +32,12 @@
         const data=snap.data()||{};
         if(Array.isArray(data.cola)) state.queue=[...data.cola];
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+        if(data.biblioteca&&typeof data.biblioteca==='object'){
+          const b=data.biblioteca;
+          if(b.songEdits&&typeof b.songEdits==='object') state.songEdits={...state.songEdits,...b.songEdits};
+          if(Array.isArray(b.customSongs)) state.customSongs=b.customSongs;
+          state.songs=state.songs.map(song=>state.songEdits[song.id]?{...song,...state.songEdits[song.id]}:song);
+        }
         if(state.config){
           state.config.whatsapp=data.pedidos_whatsapp!==false;
           state.config.publicQueue=data.mostrar_cola!==false;
@@ -61,7 +67,8 @@
           show_activo:Boolean(state.config),
           inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
           cola:[...state.queue],
-          tocadas:[...state.played]
+          tocadas:[...state.played],
+          biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs}
         },{merge:true});
         remoteReady=true;
       }catch(err){ console.warn('No se pudo actualizar la interfaz del cliente',err); }
@@ -135,6 +142,10 @@
     if(!value || $(`#venueHistory option[value="${CSS.escape(value)}"]`)) return;
     const o=document.createElement('option');o.value=value;$('#venueHistory').append(o);
   }
+  $('#venueInput').addEventListener('input',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
+  $('#repertoireSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
+  $('#profileSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
+  const venueDraft=sessionStorage.getItem('egm-venue-draft'); if(venueDraft&&!$('#venueInput').value) $('#venueInput').value=venueDraft;
   function setStatus(active){
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
   }
@@ -160,13 +171,17 @@
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
   $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
-  $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html';},'Cerrar'));
-  $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html';},'Salir'));
+  $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
+  $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 
   $('#songSearch').addEventListener('input',filterSongs);
   function repertoireSongs(){
     const rep=state.config?.repertoire || 'todas';
     return state.songs.filter(s=>rep==='todas'||(s.listas||[]).includes(rep));
+  }
+  function activeRepertoireNumber(songId){
+    const i=repertoireSongs().findIndex(s=>s.id===songId);
+    return i>=0?i+1:null;
   }
   function filterSongs(){
     const q=norm($('#songSearch').value);
@@ -178,7 +193,7 @@
       state.filtered=songs.map((song,index)=>{
         const title=norm(song.titulo);
         const artist=norm(song.artista);
-        const number=String(song.numero||'');
+        const number=String(activeRepertoireNumber(song.id)||'');
         let score=Infinity;
         if(isNumber){
           if(number===q) score=0;
@@ -215,9 +230,9 @@
       const storedLyrics=state.lyrics[song.id]||{};
       const hasNotes=Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||song.notasElena);
       const hasElena=hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
-      const hasDaniel=hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel);
-      const card=document.createElement('article');card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
-      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Notas</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
+      const hasDaniel=hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)||hasMeaningfulContent(song.notasDaniel);
+      const card=document.createElement('article');card.dataset.songId=song.id;card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
+      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
       const handleCardControl=e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
@@ -257,7 +272,7 @@
       pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
     }
     button.classList.add('is-awaiting-second-tap');
-    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Notas',daniel:'Daniel'};
+    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Daniel'};
     const label=labels[act]||'esta acción';
     toast(`Toca otra vez: ${label}`);
     const entry={key,time:now,button,timer:null};
@@ -404,10 +419,10 @@
   }
 
   function openViewer(song,type){
-    const label=type==='notes'?'Notas':type==='daniel'?'Daniel':'Letra';
+    const label=type==='notes'?'Imagen':type==='daniel-image'?'Imagen Daniel':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
-    if(type==='notes'){
+    if(type==='notes'||type==='daniel-image'){
       const key=slug(song.titulo);let file=song.elenaNotesDataUrl||song.elenaNotes||song.notasElena||state.notes[key];
       if(Array.isArray(file)) file=file[0];
       if(file && typeof file==='object') file=file.archivo||file.file||file.ruta;
@@ -582,7 +597,7 @@
       letraPublica:$('#newSongPublicLyrics').value.trim(),
       cancioneroElena:$('#newSongElenaLyrics').value.trim(),
       notasElena:state.newSongElenaNotes,
-      cancioneroDaniel:$('#newSongDanielLyrics').value.trim()
+      cancioneroDaniel:$('#newSongDanielLyrics').value.trim(),notasDaniel:state.newSongDanielNotes
     };
     askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,()=>{
       state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
@@ -622,7 +637,7 @@
       const assigned=r.id==='todas'||selectedLists.has(norm(r.id))||selectedLists.has(norm(r.name));
       return `<label class="check-item"><input type="checkbox" value="${esc(r.id)}" ${assigned?'checked':''} ${r.id==='todas'?'disabled':''}>${esc(r.name)}</label>`;
     }).join('');
-    $('#editSongPublicLyrics').value=song.letraPublica||'';$('#editSongElenaLyrics').value=song.cancioneroElena||'';$('#editSongDanielLyrics').value=song.cancioneroDaniel||'';
+    $('#editSongPublicLyrics').value=song.letraPublica||'';$('#editSongElenaLyrics').value=song.cancioneroElena||'';$('#editSongDanielLyrics').value=song.cancioneroDaniel||'';state.editSongDanielNotes=song.notasDaniel||null;
     state.editSongElenaNotes=song.notasElena ? structuredClone(song.notasElena) : null;
     refreshEditNotesPreview(song);
     $('#editSongDialog').showModal();rememberDialogState($('#editSongDialog'));
@@ -648,7 +663,7 @@
     e.preventDefault();const id=$('#editSongId').value,song=state.songs.find(s=>s.id===id);if(!song)return;
     const title=$('#editSongTitle').value.trim(),artist=$('#editSongArtist').value.trim();if(!title||!artist)return toast('Completa título y artista');
     const duplicate=state.songs.some(s=>s.id!==id&&norm(s.titulo)===norm(title)&&norm(s.artista)===norm(artist));if(duplicate)return toast('Esta canción ya existe');
-    const updated={...song,titulo:title,artista:artist,idioma:$('#editSongLanguage').value,generos:$$('#editSongGenres input:checked').map(x=>x.value),listas:[...new Set(['todas',...$$('#editSongRepertoires input:checked:not([value="todas"])').map(x=>x.value)])],letraPublica:$('#editSongPublicLyrics').value.trim(),cancioneroElena:$('#editSongElenaLyrics').value.trim(),notasElena:state.editSongElenaNotes,cancioneroDaniel:$('#editSongDanielLyrics').value.trim()};
+    const updated={...song,titulo:title,artista:artist,idioma:$('#editSongLanguage').value,generos:$$('#editSongGenres input:checked').map(x=>x.value),listas:[...new Set(['todas',...$$('#editSongRepertoires input:checked:not([value="todas"])').map(x=>x.value)])],letraPublica:$('#editSongPublicLyrics').value.trim(),cancioneroElena:$('#editSongElenaLyrics').value.trim(),notasElena:state.editSongElenaNotes,cancioneroDaniel:$('#editSongDanielLyrics').value.trim(),notasDaniel:state.editSongDanielNotes};
     askConfirm('Guardar cambios',`Se actualizará “${title}”.`,()=>{
       const index=state.songs.findIndex(s=>s.id===id);state.songs[index]=updated;
       const customIndex=state.customSongs.findIndex(s=>s.id===id);
@@ -1061,16 +1076,34 @@
   },'Guardar'));
 
 
+
+  function bindImageInput(id,setter){const el=$(id);if(!el)return;el.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;if(!/^image\/(jpeg|png|webp)$/i.test(f.type))return toast('Selecciona una imagen JPG, PNG o WEBP');const r=new FileReader();r.onload=()=>setter(r.result);r.readAsDataURL(f);});}
+  bindImageInput('#newSongDanielNotes',v=>state.newSongDanielNotes=v);
+  bindImageInput('#editSongDanielNotes',v=>state.editSongDanielNotes=v);
+
+  function showDanielChoice(button,song){
+    document.querySelector('.daniel-choice')?.remove();
+    const box=document.createElement('div');box.className='daniel-choice';box.innerHTML='<button type="button" data-daniel-choice="text">Cancionero Daniel</button><button type="button" data-daniel-choice="image">Imagen</button>';document.body.append(box);
+    const r=button.getBoundingClientRect();box.style.left=Math.max(8,Math.min(r.left,innerWidth-box.offsetWidth-8))+'px';box.style.top=Math.max(8,r.top-box.offsetHeight-8)+'px';
+    box.addEventListener('click',e=>{const c=e.target.closest('[data-daniel-choice]')?.dataset.danielChoice;if(c==='text')openViewer(song,'daniel');if(c==='image')openViewer(song,'daniel-image');box.remove();});
+    setTimeout(()=>document.addEventListener('pointerdown',e=>{if(!box.contains(e.target))box.remove()},{once:true}),0);
+  }
+  document.addEventListener('pointerdown',e=>{const b=e.target.closest('[data-act="daniel"]');if(!b)return;const card=b.closest('.song-card');const id=card?.dataset?.songId;const song=state.songs.find(s=>s.id===id);if(!song)return;b._danielHold=setTimeout(()=>{b._danielHeld=true;showDanielChoice(b,song)},650);});
+  document.addEventListener('pointerup',e=>{const b=e.target.closest('[data-act="daniel"]');if(!b)return;clearTimeout(b._danielHold);if(b._danielHeld){e.preventDefault();e.stopImmediatePropagation();b._danielHeld=false;}},true);
+
   // El zoom por doble toque se bloquea con touch-action: manipulation en CSS.
   // No cancelamos touchend: Android necesita completar ambos pointerup para detectar el doble toque.
   document.addEventListener('dblclick',event=>{
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});
 
+  const login=$('#panelLogin'),loginForm=$('#panelLoginForm'),loginPassword=$('#panelLoginPassword'),loginError=$('#panelLoginError');
+  const params=new URLSearchParams(location.search);
+  const trusted=params.get('trusted')==='1'||sessionStorage.getItem('egm-panel-auth')==='1';
+  if(trusted) login.hidden=true;
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){sessionStorage.setItem('egm-panel-auth','1');login.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   Promise.all([loadData(),initRemoteSync()]).then(()=>{
-    // Siempre abrir primero la ventana de configuración del show.
-    // Los datos del último show se conservan para facilitar la siguiente apertura.
-    showConfig();
+    if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
   });
 })();
 
