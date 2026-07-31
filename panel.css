@@ -599,17 +599,3 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 /* Acceso EGM visible y estable también en la app instalada de macOS */
 #panelLogin:not([hidden]){display:flex!important;opacity:1!important;visibility:visible!important;}
 #panelLoginForm{position:relative;z-index:2;min-height:330px;justify-content:center;}
-
-
-/* Entrega 6.35 */
-.edit-song-row{grid-template-columns:auto minmax(0,1fr) auto}
-.edit-song-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.viewer-top-actions{display:flex;align-items:center;gap:10px}
-.viewer-edit-btn{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;border-radius:9px;padding:8px 12px;font:inherit}
-.image-editor-stage{flex:1;min-height:0;overflow:auto;background:#161616;display:flex;align-items:flex-start;justify-content:center;padding:18px;touch-action:none}
-.image-editor-stage canvas{max-width:100%;height:auto;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.35);touch-action:none}
-.image-upload-btn{display:inline-flex;align-items:center;padding:7px 10px;border:1px solid #bbb;border-radius:8px;background:#fff;cursor:pointer;font-size:14px}.image-upload-btn input{display:none}
-.image-editor-toolbar input[type=color]{width:38px;height:34px;padding:2px;border:1px solid #bbb;border-radius:8px;background:#fff}
-@media (max-width:900px){.edit-song-actions{width:100%;justify-content:flex-start}.edit-song-row{grid-template-columns:auto 1fr}.edit-song-actions{grid-column:1/-1}.image-editor-stage{padding:8px}}
-
-.eraser-options{display:flex;gap:5px;white-space:nowrap}.eraser-options[hidden]{display:none}.eraser-options button{min-width:34px}
