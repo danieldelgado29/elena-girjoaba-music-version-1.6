@@ -198,7 +198,11 @@
   $('#songSearch').addEventListener('input',filterSongs);
   function repertoireSongs(){
     const rep=state.config?.repertoire || 'todas';
-    return state.songs.filter(s=>rep==='todas'||(s.listas||[]).includes(rep)).sort((a,b)=>(Number(a._sourceIndex)||0)-(Number(b._sourceIndex)||0));
+    // El cliente ordena su base alfabéticamente. El panel debe usar exactamente
+    // el mismo orden para que el número visible coincida en ambos dispositivos.
+    return state.songs
+      .filter(s=>rep==='todas'||(s.listas||[]).includes(rep))
+      .sort((a,b)=>String(a.titulo||'').localeCompare(String(b.titulo||''),'es',{sensitivity:'base'}) || String(a.artista||'').localeCompare(String(b.artista||''),'es',{sensitivity:'base'}));
   }
   function activeRepertoireNumber(songId){
     const i=repertoireSongs().findIndex(s=>s.id===songId);
