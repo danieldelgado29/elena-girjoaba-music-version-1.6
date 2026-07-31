@@ -29,7 +29,7 @@
     <form id="panelLoginForm" class="panel-login__card" autocomplete="off">
       <strong class="panel-login__brand">EGM</strong>
       <span class="panel-login__subtitle">Panel</span>
-      <label><span>Contraseña</span><input id="panelLoginPassword" name="egm-panel-code" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" aria-autocomplete="none" required></label>
+      <label><span>Contraseña</span><input id="panelLoginPassword" type="password" inputmode="numeric" autocomplete="current-password" required></label>
       <p id="panelLoginError" class="panel-login__error" hidden>Contraseña incorrecta</p>
       <button type="submit">Entrar</button>
     </form>
@@ -345,7 +345,6 @@
         <button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
       </header>
       <div class="songbook-toolbar" role="toolbar" aria-label="Formato del cancionero">
-        <button id="songbookTextTool" type="button" class="is-active toolbar-icon-btn" aria-label="Herramienta de texto" title="Texto"><span class="tool-letter">T</span></button>
         <div class="toolbar-popover-wrap">
           <button id="songbookColorBtn" class="color-swatch-btn" type="button" aria-label="Color del texto" title="Color del texto"><span id="songbookColorSwatch"></span></button>
           <div id="songbookColorMenu" class="compact-popover color-menu" hidden>
@@ -358,11 +357,11 @@
         </div>
         <select id="songbookFontSize" aria-label="Tamaño de texto" title="Tamaño de texto"><option value="18">18</option><option value="22">22</option><option value="26">26</option><option value="30" selected>30</option><option value="36">36</option></select>
         <button id="songbookBold" type="button" data-editor-command="bold" aria-label="Negrita" class="is-active"><b>B</b></button>
-        <button id="songbookItalic" type="button" data-editor-command="italic" aria-label="Cursiva" title="Cursiva"><i>C</i></button>
-        <button id="songbookUndo" class="history-icon-btn" type="button" aria-label="Deshacer" title="Deshacer"><span aria-hidden="true">↶</span></button>
-        <button id="songbookRedo" class="history-icon-btn" type="button" aria-label="Rehacer" title="Rehacer"><span aria-hidden="true">↷</span></button>
+        <button id="songbookItalic" type="button" data-editor-command="italic" aria-label="Cursiva"><i>I</i></button>
+        <button id="songbookUndo" type="button" aria-label="Deshacer">↶</button>
+        <button id="songbookRedo" type="button" aria-label="Rehacer">↷</button>
         <div class="toolbar-popover-wrap">
-          <button id="songbookDrawToggle" class="toolbar-icon-btn" type="button" aria-label="Activar dibujo" title="Pulsar: activar lápiz. Mantener: opciones"><span aria-hidden="true">✎</span></button>
+          <button id="songbookDrawToggle" type="button" aria-label="Activar dibujo" title="Pulsar: activar. Mantener: opciones">➜</button>
           <button id="songbookEraserToggle" type="button" aria-label="Borrador" title="Pulsar: activar. Mantener: tamaños">⌫</button>
           <div id="songbookEraserOptions" class="compact-popover eraser-options" hidden>
             <button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button>
@@ -442,13 +441,12 @@
     <div class="songbook-editor-shell image-editor-shell">
       <header class="songbook-editor-header"><div><small>EDITOR DE IMAGEN</small><h3 id="imageEditorTitle">Imagen</h3></div><button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
       <div class="songbook-toolbar image-editor-toolbar" role="toolbar">
-        <button id="imageUploadTrigger" class="image-upload-btn" type="button" title="Subir o reemplazar imagen"><span aria-hidden="true">▧+</span><span>Subir imagen</span></button><input id="imageSourceInput" class="visually-hidden-file" type="file" accept="image/jpeg,image/png,image/webp">
-        <button id="imageTextTool" class="toolbar-icon-btn" type="button" title="Texto"><span class="tool-letter">T</span></button>
-        <button id="imageToolPencil" class="toolbar-icon-btn is-active" type="button" title="Lápiz"><span aria-hidden="true">✎</span></button>
+        <label class="image-upload-btn">Subir imagen<input id="imageSourceInput" type="file" accept="image/*"></label>
+        <button id="imageToolPencil" type="button" class="is-active">Lápiz</button>
         <span class="toolbar-popover-wrap"><button id="imageToolEraser" type="button" title="Pulsar: borrador. Mantener: tamaños">Borrador</button><span id="imageEraserOptions" class="compact-popover eraser-options" hidden><button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="60">XL</button></span></span>
         <input id="imageDrawColor" type="color" value="#d00000" aria-label="Color">
         <select id="imageDrawSize" aria-label="Tamaño"><option value="4">Fino</option><option value="8" selected>Medio</option><option value="16">Grande</option><option value="30">Extra grande</option></select>
-        <button id="imageUndo" class="history-icon-btn" type="button" aria-label="Deshacer" title="Deshacer"><span aria-hidden="true">↶</span></button><button id="imageRedo" class="history-icon-btn" type="button" aria-label="Rehacer" title="Rehacer"><span aria-hidden="true">↷</span></button>
+        <button id="imageUndo" type="button">↶</button><button id="imageRedo" type="button">↷</button>
       </div>
       <main id="imageEditorStage" class="image-editor-stage"><canvas id="imageEditorCanvas"></canvas></main>
       <footer class="songbook-editor-footer"><button id="saveImageEditorBtn" class="primary-btn" type="button">Guardar</button></footer>

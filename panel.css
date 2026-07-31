@@ -613,24 +613,3 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 @media (max-width:900px){.edit-song-actions{width:100%;justify-content:flex-start}.edit-song-row{grid-template-columns:auto 1fr}.edit-song-actions{grid-column:1/-1}.image-editor-stage{padding:8px}}
 
 .eraser-options{display:flex;gap:5px;white-space:nowrap}.eraser-options[hidden]{display:none}.eraser-options button{min-width:34px}
-
-
-/* Entrega 6.35.1 — afinado de botones y carga de imagen */
-.song-action.notes,.song-action.lyrics{width:auto!important;min-width:54px!important;padding-left:9px!important;padding-right:9px!important;white-space:nowrap!important}
-.song-action.daniel{min-width:54px;white-space:nowrap}
-.toolbar-icon-btn,.history-icon-btn{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif!important;font-weight:800!important}
-.tool-letter{display:inline-block;font-size:20px;line-height:1}
-#songbookItalic i{font-family:Georgia,"Times New Roman",serif;font-size:21px;font-weight:700}
-.history-icon-btn span{display:block;font-size:27px;line-height:1;transform:translateY(-1px)}
-#songbookDrawToggle span,#imageToolPencil span{font-size:24px;line-height:1}
-.image-upload-btn{height:36px!important;display:inline-flex!important;align-items:center!important;gap:6px!important;padding:0 10px!important;border:1px solid #cfcfcf!important;border-radius:8px!important;background:#fff!important;color:#111!important;cursor:pointer!important;font-size:13px!important;font-weight:750!important;white-space:nowrap!important}
-.visually-hidden-file{position:fixed!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}
-.image-editor-toolbar input[type=color]{appearance:none;-webkit-appearance:none;width:38px!important;height:34px!important;padding:3px!important;border:1px solid #bbb!important;border-radius:8px!important;background:#fff!important;overflow:hidden!important}
-.image-editor-toolbar input[type=color]::-webkit-color-swatch-wrapper{padding:0}.image-editor-toolbar input[type=color]::-webkit-color-swatch{border:0;border-radius:5px}
-@media(max-width:760px){.song-action.notes,.song-action.lyrics,.song-action.daniel{min-width:0!important;width:auto!important}.image-upload-btn span:last-child{display:none}.image-upload-btn{min-width:38px!important;padding:0 8px!important}}
-
-/* 6.35.3 · PIN del panel sin sugerencias del llavero de Safari */
-#panelLoginPassword{
-  -webkit-text-security:disc;
-  text-security:disc;
-}
