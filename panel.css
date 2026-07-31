@@ -589,3 +589,13 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 
 /* Entrega 6.34 */
 .panel-login{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:#101114;padding:24px}.panel-login[hidden]{display:none}.panel-login__card{width:min(360px,100%);display:grid;gap:16px;text-align:center}.panel-login__brand{font-size:48px;letter-spacing:.12em}.panel-login__subtitle{font-size:20px;color:#bbb}.panel-login label{display:grid;gap:8px;text-align:left}.panel-login input{width:100%;padding:14px;border-radius:12px;border:1px solid #444;background:#191b20;color:#fff;font-size:18px}.panel-login button{padding:14px;border:0;border-radius:12px;font-weight:700}.panel-login__error{color:#ff8b8b;margin:0}.daniel-choice{position:fixed;z-index:100000;display:flex;gap:8px;padding:8px;border-radius:12px;background:#17191e;border:1px solid #444;box-shadow:0 12px 30px rgba(0,0,0,.35)}.daniel-choice button{padding:10px 12px;border-radius:8px;border:1px solid #555;background:#23262d;color:#fff}.song-action.has-content{border-color:rgba(203,170,92,.28)!important;box-shadow:none!important}
+
+
+/* Entrega 6.34.2: evita zoom automático al enfocar campos en iPhone */
+@media (max-width: 900px){
+  input, select, textarea, .search-wrap input, .edit-search input { font-size:16px !important; }
+}
+
+/* Acceso EGM visible y estable también en la app instalada de macOS */
+#panelLogin:not([hidden]){display:flex!important;opacity:1!important;visibility:visible!important;}
+#panelLoginForm{position:relative;z-index:2;min-height:330px;justify-content:center;}

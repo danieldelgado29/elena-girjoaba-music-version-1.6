@@ -1,5 +1,5 @@
 {
-  "version": "6.34.1",
+  "version": "6.34.2",
   "fecha": "2026-07-31",
-  "descripcion": "Corrección de pantalla de acceso EGM Panel en la app de macOS"
+  "descripcion": "Acceso macOS, buscador sin zoom y sincronización Daniel entre dispositivos"
 }

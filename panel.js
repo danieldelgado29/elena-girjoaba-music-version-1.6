@@ -12,6 +12,7 @@
   const fallbackRepertoires = [{id:'todas',name:'Todas las canciones'}];
   let remoteStateRef = null;
   let remoteReady = false;
+  let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
 
   async function initRemoteSync(){
@@ -34,9 +35,15 @@
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
+          pendingRemoteLibrary=b;
           if(b.songEdits&&typeof b.songEdits==='object') state.songEdits={...state.songEdits,...b.songEdits};
           if(Array.isArray(b.customSongs)) state.customSongs=b.customSongs;
-          state.songs=state.songs.map(song=>state.songEdits[song.id]?{...song,...state.songEdits[song.id]}:song);
+          if(state.songs.length){
+            state.songs=state.songs.map(song=>state.songEdits[song.id]?{...song,...state.songEdits[song.id]}:song);
+            renderSongs();
+            renderSongbookList();
+            saveStateLocalOnly();
+          }
         }
         if(state.config){
           state.config.whatsapp=data.pedidos_whatsapp!==false;
@@ -91,6 +98,13 @@
       ];
     }
     hydrateSavedState();
+    if(pendingRemoteLibrary){
+      const b=pendingRemoteLibrary;
+      if(b.songEdits&&typeof b.songEdits==='object') state.songEdits={...state.songEdits,...b.songEdits};
+      if(Array.isArray(b.customSongs)) state.customSongs=b.customSongs;
+      state.songs=state.songs.map(song=>state.songEdits[song.id]?{...song,...state.songEdits[song.id]}:song);
+      saveStateLocalOnly();
+    }
     buildRepertoires();
   }
 
@@ -115,11 +129,11 @@
     }
   }
 
-  function saveState(){
+  function saveStateLocalOnly(){
     const venues = $$('#venueHistory option').map(o=>o.value);
     localStorage.setItem('egm-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
-    syncRemoteState();
   }
+  function saveState(){ saveStateLocalOnly(); syncRemoteState(); }
 
   function buildRepertoires(){
     const map = new Map(fallbackRepertoires.map(x=>[x.id,x.name]));
@@ -811,7 +825,7 @@
   $('#songbookEditor').addEventListener('input',()=>{saveEditorSelection();scheduleWordHistory();});
   $('#songbookEditor').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoEditor():undoEditor();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoEditor();}});
 
-  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveState();dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
+  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
 
   let activeRepertoireId = null;
 
@@ -1099,8 +1113,9 @@
 
   const login=$('#panelLogin'),loginForm=$('#panelLoginForm'),loginPassword=$('#panelLoginPassword'),loginError=$('#panelLoginError');
   const params=new URLSearchParams(location.search);
-  const trusted=params.get('trusted')==='1'||sessionStorage.getItem('egm-panel-auth')==='1';
-  if(trusted) login.hidden=true;
+  const trusted=params.get('trusted')==='1';
+  if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
+  login.hidden=!trusted ? false : true;
   loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){sessionStorage.setItem('egm-panel-auth','1');login.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   Promise.all([loadData(),initRemoteSync()]).then(()=>{
     if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
