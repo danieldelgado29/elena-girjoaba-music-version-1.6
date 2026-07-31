@@ -7,13 +7,14 @@
     config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, newSongDanielNotes: null, songEdits: {}, editSongElenaNotes: null, editSongDanielNotes: null
   };
   const dialogBaselines = new WeakMap();
-  const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog']);
+  const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
   const fallbackRepertoires = [{id:'todas',name:'Todas las canciones'}];
   let remoteStateRef = null;
   let remoteReady = false;
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null;
 
   async function initRemoteSync(){
     if(!navigator.onLine) return;
@@ -86,7 +87,7 @@
   async function loadData(){
     try{
       const [songsRes, notesRes, lyricsRes] = await Promise.all([fetch('canciones.json'),fetch('assets/anotaciones/index.json'),fetch('data/letras.json')]);
-      state.songs = await songsRes.json();
+      state.songs = (await songsRes.json()).map((song,index)=>({...song,_sourceIndex:index}));
       if(notesRes.ok) state.notes = await notesRes.json();
       if(lyricsRes.ok) state.lyrics = await lyricsRes.json();
     }catch(err){
@@ -97,6 +98,7 @@
         {id:'demo3',titulo:'Como la flor',artista:'Selena',listas:['todas','principal-diario']}
       ];
     }
+    state.songs.forEach((song,index)=>{ if(!Number.isFinite(song._sourceIndex)) song._sourceIndex=index; });
     hydrateSavedState();
     if(pendingRemoteLibrary){
       const b=pendingRemoteLibrary;
@@ -143,7 +145,12 @@
     }));
     const select=$('#repertoireSelect');
     select.innerHTML='';
-    [...map].sort((a,b)=>a[1].localeCompare(b[1],'es')).forEach(([id,name])=>select.add(new Option(name,id)));
+    [...map].sort((a,b)=>a[1].localeCompare(b[1],'es')).forEach(([id,name])=>{
+      const count=state.songs.filter(song=>id==='todas'||(song.listas||[]).includes(id)).length;
+      const option=new Option(`${name} · ${count} ${count===1?'canción':'canciones'}`,id);
+      option.dataset.name=name;
+      select.add(option);
+    });
     select.value = state.config?.repertoire || (map.has('principal-diario')?'principal-diario':'todas');
   }
 
@@ -168,7 +175,7 @@
     e.preventDefault();
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
-    const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
+    const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
     askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);saveState();setStatus(true);showLive();toast('Configuración guardada correctamente. El show ha comenzado.');
     },'Comenzar');
@@ -191,7 +198,7 @@
   $('#songSearch').addEventListener('input',filterSongs);
   function repertoireSongs(){
     const rep=state.config?.repertoire || 'todas';
-    return state.songs.filter(s=>rep==='todas'||(s.listas||[]).includes(rep));
+    return state.songs.filter(s=>rep==='todas'||(s.listas||[]).includes(rep)).sort((a,b)=>(Number(a._sourceIndex)||0)-(Number(b._sourceIndex)||0));
   }
   function activeRepertoireNumber(songId){
     const i=repertoireSongs().findIndex(s=>s.id===songId);
@@ -432,14 +439,26 @@
     },{passive:false,once:false});
   }
 
+  function imageField(owner){ return owner==='daniel'?'notasDaniel':'notasElena'; }
+  function imagePayload(song,owner){
+    const value=song[imageField(owner)];
+    if(value&&typeof value==='object') return value.composite||value.dataUrl||value.src||value.original||value.archivo||value.file||value.ruta||'';
+    if(value) return value;
+    if(owner==='elena'){
+      const fallback=state.notes[slug(song.titulo)];
+      return Array.isArray(fallback)?fallback[0]:fallback;
+    }
+    return '';
+  }
+
   function openViewer(song,type){
+    activeViewerSongId=song.id;activeViewerType=type;
     const label=type==='notes'?'Imagen':type==='daniel-image'?'Imagen Daniel':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'||type==='daniel-image'){
-      const key=slug(song.titulo);let file=song.elenaNotesDataUrl||song.elenaNotes||song.notasElena||state.notes[key];
-      if(Array.isArray(file)) file=file[0];
-      if(file && typeof file==='object') file=file.archivo||file.file||file.ruta;
+      const owner=type==='daniel-image'?'daniel':'elena';
+      let file=imagePayload(song,owner);
       if(file){
         const img=new Image();
         img.alt=`Notas de ${song.titulo}`;
@@ -614,7 +633,7 @@
       cancioneroDaniel:$('#newSongDanielLyrics').value.trim(),notasDaniel:state.newSongDanielNotes
     };
     askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,()=>{
-      state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
+      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
       if(state.config)filterSongs();
     },'Guardar');
   });
@@ -708,7 +727,7 @@
   function renderSongbookList(){
     const q=norm($('#songbookSearch').value),field=songbookField(activeSongbookOwner),songs=state.songs.filter(song=>!q||norm(song.titulo).includes(q)||norm(song.artista).includes(q));
     $('#songbookCount').textContent=`${songs.length} canciones`;const list=$('#songbookSongsList');list.innerHTML='';
-    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Vacío'}</small></div><button type="button" class="secondary-btn">Editar</button>`;row.querySelector('button').addEventListener('click',()=>openSongbookEditor(song.id));list.append(row);});
+    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner));list.append(row);});
     if(!songs.length)list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3></div>';
   }
   $('#songbookSearch').addEventListener('input',renderSongbookList);
@@ -742,7 +761,7 @@
   function updateFormatButtons(){$('#songbookBold').classList.toggle('is-active',currentBold);$('#songbookItalic').classList.toggle('is-active',currentItalic);}
   function updateFormatButtonsFromSelection(){currentBold=document.queryCommandState('bold');currentItalic=document.queryCommandState('italic');updateFormatButtons();}
   function positionPopover(pop,anchor){const r=anchor.getBoundingClientRect();pop.hidden=false;const w=pop.offsetWidth;let left=Math.min(Math.max(6,r.left),window.innerWidth-w-6);let top=r.bottom+5;if(top+pop.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-pop.offsetHeight-5);pop.style.left=`${left}px`;pop.style.top=`${top}px`;}
-  function closeToolbarPopovers(except){[$('#songbookColorMenu'),$('#songbookDrawOptions')].forEach(p=>{if(p!==except)p.hidden=true;});}
+  function closeToolbarPopovers(except){[$('#songbookColorMenu'),$('#songbookDrawOptions'),$('#songbookEraserOptions')].forEach(p=>{if(p!==except)p.hidden=true;});}
 
   function resizeSongbookCanvas(){const canvas=$('#songbookDrawingCanvas'),stage=$('#songbookPaperStage');if(!canvas||!stage)return;const ratio=Math.max(1,window.devicePixelRatio||1),w=Math.max(1,stage.scrollWidth),h=Math.max(1,stage.scrollHeight),old=state.songbookDrawingData;canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);canvas.style.width=`${w}px`;canvas.style.height=`${h}px`;drawingCtx=canvas.getContext('2d');drawingCtx.setTransform(ratio,0,0,ratio,0,0);drawingCtx.lineCap='round';drawingCtx.lineJoin='round';if(old)loadSongbookDrawing(old);}
   function loadSongbookDrawing(data){const canvas=$('#songbookDrawingCanvas');if(!drawingCtx||!canvas)return;drawingCtx.clearRect(0,0,parseFloat(canvas.style.width)||canvas.width,parseFloat(canvas.style.height)||canvas.height);if(!data)return;const img=new Image();img.onload=()=>drawingCtx.drawImage(img,0,0,parseFloat(canvas.style.width),parseFloat(canvas.style.height));img.src=data;}
@@ -764,7 +783,7 @@
     ctx.stroke();
   }
   function drawPath(points,mode){if(points.length<2)return;drawingCtx.beginPath();drawingCtx.moveTo(points[0].x,points[0].y);for(let i=1;i<points.length;i++)drawingCtx.lineTo(points[i].x,points[i].y);drawingCtx.stroke();if(mode==='arrow'||mode==='double-arrow')drawArrowHead(drawingCtx,points.at(-2),points.at(-1));if(mode==='double-arrow')drawArrowHead(drawingCtx,points[1],points[0]);}
-  function toggleDrawing(force){songbookDrawingEnabled=force??!songbookDrawingEnabled;$('#songbookDrawToggle').classList.toggle('is-active',songbookDrawingEnabled);$('#songbookDrawingCanvas').classList.toggle('is-active',songbookDrawingEnabled);$('#songbookEditor').contentEditable=String(!songbookDrawingEnabled);if(songbookDrawingEnabled)resizeSongbookCanvas();}
+  function toggleDrawing(force){songbookDrawingEnabled=force??!songbookDrawingEnabled;$('#songbookDrawToggle').classList.toggle('is-active',songbookDrawingEnabled&&$('#songbookDrawMode').value!=='eraser');if($('#songbookDrawMode').value!=='eraser')$('#songbookEraserToggle')?.classList.remove('is-active');$('#songbookDrawingCanvas').classList.toggle('is-active',songbookDrawingEnabled);$('#songbookEditor').contentEditable=String(!songbookDrawingEnabled);if(songbookDrawingEnabled)resizeSongbookCanvas();}
   function updateDrawColorUI(){
     const input=$('#songbookDrawColor');
     if(input)input.value=currentDrawColor;
@@ -813,8 +832,14 @@
   }));
   $('#songbookClearDrawing').addEventListener('click',()=>askConfirm('Borrar dibujo','Se eliminarán todos los trazos de esta canción.',()=>{drawingCtx.clearRect(0,0,parseFloat($('#songbookDrawingCanvas').style.width),parseFloat($('#songbookDrawingCanvas').style.height));state.songbookDrawingData='';commitEditorHistory();},'Borrar'));
   updateDrawColorUI();
-  $('#songbookDrawingCanvas').addEventListener('pointerdown',e=>{if(!songbookDrawingEnabled)return;e.preventDefault();drawingActive=true;drawingPath=[canvasPoint(e)];drawingSnapshot=drawingCtx.getImageData(0,0,$('#songbookDrawingCanvas').width,$('#songbookDrawingCanvas').height);drawingCtx.strokeStyle=$('#songbookDrawColor').value;drawingCtx.lineWidth=Number($('#songbookDrawWidth').value);e.currentTarget.setPointerCapture(e.pointerId);});
-  $('#songbookDrawingCanvas').addEventListener('pointermove',e=>{if(!drawingActive)return;e.preventDefault();drawingPath.push(canvasPoint(e));drawingCtx.putImageData(drawingSnapshot,0,0);drawingCtx.strokeStyle=$('#songbookDrawColor').value;drawingCtx.lineWidth=Number($('#songbookDrawWidth').value);drawPath(drawingPath,$('#songbookDrawMode').value);});
+  let songbookEraserHold=0;
+  $('#songbookEraserToggle').addEventListener('pointerdown',e=>{songbookEraserHold=setTimeout(()=>{const pop=$('#songbookEraserOptions');closeToolbarPopovers(pop);positionPopover(pop,e.currentTarget);},550);});
+  ['pointerup','pointercancel','pointerleave'].forEach(name=>$('#songbookEraserToggle').addEventListener(name,()=>clearTimeout(songbookEraserHold)));
+  $('#songbookEraserToggle').addEventListener('click',()=>{$('#songbookDrawMode').value='eraser';toggleDrawing(true);$('#songbookEraserToggle').classList.add('is-active');$('#songbookDrawToggle').classList.remove('is-active');});
+  $$('[data-eraser-size]').forEach(btn=>btn.addEventListener('click',()=>{$('#songbookDrawWidth').value=btn.dataset.eraserSize;$('#songbookDrawMode').value='eraser';toggleDrawing(true);$('#songbookEraserOptions').hidden=true;$('#songbookEraserToggle').classList.add('is-active');}));
+
+  $('#songbookDrawingCanvas').addEventListener('pointerdown',e=>{if(!songbookDrawingEnabled)return;e.preventDefault();drawingActive=true;drawingPath=[canvasPoint(e)];drawingSnapshot=drawingCtx.getImageData(0,0,$('#songbookDrawingCanvas').width,$('#songbookDrawingCanvas').height);drawingCtx.globalCompositeOperation=$('#songbookDrawMode').value==='eraser'?'destination-out':'source-over';drawingCtx.strokeStyle=$('#songbookDrawColor').value;drawingCtx.lineWidth=Number($('#songbookDrawWidth').value);e.currentTarget.setPointerCapture(e.pointerId);});
+  $('#songbookDrawingCanvas').addEventListener('pointermove',e=>{if(!drawingActive)return;e.preventDefault();drawingPath.push(canvasPoint(e));drawingCtx.putImageData(drawingSnapshot,0,0);drawingCtx.globalCompositeOperation=$('#songbookDrawMode').value==='eraser'?'destination-out':'source-over';drawingCtx.strokeStyle=$('#songbookDrawColor').value;drawingCtx.lineWidth=Number($('#songbookDrawWidth').value);drawPath(drawingPath,$('#songbookDrawMode').value);});
   function finishDrawing(e){if(!drawingActive)return;drawingActive=false;saveDrawingData();commitEditorHistory();try{e.currentTarget.releasePointerCapture(e.pointerId)}catch{}}
   $('#songbookDrawingCanvas').addEventListener('pointerup',finishDrawing);$('#songbookDrawingCanvas').addEventListener('pointercancel',finishDrawing);
   window.addEventListener('resize',()=>{closeToolbarPopovers();if($('#songbookEditorDialog').open)resizeSongbookCanvas();});
@@ -1089,6 +1114,51 @@
     catch(_){toast('La imagen es demasiado grande. Usa una imagen más liviana.');}
   },'Guardar'));
 
+
+
+  const imageEditorState={original:'',overlay:'',tool:'pencil',size:8,color:'#d00000',drawing:false,last:null,undo:[],redo:[]};
+  function imageEditorCanvas(){return $('#imageEditorCanvas');}
+  function imageEditorContext(){return imageEditorCanvas().getContext('2d');}
+  function imageEditorSnapshot(){return imageEditorCanvas().toDataURL('image/png');}
+  function pushImageHistory(){const snap=imageEditorSnapshot();if(imageEditorState.undo.at(-1)!==snap){imageEditorState.undo.push(snap);if(imageEditorState.undo.length>40)imageEditorState.undo.shift();imageEditorState.redo=[];}updateImageHistory();}
+  function updateImageHistory(){$('#imageUndo').disabled=imageEditorState.undo.length<=1;$('#imageRedo').disabled=!imageEditorState.redo.length;}
+  function restoreImageSnapshot(src){const img=new Image();img.onload=()=>{const c=imageEditorCanvas(),ctx=imageEditorContext();ctx.clearRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);};img.src=src;}
+  function renderImageEditor(){
+    const c=imageEditorCanvas(),wrap=$('#imageEditorStage');
+    const base=imageEditorState.original;
+    const img=new Image();img.onload=()=>{const maxW=1400,maxH=1800,ratio=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight);c.width=Math.max(1,Math.round(img.naturalWidth*ratio));c.height=Math.max(1,Math.round(img.naturalHeight*ratio));c.style.aspectRatio=`${c.width}/${c.height}`;const ctx=imageEditorContext();ctx.clearRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{ctx.drawImage(ov,0,0,c.width,c.height);imageEditorState.undo=[imageEditorSnapshot()];updateImageHistory();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageEditorSnapshot()];updateImageHistory();}};
+    if(base) img.src=base; else {c.width=1000;c.height=1300;const ctx=imageEditorContext();ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);imageEditorState.undo=[imageEditorSnapshot()];updateImageHistory();}
+  }
+  function openImageEditor(songId,owner){
+    const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;
+    $('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    const raw=song[imageField(owner)];
+    if(raw&&typeof raw==='object'){imageEditorState.original=raw.original||raw.composite||raw.dataUrl||'';imageEditorState.overlay=raw.overlay||'';}else{imageEditorState.original=imagePayload(song,owner)||'';imageEditorState.overlay='';}
+    imageEditorState.tool='pencil';imageEditorState.size=8;imageEditorState.color='#d00000';
+    $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');
+    $('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
+  }
+  $('#imageSourceInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=()=>{imageEditorState.original=r.result;imageEditorState.overlay='';renderImageEditor();};r.readAsDataURL(file);});
+  $('#imageToolPencil').addEventListener('click',()=>{imageEditorState.tool='pencil';$('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');});
+  let imageEraserHold=0;
+  $('#imageToolEraser').addEventListener('pointerdown',e=>{imageEraserHold=setTimeout(()=>positionPopover($('#imageEraserOptions'),e.currentTarget),550);});
+  ['pointerup','pointercancel','pointerleave'].forEach(name=>$('#imageToolEraser').addEventListener(name,()=>clearTimeout(imageEraserHold)));
+  $('#imageToolEraser').addEventListener('click',()=>{imageEditorState.tool='eraser';$('#imageToolEraser').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');});
+  $$('[data-image-eraser-size]').forEach(btn=>btn.addEventListener('click',()=>{imageEditorState.size=Number(btn.dataset.imageEraserSize);imageEditorState.tool='eraser';$('#imageDrawSize').value=String(imageEditorState.size);$('#imageEraserOptions').hidden=true;$('#imageToolEraser').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');}));
+  $('#imageDrawColor').addEventListener('input',e=>imageEditorState.color=e.target.value);
+  $('#imageDrawSize').addEventListener('change',e=>imageEditorState.size=Number(e.target.value));
+  function imagePoint(e){const c=imageEditorCanvas(),r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};}
+  imageEditorCanvas().addEventListener('pointerdown',e=>{e.preventDefault();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);e.currentTarget.setPointerCapture(e.pointerId);});
+  imageEditorCanvas().addEventListener('pointermove',e=>{if(!imageEditorState.drawing)return;e.preventDefault();const p=imagePoint(e),ctx=imageEditorContext();ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=imageEditorState.size;ctx.strokeStyle=imageEditorState.color;ctx.globalCompositeOperation=imageEditorState.tool==='eraser'?'destination-out':'source-over';ctx.beginPath();ctx.moveTo(imageEditorState.last.x,imageEditorState.last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();imageEditorState.last=p;});
+  const finishImageDraw=()=>{if(!imageEditorState.drawing)return;imageEditorState.drawing=false;pushImageHistory();};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);
+  $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});
+  $('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
+  $('#saveImageEditorBtn').addEventListener('click',()=>{const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;askConfirm('Guardar imagen',`Se actualizará la imagen de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,()=>{const composite=imageEditorSnapshot();song[imageField(activeImageOwner)]={original:imageEditorState.original||composite,overlay:'',composite};const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);rememberDialogState($('#imageEditorDialog'));toast('Guardado exitosamente');renderSongbookList();},'Guardar');});
+
+  const viewerEdit=$('#viewerEditBtn');
+  let viewerEditHold=0;
+  viewerEdit.addEventListener('pointerdown',()=>{viewerEditHold=setTimeout(()=>{const song=state.songs.find(x=>x.id===activeViewerSongId);if(!song)return;if(activeViewerType==='lyrics'){activeSongbookOwner='elena';openSongbookEditor(song.id);}else if(activeViewerType==='daniel'){activeSongbookOwner='daniel';openSongbookEditor(song.id);}else if(activeViewerType==='notes'){openImageEditor(song.id,'elena');}else if(activeViewerType==='daniel-image'){openImageEditor(song.id,'daniel');}},650);});
+  ['pointerup','pointercancel','pointerleave'].forEach(name=>viewerEdit.addEventListener(name,()=>clearTimeout(viewerEditHold)));
 
 
   function bindImageInput(id,setter){const el=$(id);if(!el)return;el.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;if(!/^image\/(jpeg|png|webp)$/i.test(f.type))return toast('Selecciona una imagen JPG, PNG o WEBP');const r=new FileReader();r.onload=()=>setter(r.result);r.readAsDataURL(f);});}

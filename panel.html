@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.34.2">
+  <link rel="stylesheet" href="panel.css?v=6.35">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -362,9 +362,13 @@
         <button id="songbookRedo" type="button" aria-label="Rehacer">↷</button>
         <div class="toolbar-popover-wrap">
           <button id="songbookDrawToggle" type="button" aria-label="Activar dibujo" title="Pulsar: activar. Mantener: opciones">➜</button>
+          <button id="songbookEraserToggle" type="button" aria-label="Borrador" title="Pulsar: activar. Mantener: tamaños">⌫</button>
+          <div id="songbookEraserOptions" class="compact-popover eraser-options" hidden>
+            <button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button>
+          </div>
           <div id="songbookDrawOptions" class="compact-popover draw-options" hidden>
             <select id="songbookDrawMode" aria-label="Tipo de trazo" title="Tipo de trazo">
-              <option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option>
+              <option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option><option value="eraser">Borrador</option>
             </select>
             <div id="songbookDrawColorMenu" class="draw-color-menu" role="group" aria-label="Color del trazo">
               <button type="button" data-draw-color="#d00000" aria-label="Rojo" title="Rojo" style="--draw-swatch:#d00000" class="is-active"></button>
@@ -432,9 +436,26 @@
     </div>
   </dialog>
 
+
+  <dialog id="imageEditorDialog" class="songbook-editor-dialog image-editor-dialog">
+    <div class="songbook-editor-shell image-editor-shell">
+      <header class="songbook-editor-header"><div><small>EDITOR DE IMAGEN</small><h3 id="imageEditorTitle">Imagen</h3></div><button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <div class="songbook-toolbar image-editor-toolbar" role="toolbar">
+        <label class="image-upload-btn">Subir imagen<input id="imageSourceInput" type="file" accept="image/*"></label>
+        <button id="imageToolPencil" type="button" class="is-active">Lápiz</button>
+        <span class="toolbar-popover-wrap"><button id="imageToolEraser" type="button" title="Pulsar: borrador. Mantener: tamaños">Borrador</button><span id="imageEraserOptions" class="compact-popover eraser-options" hidden><button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="60">XL</button></span></span>
+        <input id="imageDrawColor" type="color" value="#d00000" aria-label="Color">
+        <select id="imageDrawSize" aria-label="Tamaño"><option value="4">Fino</option><option value="8" selected>Medio</option><option value="16">Grande</option><option value="30">Extra grande</option></select>
+        <button id="imageUndo" type="button">↶</button><button id="imageRedo" type="button">↷</button>
+      </div>
+      <main id="imageEditorStage" class="image-editor-stage"><canvas id="imageEditorCanvas"></canvas></main>
+      <footer class="songbook-editor-footer"><button id="saveImageEditorBtn" class="primary-btn" type="button">Guardar</button></footer>
+    </div>
+  </dialog>
+
   <dialog id="viewerDialog" class="modal viewer-modal">
     <div class="viewer-card">
-      <div class="viewer-topbar"><strong id="viewerTitle">Vista</strong><button class="modal-x static" type="button" data-dialog-close>×</button></div>
+      <div class="viewer-topbar"><strong id="viewerTitle">Vista</strong><div class="viewer-top-actions"><button id="viewerEditBtn" class="viewer-edit-btn" type="button" title="Mantén presionado para editar">Editar</button><button class="modal-x static" type="button" data-dialog-close>×</button></div></div>
       <div id="viewerContent" class="viewer-content"></div>
     </div>
   </dialog>
@@ -449,7 +470,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.34.2"></script>
+  <script type="module" src="panel.js?v=6.35"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>
