@@ -673,3 +673,15 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-editor-paper canvas{display:block}
 .image-inline-text{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;background:transparent;padding:5%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:34px;line-height:1.25;color:#d00000;caret-color:currentColor;z-index:3;overflow:hidden;touch-action:manipulation}
 .image-inline-text[hidden]{display:none!important}
+
+/* Editor V4 entrega 1.3 · zoom, capas y controles multiplataforma */
+.image-editor-stage{position:relative!important;display:block!important;overflow:hidden!important;padding:0!important;touch-action:none!important;cursor:grab!important;overscroll-behavior:none!important;user-select:none!important;-webkit-user-select:none!important}
+.image-editor-stage:active{cursor:grabbing!important}
+.image-editor-paper{position:absolute!important;left:0!important;top:0!important;display:block!important;max-width:none!important;line-height:0!important;transform-origin:0 0!important;will-change:transform!important;box-shadow:0 8px 30px rgba(0,0,0,.35)!important;background:#fff!important}
+.image-editor-paper canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;display:block!important;background:transparent!important;box-shadow:none!important;touch-action:none!important}
+#imageBaseCanvas{z-index:1!important;pointer-events:none!important}
+#imageEditorCanvas{z-index:2!important;cursor:crosshair!important}
+.image-inline-text{z-index:3!important;touch-action:none!important;user-select:text!important;-webkit-user-select:text!important}
+.egm-color-grid button[style*="ffffff"]{border:1px solid #aaa!important}
+.egm-eraser-options button[data-image-eraser-target]{width:auto!important;min-width:94px!important;padding:0 10px!important;font-size:12px!important}
+@media (pointer:fine){.image-editor-stage{cursor:grab!important}.image-editor-stage:active{cursor:grabbing!important}}
