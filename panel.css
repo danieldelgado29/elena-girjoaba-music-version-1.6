@@ -667,3 +667,9 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .egm-eraser-svg{width:27px;height:27px}
 .egm-upload-svg{width:27px;height:27px}
 .egm-editor-toolbar .egm-tool-color{pointer-events:none}
+
+/* Editor V4 entrega 1.1: texto directo sobre la hoja */
+.image-editor-paper{position:relative;display:inline-block;max-width:100%;line-height:0}
+.image-editor-paper canvas{display:block}
+.image-inline-text{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;background:transparent;padding:5%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:34px;line-height:1.25;color:#d00000;caret-color:currentColor;z-index:3;overflow:hidden;touch-action:manipulation}
+.image-inline-text[hidden]{display:none!important}
