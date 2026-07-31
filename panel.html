@@ -11,11 +11,22 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css">
+  <link rel="stylesheet" href="panel.css?v=6.34.1">
+  <style>
+    /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
+    #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
+    #panelLogin[hidden]{display:none!important}
+    #panelLoginForm{width:min(360px,100%)!important;display:flex!important;flex-direction:column!important;gap:16px!important;text-align:center!important;opacity:1!important;visibility:visible!important;color:#fff!important}
+    #panelLogin .panel-login__brand{display:block!important;color:#fff!important;font:800 48px/1.1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:.12em!important}
+    #panelLogin .panel-login__subtitle{display:block!important;color:#c8c8c8!important;font:500 20px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+    #panelLogin label{display:flex!important;flex-direction:column!important;gap:8px!important;text-align:left!important;color:#fff!important}
+    #panelLogin input{display:block!important;width:100%!important;box-sizing:border-box!important;padding:14px!important;border-radius:12px!important;border:1px solid #555!important;background:#17191d!important;color:#fff!important;font-size:18px!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
+    #panelLogin button{display:block!important;width:100%!important;padding:14px!important;border:0!important;border-radius:12px!important;background:#fff!important;color:#111!important;font-weight:800!important;font-size:17px!important;opacity:1!important}
+  </style>
 </head>
 <body>
   <section id="panelLogin" class="panel-login" aria-label="Acceso al panel">
-    <form id="panelLoginForm" class="panel-login__card">
+    <form id="panelLoginForm" class="panel-login__card" autocomplete="off">
       <strong class="panel-login__brand">EGM</strong>
       <span class="panel-login__subtitle">Panel</span>
       <label><span>Contraseña</span><input id="panelLoginPassword" type="password" inputmode="numeric" autocomplete="current-password" required></label>

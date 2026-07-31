@@ -1,5 +1,5 @@
 {
-  "version": "6.34.0",
+  "version": "6.34.1",
   "fecha": "2026-07-31",
-  "descripcion": "Numeración por repertorio, flujo Panel/Cliente, Imagen y sincronización de contenido"
+  "descripcion": "Corrección de pantalla de acceso EGM Panel en la app de macOS"
 }
