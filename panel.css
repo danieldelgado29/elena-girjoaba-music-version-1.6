@@ -660,3 +660,10 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .songbook-zoom-controls{display:none!important}
 .image-editor-toolbar input[type=color]{width:34px!important;height:34px!important}
 @media(max-width:380px){.egm-editor-toolbar{grid-auto-columns:minmax(29px,1fr)!important;gap:2px!important}.egm-editor-toolbar .egm-editor-tool,.egm-tool-wrap{width:100%!important}.egm-editor-toolbar .egm-editor-tool{font-size:18px!important}.egm-history-tool span{font-size:26px!important}}
+
+/* Entrega V4.1 · iconos y estados visuales aprobados */
+.egm-toolbar-svg{width:29px;height:29px;display:block;fill:none;stroke:currentColor;stroke-width:2.7;stroke-linecap:round;stroke-linejoin:round}
+.egm-history-tool .egm-toolbar-svg{width:32px;height:32px}
+.egm-eraser-svg{width:27px;height:27px}
+.egm-upload-svg{width:27px;height:27px}
+.egm-editor-toolbar .egm-tool-color{pointer-events:none}

@@ -1298,3 +1298,18 @@
   document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover'))closeAllPopovers();});
   [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',closeAllPopovers));
 })();
+
+/* Entrega V4.1 · sincronización visual de colores en T y lápiz */
+(function(){
+  const byId=id=>document.getElementById(id);
+  const paint=(id,color)=>{const el=byId(id);if(el)el.style.background=color||'#d00000';};
+  const textColor=byId('songbookColorMenu');
+  textColor?.addEventListener('click',e=>{const b=e.target.closest('[data-text-color]');if(b)paint('songbookColorSwatch',b.dataset.textColor);});
+  const drawColors=byId('songbookDrawColorMenu');
+  drawColors?.addEventListener('click',e=>{const b=e.target.closest('[data-draw-color]');if(b)paint('songbookPencilSwatch',b.dataset.drawColor);});
+  const imageColor=byId('imageDrawColor');
+  imageColor?.addEventListener('input',()=>paint('imagePencilSwatch',imageColor.value));
+  paint('songbookColorSwatch',byId('songbookColorSwatch')?.style.background||'#d00000');
+  paint('songbookPencilSwatch',byId('songbookDrawColor')?.value||'#d00000');
+  paint('imagePencilSwatch',imageColor?.value||'#d00000');
+})();
