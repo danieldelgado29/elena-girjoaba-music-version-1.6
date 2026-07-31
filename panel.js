@@ -207,14 +207,24 @@
       const queued=state.queue.includes(song.id), played=state.played.has(song.id);
       const card=document.createElement('article');card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
       card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(song.numero||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics" data-act="lyrics" title="Letra">Letra</button><button class="song-action notes" data-act="notes" title="Notas">Notas</button><button class="song-action daniel" data-act="daniel" title="Cancionero Daniel">Daniel</button></div>`;
-      card.addEventListener('click',e=>{
+      const handleCardControl=e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
         const act=button.dataset.act;
-        if(['queue','played','lyrics','notes','daniel'].includes(act)){
-          requireSecondTap(song,act,button);
-          return;
-        }
+        if(['queue','played','lyrics','notes','daniel'].includes(act)) requireSecondTap(song,act,button);
+      };
+      card.addEventListener('pointerup',e=>{
+        if(e.pointerType!=='touch'&&e.pointerType!=='pen') return;
+        const button=e.target.closest('[data-act]');
+        if(!button) return;
+        e.preventDefault();
+        button._egmTouchHandledUntil=Date.now()+700;
+        handleCardControl(e);
+      });
+      card.addEventListener('click',e=>{
+        const button=e.target.closest('[data-act]');
+        if(button&&button._egmTouchHandledUntil>Date.now()) return;
+        handleCardControl(e);
       });
       list.append(card);
     });
@@ -271,10 +281,23 @@
     state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
       const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;
       item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
-      item.addEventListener('click',e=>{
+      const handleQueueControl=e=>{
         const button=e.target.closest('[data-q]');
         if(!button)return;
         requireSecondQueueTap(song,button.dataset.q,button);
+      };
+      item.addEventListener('pointerup',e=>{
+        if(e.pointerType!=='touch'&&e.pointerType!=='pen') return;
+        const button=e.target.closest('[data-q]');
+        if(!button)return;
+        e.preventDefault();
+        button._egmTouchHandledUntil=Date.now()+700;
+        handleQueueControl(e);
+      });
+      item.addEventListener('click',e=>{
+        const button=e.target.closest('[data-q]');
+        if(button&&button._egmTouchHandledUntil>Date.now()) return;
+        handleQueueControl(e);
       });list.append(item);
     });
   }
@@ -1015,15 +1038,8 @@
   },'Guardar'));
 
 
-  // Evita que el segundo toque rápido de los controles amplíe la pantalla en Safari/iPhone.
-  let lastControlTouch={time:0,target:null};
-  document.addEventListener('touchend',event=>{
-    const control=event.target.closest('button,.song-action,.mini-btn,[role="button"]');
-    if(!control)return;
-    const now=Date.now();
-    if(lastControlTouch.target===control&&now-lastControlTouch.time<500) event.preventDefault();
-    lastControlTouch={time:now,target:control};
-  },{passive:false,capture:true});
+  // El zoom por doble toque se bloquea con touch-action: manipulation en CSS.
+  // No cancelamos touchend: Android necesita completar ambos pointerup para detectar el doble toque.
   document.addEventListener('dblclick',event=>{
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});

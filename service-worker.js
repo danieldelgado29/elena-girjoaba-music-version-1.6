@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260730-notes-pinch-6335";
+const VERSION = "egm-offline-v6-20260730-android-doubletap-6336";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
