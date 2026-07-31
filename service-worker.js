@@ -144,10 +144,3 @@ self.addEventListener("message",event=>{if(event.data?.type==="SKIP_WAITING")sel
 async function networkFirst(request){const cache=await caches.open(RUNTIME_CACHE);try{const freshRequest=new Request(request,{cache:"no-store"});const response=await fetch(freshRequest);if(response&&(response.ok||response.type==="opaque"))cache.put(request,response.clone());return response;}catch(error){const cached=await caches.match(request,{ignoreSearch:true});if(cached)return cached;const url=new URL(request.url);const fallback=url.pathname.endsWith("panel.html")?"./panel.html":"./index.html";return(await caches.match(scopedUrl(fallback),{ignoreSearch:true}))||Response.error();}}
 async function cacheFirst(request){const cached=await caches.match(request,{ignoreSearch:true});if(cached)return cached;const cache=await caches.open(RUNTIME_CACHE);try{const response=await fetch(request);if(response&&(response.ok||response.type==="opaque"))cache.put(request,response.clone());return response;}catch(error){return Response.error();}}
 self.addEventListener("fetch",event=>{const request=event.request;if(request.method!=="GET")return;const url=new URL(request.url);if(request.mode==="navigate"){event.respondWith(networkFirst(request));return;}if(url.origin===self.location.origin){const path=url.pathname;const isFreshCode=/\.(?:html|css|js|json)$/.test(path)||path.endsWith("/");event.respondWith(isFreshCode?networkFirst(request):cacheFirst(request));return;}if(url.hostname==="www.gstatic.com"||url.hostname==="fonts.googleapis.com"||url.hostname==="fonts.gstatic.com")event.respondWith(cacheFirst(request));});
-
-
-/* Entrega 6.33.9 - borde discreto para botones con contenido */
-.has-content{
-  border:1px solid rgba(180,140,70,.25)!important;
-  box-shadow:none!important;
-}

@@ -2856,10 +2856,3 @@ if (document.readyState === "loading") {
 } else {
   iniciar();
 }
-
-
-/* Entrega 6.33.9 - borde discreto para botones con contenido */
-.has-content{
-  border:1px solid rgba(180,140,70,.25)!important;
-  box-shadow:none!important;
-}
