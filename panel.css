@@ -681,7 +681,12 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-editor-paper canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;display:block!important;background:transparent!important;box-shadow:none!important;touch-action:none!important}
 #imageBaseCanvas{z-index:1!important;pointer-events:none!important}
 #imageEditorCanvas{z-index:2!important;cursor:crosshair!important}
-.image-inline-text{z-index:3!important;touch-action:none!important;user-select:text!important;-webkit-user-select:text!important}
+.image-inline-text{z-index:3!important;inset:auto!important;min-width:90px!important;min-height:54px!important;padding:2px!important;touch-action:none!important;user-select:text!important;-webkit-user-select:text!important;overflow:visible!important}
 .egm-color-grid button[style*="ffffff"]{border:1px solid #aaa!important}
 .egm-eraser-options button[data-image-eraser-target]{width:auto!important;min-width:94px!important;padding:0 10px!important;font-size:12px!important}
 @media (pointer:fine){.image-editor-stage{cursor:grab!important}.image-editor-stage:active{cursor:grabbing!important}}
+
+/* Editor V4 entrega 1.4 */
+.egm-text-size-grid{display:flex;gap:4px;align-items:center}
+.egm-text-size-grid button{min-width:34px!important;height:34px!important;padding:0 7px!important;border:1px solid #bbb!important;border-radius:7px!important;background:#f6f6f6!important;color:#111!important;font-weight:700!important}
+#imageEditorPaper.text-mode #imageEditorCanvas{cursor:text!important}
