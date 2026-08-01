@@ -14,12 +14,16 @@
   let remoteReady = false;
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
+  let remoteInitPromise = null;
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null;
 
   async function initRemoteSync(){
-    if(!navigator.onLine) return;
+    if(remoteStateRef) return remoteStateRef;
+    if(remoteInitPromise) return remoteInitPromise;
+    remoteInitPromise=(async()=>{
+    if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, getFirestore, onSnapshot, setDoc: firebaseSetDoc }] = await Promise.all([
+      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
       ]);
@@ -27,7 +31,8 @@
       const cfg=await response.json();
       if(!cfg?.firebase?.apiKey||!cfg?.firebase?.projectId) return;
       const app=initializeApp(cfg.firebase,'panel-v3');
-      remoteStateRef=doc(getFirestore(app),'config','estado');
+      const panelDb=initializeFirestore(app,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
+      remoteStateRef=doc(panelDb,'config','estado');
       window.__egmSetDoc=firebaseSetDoc;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
@@ -56,33 +61,44 @@
         renderQueue();
         if(document.body.classList.contains('live-mode')) renderSongs();
       },err=>console.warn('Sincronización remota no disponible',err));
-    }catch(err){ console.warn('No se pudo iniciar la sincronización remota',err); }
+    }catch(err){ console.warn('No se pudo iniciar la sincronización remota',err); throw err; }
+    return remoteStateRef;
+    })();
+    try{return await remoteInitPromise;}finally{if(!remoteStateRef)remoteInitPromise=null;}
   }
 
-  function syncRemoteState(immediate=false){
-    if(!remoteStateRef) return;
+  async function syncRemoteState(immediate=false){
     clearTimeout(remoteWriteTimer);
     const write=async()=>{
+      if(!remoteStateRef) await initRemoteSync();
+      if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
       const cfg=state.config||{};
-      try{
-        await window.__egmSetDoc(remoteStateRef,{
-          lista_activa:cfg.repertoire||'todas',
-          listaActiva:cfg.repertoire||'todas',
-          pedidos_whatsapp:cfg.whatsapp!==false,
-          mostrar_cola:cfg.publicQueue!==false,
-          lugar:cfg.venue||'',
-          perfil_clientes:cfg.profile||'medio',
-          show_activo:Boolean(state.config),
-          inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
-          cola:[...state.queue],
-          tocadas:[...state.played],
-          biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
-        },{merge:true});
-        remoteReady=true;
-      }catch(err){ console.warn('No se pudo actualizar la interfaz del cliente',err); }
+      const activeId=cfg.repertoire||'todas';
+      await window.__egmSetDoc(remoteStateRef,{
+        lista_activa:activeId,
+        listaActiva:activeId,
+        pedidos_whatsapp:cfg.whatsapp!==false,
+        mostrar_cola:cfg.publicQueue!==false,
+        lugar:cfg.venue||'',
+        perfil_clientes:cfg.profile||'medio',
+        show_activo:Boolean(state.config),
+        inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
+        cola:[...state.queue],
+        tocadas:[...state.played],
+        biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
+      },{merge:true});
+      const verified=await getDoc(remoteStateRef);
+      const savedId=verified.exists()?(verified.data().lista_activa||verified.data().listaActiva):null;
+      if(savedId!==activeId) throw new Error(`Firebase no confirmó el repertorio ${activeId}`);
+      remoteReady=true;
+      return activeId;
     };
-    if(immediate) write(); else remoteWriteTimer=setTimeout(write,80);
+    if(immediate) return write();
+    return new Promise((resolve,reject)=>{
+      remoteWriteTimer=setTimeout(()=>write().then(resolve).catch(reject),80);
+    });
   }
+
 
   async function loadData(){
     try{
@@ -141,7 +157,7 @@
     const venues = $$('#venueHistory option').map(o=>o.value);
     localStorage.setItem('egm-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
   }
-  function saveState(immediate=false){ saveStateLocalOnly(); syncRemoteState(immediate); }
+  function saveState(immediate=false){ saveStateLocalOnly(); return syncRemoteState(immediate); }
 
   function buildRepertoires(){
     const map = new Map(fallbackRepertoires.map(x=>[x.id,x.name]));
@@ -182,8 +198,16 @@
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
-    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
-      state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);saveState(true);setStatus(true);showLive();toast('Configuración guardada correctamente. El show ha comenzado.');
+    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',async()=>{
+      state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
+      try{
+        await saveState(true);
+        setStatus(true);showLive();toast(`Configuración guardada correctamente. Repertorio activo: ${config.repertoireName}.`);
+      }catch(err){
+        console.error('No se pudo publicar el repertorio activo:',err);
+        toast('No se pudo actualizar la interfaz cliente. Revisa la conexión y vuelve a guardar.');
+        showConfig();
+      }
     },'Comenzar');
   });
 

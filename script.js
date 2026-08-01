@@ -7,7 +7,7 @@ import {
   collection,
   doc,
   getDocs,
-  getFirestore,
+  initializeFirestore,
   onSnapshot,
   query,
   serverTimestamp,
@@ -805,7 +805,7 @@ function iniciarFirebase(firebaseConfig) {
 
   try {
     estado.firebase = initializeApp(firebaseConfig);
-    estado.db = getFirestore(estado.firebase);
+    estado.db = initializeFirestore(estado.firebase,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
     estado.estadoRef = doc(estado.db, "config", "estado");
 
     onSnapshot(
