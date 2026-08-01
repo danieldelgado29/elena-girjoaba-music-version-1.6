@@ -69,6 +69,7 @@ const estado = {
   visibles: [],
   modo: "principal-diario",
   modoForzado: false,
+  repertoriosRemotos: new Set(),
   vistaClientes: false,
   categoria: null,
   consulta: "",
@@ -166,6 +167,7 @@ function esMovil() {
 function modoValido(id) {
   if (!id) return false;
   return MODOS.some((modo) => modo.id === id) ||
+    estado.repertoriosRemotos.has(id) ||
     estado.todas.some((cancion) => Array.isArray(cancion.listas) && cancion.listas.includes(id));
 }
 
@@ -182,6 +184,12 @@ function aplicarBibliotecaRemota(biblioteca) {
   const personalizadas = Array.isArray(biblioteca.customSongs)
     ? biblioteca.customSongs
     : [];
+
+  estado.repertoriosRemotos = new Set(
+    Array.isArray(biblioteca.customRepertoires)
+      ? biblioteca.customRepertoires.map((r) => r && r.id).filter(Boolean)
+      : []
+  );
 
   const anteriores = JSON.stringify(estado.todas.map((c) => [c.id, c.titulo, c.artista, c.listas]));
   const combinadas = estado.todasLocalesBase.map((cancion) =>
@@ -771,12 +779,18 @@ async function cargarDatos() {
 
   const parametroLista = new URLSearchParams(window.location.search).get("lista");
 
-  if (modoValido(parametroLista)) {
-    estado.modo = parametroLista;
+  // Solo la página independiente “Todas las canciones” queda forzada por URL.
+  // La interfaz pública normal siempre debe obedecer el repertorio activo de Firebase.
+  if (parametroLista === "todas") {
+    estado.modo = "todas";
     estado.modoForzado = true;
-    estado.vistaClientes = parametroLista === "todas";
+    estado.vistaClientes = true;
   } else {
-    estado.modo = configuracion.modoPredeterminado || "principal-diario";
+    estado.modo = modoValido(parametroLista)
+      ? parametroLista
+      : (configuracion.modoPredeterminado || "principal-diario");
+    estado.modoForzado = false;
+    estado.vistaClientes = false;
   }
 
   iniciarFirebase(configuracion.firebase);

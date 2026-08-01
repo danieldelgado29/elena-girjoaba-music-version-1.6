@@ -141,7 +141,7 @@
     const venues = $$('#venueHistory option').map(o=>o.value);
     localStorage.setItem('egm-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
   }
-  function saveState(){ saveStateLocalOnly(); syncRemoteState(); }
+  function saveState(immediate=false){ saveStateLocalOnly(); syncRemoteState(immediate); }
 
   function buildRepertoires(){
     const map = new Map(fallbackRepertoires.map(x=>[x.id,x.name]));
@@ -183,7 +183,7 @@
     if(!venue) return toast('Escribe el lugar del show');
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
     askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
-      state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);saveState();setStatus(true);showLive();toast('Configuración guardada correctamente. El show ha comenzado.');
+      state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);saveState(true);setStatus(true);showLive();toast('Configuración guardada correctamente. El show ha comenzado.');
     },'Comenzar');
   });
 
