@@ -76,7 +76,7 @@
           inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
           cola:[...state.queue],
           tocadas:[...state.played],
-          biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs}
+          biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
         },{merge:true});
         remoteReady=true;
       }catch(err){ console.warn('No se pudo actualizar la interfaz del cliente',err); }

@@ -64,6 +64,7 @@ function telefonoWhatsAppActual() {
 
 const estado = {
   todas: [],
+  todasLocalesBase: [],
   base: [],
   visibles: [],
   modo: "principal-diario",
@@ -163,7 +164,46 @@ function esMovil() {
 }
 
 function modoValido(id) {
-  return MODOS.some((modo) => modo.id === id);
+  if (!id) return false;
+  return MODOS.some((modo) => modo.id === id) ||
+    estado.todas.some((cancion) => Array.isArray(cancion.listas) && cancion.listas.includes(id));
+}
+
+function aplicarBibliotecaRemota(biblioteca) {
+  if (!biblioteca || typeof biblioteca !== "object") return false;
+
+  if (!estado.todasLocalesBase.length) {
+    estado.todasLocalesBase = estado.todas.map((cancion) => ({ ...cancion }));
+  }
+
+  const ediciones = biblioteca.songEdits && typeof biblioteca.songEdits === "object"
+    ? biblioteca.songEdits
+    : {};
+  const personalizadas = Array.isArray(biblioteca.customSongs)
+    ? biblioteca.customSongs
+    : [];
+
+  const anteriores = JSON.stringify(estado.todas.map((c) => [c.id, c.titulo, c.artista, c.listas]));
+  const combinadas = estado.todasLocalesBase.map((cancion) =>
+    ediciones[cancion.id] ? { ...cancion, ...ediciones[cancion.id] } : { ...cancion }
+  );
+
+  const ids = new Set(combinadas.map((cancion) => cancion.id));
+  personalizadas.forEach((cancion) => {
+    if (!cancion || !cancion.id) return;
+    const preparada = ediciones[cancion.id] ? { ...cancion, ...ediciones[cancion.id] } : { ...cancion };
+    const indice = combinadas.findIndex((item) => item.id === preparada.id);
+    if (indice >= 0) combinadas[indice] = preparada;
+    else if (!ids.has(preparada.id)) {
+      combinadas.push(preparada);
+      ids.add(preparada.id);
+    }
+  });
+
+  estado.todas = depurarCanciones(combinadas);
+  estado.todas.sort((a, b) => a.titulo.localeCompare(b.titulo, "es", { sensitivity: "base" }));
+  const actuales = JSON.stringify(estado.todas.map((c) => [c.id, c.titulo, c.artista, c.listas]));
+  return anteriores !== actuales;
 }
 
 function nombreModo(id) {
@@ -720,6 +760,7 @@ async function cargarDatos() {
   });
   estado.todas = depurarCanciones(estado.todas);
   estado.todas.sort((a,b) => a.titulo.localeCompare(b.titulo, "es", { sensitivity: "base" }));
+  estado.todasLocalesBase = estado.todas.map((cancion) => ({ ...cancion }));
 
   const configuracion = respuestaConfig.ok
     ? await respuestaConfig.json()
@@ -774,6 +815,8 @@ function iniciarFirebase(firebaseConfig) {
           return;
         }
 
+        const bibliotecaCambio = aplicarBibliotecaRemota(datos.biblioteca);
+
         const listaRemota =
           datos.lista_activa ||
           datos.listaActiva ||
@@ -798,7 +841,7 @@ function iniciarFirebase(firebaseConfig) {
         await comprobarReinicioAutomatico();
         await cargarContactos();
 
-        if (!estado.modoForzado && estado.modo !== estado.configRemota.lista_activa) {
+        if (!estado.modoForzado && (estado.modo !== estado.configRemota.lista_activa || bibliotecaCambio)) {
           aplicarModo(estado.configRemota.lista_activa, false);
         }
 
