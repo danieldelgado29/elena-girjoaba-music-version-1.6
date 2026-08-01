@@ -11,6 +11,7 @@
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
   const fallbackRepertoires = [{id:'todas',name:'Todas las canciones'}];
   let remoteStateRef = null;
+  let remoteGetDoc = null;
   let remoteReady = false;
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
@@ -34,6 +35,7 @@
       const panelDb=initializeFirestore(app,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
       remoteStateRef=doc(panelDb,'config','estado');
       window.__egmSetDoc=firebaseSetDoc;
+      remoteGetDoc=getDoc;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
@@ -87,7 +89,8 @@
         tocadas:[...state.played],
         biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
       },{merge:true});
-      const verified=await getDoc(remoteStateRef);
+      if(!remoteGetDoc) throw new Error('Firebase no cargó la función de verificación');
+      const verified=await remoteGetDoc(remoteStateRef);
       const savedId=verified.exists()?(verified.data().lista_activa||verified.data().listaActiva):null;
       if(savedId!==activeId) throw new Error(`Firebase no confirmó el repertorio ${activeId}`);
       remoteReady=true;

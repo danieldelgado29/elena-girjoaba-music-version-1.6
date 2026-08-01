@@ -6,6 +6,7 @@ import {
   arrayUnion,
   collection,
   doc,
+  getDoc,
   getDocs,
   initializeFirestore,
   onSnapshot,
@@ -808,64 +809,73 @@ function iniciarFirebase(firebaseConfig) {
     estado.db = initializeFirestore(estado.firebase,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
     estado.estadoRef = doc(estado.db, "config", "estado");
 
+    const procesarEstadoRemoto = async (snapshot) => {
+      const datos = snapshot.exists() ? snapshot.data() : {};
+
+      if (!snapshot.exists()) {
+        await setDoc(
+          estado.estadoRef,
+          {
+            lista_activa: estado.modo,
+            pedidos_whatsapp: false,
+            mostrar_cola: true,
+            inicio_show: Date.now(),
+            cola: [],
+            tocadas: []
+          },
+          { merge: true }
+        );
+        return;
+      }
+
+      const bibliotecaCambio = aplicarBibliotecaRemota(datos.biblioteca);
+      const listaRemota = datos.lista_activa || datos.listaActiva || estado.modo;
+      const listaAplicable = modoValido(listaRemota) ? listaRemota : "principal-diario";
+
+      estado.configRemota = {
+        lista_activa: listaAplicable,
+        pedidos_whatsapp: Boolean(datos.pedidos_whatsapp),
+        mostrar_cola: datos.mostrar_cola !== false,
+        inicio_show: Number(datos.inicio_show || 0),
+        cola: Array.isArray(datos.cola) ? datos.cola : [],
+        tocadas: Array.isArray(datos.tocadas) ? datos.tocadas : [],
+        lugar: String(datos.lugar || ""),
+        perfil_clientes: ["alto", "medio", "bajo"].includes(datos.perfil_clientes)
+          ? datos.perfil_clientes
+          : "medio",
+        show_activo: Boolean(datos.show_activo)
+      };
+
+      actualizarEstadoFirebase("En línea", "online");
+      await comprobarReinicioAutomatico();
+      await cargarContactos();
+
+      if (!estado.modoForzado && (estado.modo !== listaAplicable || bibliotecaCambio)) {
+        aplicarModo(listaAplicable, false);
+      }
+      sincronizarInterfazRemota();
+    };
+
     onSnapshot(
       estado.estadoRef,
-      async (snapshot) => {
-        const datos = snapshot.exists() ? snapshot.data() : {};
-
-        if (!snapshot.exists()) {
-          await setDoc(
-            estado.estadoRef,
-            {
-              lista_activa: estado.modo,
-              pedidos_whatsapp: false,
-              mostrar_cola: true,
-              inicio_show: Date.now(),
-              cola: [],
-              tocadas: []
-            },
-            { merge: true }
-          );
-          return;
-        }
-
-        const bibliotecaCambio = aplicarBibliotecaRemota(datos.biblioteca);
-
-        const listaRemota =
-          datos.lista_activa ||
-          datos.listaActiva ||
-          estado.configRemota.lista_activa ||
-          estado.modo;
-
-        estado.configRemota = {
-          lista_activa: modoValido(listaRemota) ? listaRemota : "principal-diario",
-          pedidos_whatsapp: Boolean(datos.pedidos_whatsapp),
-          mostrar_cola: datos.mostrar_cola !== false,
-          inicio_show: Number(datos.inicio_show || 0),
-          cola: Array.isArray(datos.cola) ? datos.cola : [],
-          tocadas: Array.isArray(datos.tocadas) ? datos.tocadas : [],
-          lugar: String(datos.lugar || ""),
-          perfil_clientes: ["alto", "medio", "bajo"].includes(datos.perfil_clientes)
-            ? datos.perfil_clientes
-            : "medio",
-          show_activo: Boolean(datos.show_activo)
-        };
-
-        actualizarEstadoFirebase("En línea", "online");
-        await comprobarReinicioAutomatico();
-        await cargarContactos();
-
-        if (!estado.modoForzado && (estado.modo !== estado.configRemota.lista_activa || bibliotecaCambio)) {
-          aplicarModo(estado.configRemota.lista_activa, false);
-        }
-
-        sincronizarInterfazRemota();
-      },
+      procesarEstadoRemoto,
       (error) => {
         console.error("Error de Firestore:", error);
         actualizarEstadoFirebase("Sin conexión", "error");
       }
     );
+
+    // Respaldo para navegadores/redes donde el canal en tiempo real no avisa cambios.
+    // Lee directamente el documento cada 4 segundos y aplica el repertorio nuevo.
+    window.setInterval(async () => {
+      if (!estado.estadoRef || document.hidden) return;
+      try {
+        const snapshot = await getDoc(estado.estadoRef);
+        await procesarEstadoRemoto(snapshot);
+      } catch (error) {
+        console.warn("No se pudo comprobar el repertorio activo:", error);
+      }
+    }, 4000);
   } catch (error) {
     console.error("No se pudo iniciar Firebase:", error);
     actualizarEstadoFirebase("Error", "error");
