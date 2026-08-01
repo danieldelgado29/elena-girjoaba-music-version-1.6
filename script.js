@@ -71,6 +71,7 @@ const estado = {
   modo: "principal-diario",
   modoForzado: false,
   repertoriosRemotos: new Set(),
+  idsRepertorioRemoto: null,
   vistaClientes: false,
   categoria: null,
   consulta: "",
@@ -830,7 +831,15 @@ function iniciarFirebase(firebaseConfig) {
 
       const bibliotecaCambio = aplicarBibliotecaRemota(datos.biblioteca);
       const listaRemota = datos.lista_activa || datos.listaActiva || estado.modo;
-      const listaAplicable = modoValido(listaRemota) ? listaRemota : "principal-diario";
+      const idsRemotos = Array.isArray(datos.repertorio_activo_ids)
+        ? datos.repertorio_activo_ids
+        : (Array.isArray(datos.repertorioActivoIds) ? datos.repertorioActivoIds : null);
+      estado.idsRepertorioRemoto = idsRemotos ? new Set(idsRemotos.map(String)) : null;
+      // El id publicado por el panel es la fuente principal. Si además llegan
+      // ids directos, se acepta aunque sea un repertorio personalizado nuevo.
+      const listaAplicable = (estado.idsRepertorioRemoto || modoValido(listaRemota))
+        ? listaRemota
+        : "principal-diario";
 
       estado.configRemota = {
         lista_activa: listaAplicable,
@@ -942,7 +951,12 @@ function actualizarCategoriasDisponibles() {
 
 function aplicarModo(modo, desplazar = true) {
   estado.modo = modo;
-  estado.base = estado.todas.filter((cancion) => cancion.listas.includes(modo));
+  const usarIdsRemotos =
+    estado.idsRepertorioRemoto instanceof Set &&
+    estado.configRemota?.lista_activa === modo;
+  estado.base = usarIdsRemotos
+    ? estado.todas.filter((cancion) => estado.idsRepertorioRemoto.has(String(cancion.id)))
+    : estado.todas.filter((cancion) => Array.isArray(cancion.listas) && cancion.listas.includes(modo));
   estado.categoria = null;
   estado.consulta = "";
   estado.mostrar = false;

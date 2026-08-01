@@ -76,9 +76,17 @@
       if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
       const cfg=state.config||{};
       const activeId=cfg.repertoire||'todas';
+      // Puente directo panel → cliente. Evita depender de que el cliente
+      // reconstruya el repertorio desde ediciones/biblioteca.
+      const activeSongIds=(activeId==='todas'
+        ? state.songs
+        : state.songs.filter(song=>Array.isArray(song.listas)&&song.listas.includes(activeId))
+      ).map(song=>song.id);
       await window.__egmSetDoc(remoteStateRef,{
         lista_activa:activeId,
         listaActiva:activeId,
+        repertorio_activo_ids:activeSongIds,
+        repertorioActivoIds:activeSongIds,
         pedidos_whatsapp:cfg.whatsapp!==false,
         mostrar_cola:cfg.publicQueue!==false,
         lugar:cfg.venue||'',
