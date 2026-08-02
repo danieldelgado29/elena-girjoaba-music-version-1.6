@@ -1314,38 +1314,65 @@
   function closeAllPopovers(except){
     document.querySelectorAll('.egm-editor-toolbar .compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
   }
-  let activeToolbarPopover=null;
-  function placePopover(button,popover){
-    if(!button||!popover||popover.hidden)return;
-    const r=button.getBoundingClientRect();
-    const pr=popover.getBoundingClientRect();
-    const margin=8;
-    const centered=r.left+(r.width/2)-(pr.width/2);
-    const left=Math.max(margin,Math.min(window.innerWidth-pr.width-margin,centered));
-    const roomBelow=window.innerHeight-r.bottom;
-    const openBelow=roomBelow>=pr.height+12 || r.top<pr.height+12;
-    const top=openBelow ? r.bottom+8 : Math.max(margin,r.top-pr.height-8);
-    popover.dataset.placement=openBelow?'bottom':'top';
-    popover.style.left=Math.round(left)+'px';
-    popover.style.top=Math.round(top)+'px';
-  }
   function showHeldPopover(button,popover){
     if(!button||!popover)return;
     closeAllPopovers(popover);
-    activeToolbarPopover={button,popover};
-    popover.classList.remove('is-visible');
-    popover.style.visibility='hidden';
+    const r=button.getBoundingClientRect();
     popover.hidden=false;
-    placePopover(button,popover);
-    popover.style.visibility='visible';
-    requestAnimationFrame(()=>popover.classList.add('is-visible'));
+    requestAnimationFrame(()=>{
+      const pr=popover.getBoundingClientRect();
+      const left=Math.max(8,Math.min(innerWidth-pr.width-8,r.left+r.width/2-pr.width/2));
+      const top=Math.max(8,r.top-pr.height-8);
+      popover.style.left=left+'px';popover.style.top=top+'px';
+    });
   }
   function bindHold(button,popover,delay=520){
     if(!button||!popover)return;
-    let timer=0,held=false;
-    button.addEventListener('pointerdown',e=>{held=false;timer=setTimeout(()=>{held=true;showHeldPopover(button,popover);},delay);});
-    ['pointerup','pointercancel','pointerleave'].forEach(type=>button.addEventListener(type,()=>clearTimeout(timer)));
-    button.addEventListener('click',e=>{if(held){e.preventDefault();e.stopImmediatePropagation();held=false;}},true);
+    let timer=0,held=false,touchActive=false,suppressClickUntil=0,startX=0,startY=0;
+    const clear=()=>{clearTimeout(timer);timer=0;};
+    const open=()=>{
+      held=true;
+      suppressClickUntil=Date.now()+700;
+      showHeldPopover(button,popover);
+      if(navigator.vibrate) navigator.vibrate(18);
+    };
+
+    // iPhone/iPad: Safari puede abrir “Copiar / Traducir” antes del click.
+    // Capturamos el gesto táctil desde touchstart y anulamos el menú nativo.
+    button.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1)return;
+      touchActive=true;held=false;
+      startX=e.touches[0].clientX;startY=e.touches[0].clientY;
+      e.preventDefault();
+      clear();timer=setTimeout(open,delay);
+    },{passive:false});
+    button.addEventListener('touchmove',e=>{
+      if(!touchActive||e.touches.length!==1)return;
+      const t=e.touches[0];
+      if(Math.hypot(t.clientX-startX,t.clientY-startY)>12)clear();
+      e.preventDefault();
+    },{passive:false});
+    button.addEventListener('touchend',e=>{
+      if(!touchActive)return;
+      e.preventDefault();clear();touchActive=false;
+      if(!held){suppressClickUntil=Date.now()+500;button.click();}
+      held=false;
+    },{passive:false});
+    button.addEventListener('touchcancel',()=>{clear();touchActive=false;held=false;},{passive:true});
+
+    // Mouse, trackpad, Android y Apple Pencil mediante Pointer Events.
+    button.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='touch'||touchActive)return;
+      held=false;clear();timer=setTimeout(open,delay);
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(type=>button.addEventListener(type,clear));
+
+    ['contextmenu','selectstart','dragstart'].forEach(type=>button.addEventListener(type,e=>e.preventDefault()));
+    button.addEventListener('click',e=>{
+      if(held||Date.now()<suppressClickUntil){
+        e.preventDefault();e.stopImmediatePropagation();held=false;
+      }
+    },true);
   }
   bindHold($id('songbookTextTool'),$id('songbookTextOptions'));
   bindHold($id('songbookAlign'),$id('songbookAlignOptions'));
@@ -1367,11 +1394,8 @@
     document.execCommand(command,false,null);$id('songbookAlignOptions').hidden=true;$id('songbookEditor')?.focus();
   });
 
-  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover')){closeAllPopovers();activeToolbarPopover=null;}});
-  const refreshPopoverPosition=()=>{if(activeToolbarPopover&&!activeToolbarPopover.popover.hidden)placePopover(activeToolbarPopover.button,activeToolbarPopover.popover);};
-  window.addEventListener('resize',refreshPopoverPosition,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(refreshPopoverPosition,120),{passive:true});
-  [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',()=>{closeAllPopovers();activeToolbarPopover=null;}));
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover'))closeAllPopovers();});
+  [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',closeAllPopovers));
 })();
 
 /* Entrega V4.1 · sincronización visual de colores en T y lápiz */

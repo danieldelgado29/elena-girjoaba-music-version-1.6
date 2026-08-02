@@ -691,56 +691,18 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .egm-text-size-grid button{min-width:34px!important;height:34px!important;padding:0 7px!important;border:1px solid #bbb!important;border-radius:7px!important;background:#f6f6f6!important;color:#111!important;font-weight:700!important}
 #imageEditorPaper.text-mode #imageEditorCanvas{cursor:text!important}
 
-/* Editor V4 entrega 1.6 · menús de herramientas estables y profesionales */
-.egm-tool-popover,.egm-draw-options,.egm-eraser-options,.egm-align-options{
-  opacity:0!important;
-  transform:translateY(-3px) scale(.985)!important;
-  transform-origin:50% 100%!important;
-  transition:opacity .16s ease,transform .16s ease!important;
-  will-change:opacity,transform!important;
-  overflow:visible!important;
-  backdrop-filter:blur(18px)!important;
-  -webkit-backdrop-filter:blur(18px)!important;
-  background:rgba(255,255,255,.98)!important;
+
+/* Entrega 6.36.7 · pulsación sostenida del lápiz estable en iPhone/iPad */
+#imageToolPencil,#songbookDrawToggle,
+#imageToolPencil *,#songbookDrawToggle *{
+  -webkit-touch-callout:none!important;
+  -webkit-user-select:none!important;
+  user-select:none!important;
+  touch-action:manipulation!important;
+  -webkit-tap-highlight-color:transparent!important;
 }
-.egm-tool-popover[data-placement="bottom"],.egm-draw-options[data-placement="bottom"],.egm-eraser-options[data-placement="bottom"],.egm-align-options[data-placement="bottom"]{
-  transform-origin:50% 0!important;
-  transform:translateY(3px) scale(.985)!important;
-}
-.egm-tool-popover.is-visible,.egm-draw-options.is-visible,.egm-eraser-options.is-visible,.egm-align-options.is-visible{
-  opacity:1!important;
-  transform:translateY(0) scale(1)!important;
-}
-#imagePencilOptions{
-  display:grid!important;
-  grid-template-columns:auto minmax(92px,112px) minmax(98px,120px)!important;
-  align-items:center!important;
-  gap:8px!important;
-  width:max-content!important;
-  max-width:calc(100vw - 16px)!important;
-  padding:8px!important;
-}
-#imagePencilOptions .egm-color-grid{padding-right:2px!important}
-#imagePencilOptions select{
-  width:100%!important;
-  max-width:none!important;
-  border:1px solid #c8c8c8!important;
-  border-radius:8px!important;
-  padding:0 26px 0 9px!important;
-  font-size:13px!important;
-  box-shadow:none!important;
-}
-@media(max-width:560px){
-  #imagePencilOptions{
-    grid-template-columns:1fr 1fr!important;
-    width:min(330px,calc(100vw - 16px))!important;
-  }
-  #imagePencilOptions .egm-color-grid{
-    grid-column:1/-1!important;
-    justify-content:center!important;
-    padding:0 0 2px!important;
-  }
-}
-@media(prefers-reduced-motion:reduce){
-  .egm-tool-popover,.egm-draw-options,.egm-eraser-options,.egm-align-options{transition:none!important}
+#imagePencilOptions,#songbookDrawOptions{
+  -webkit-touch-callout:none!important;
+  -webkit-user-select:none!important;
+  user-select:none!important;
 }
