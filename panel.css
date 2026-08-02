@@ -713,3 +713,38 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 #imagePencilOptions .egm-color-grid button{box-sizing:border-box!important;flex:0 0 29px!important;width:29px!important;min-width:29px!important;max-width:29px!important;height:29px!important;min-height:29px!important;max-height:29px!important;aspect-ratio:1/1!important;padding:0!important;border:0!important;border-radius:50%!important;box-shadow:none!important;outline:none!important}
 #imagePencilOptions .egm-color-grid button[data-image-pencil-color="#ffffff"]{border:1px solid #9b9b9b!important}
 #imagePencilOptions .egm-color-grid button.is-active{outline:2px solid #1677ff!important;outline-offset:2px!important}
+
+
+/* Entrega 6.36.9 · menú profesional del lápiz y dibujo inmediato */
+#imagePencilOptions.egm-pencil-panel{
+  display:grid!important;
+  align-items:stretch!important;
+  gap:14px!important;
+  width:min(330px,calc(100vw - 20px))!important;
+  min-height:0!important;
+  padding:14px!important;
+  border:1px solid rgba(20,20,20,.12)!important;
+  border-radius:16px!important;
+  background:rgba(255,255,255,.98)!important;
+  box-shadow:0 18px 55px rgba(0,0,0,.28)!important;
+  backdrop-filter:blur(18px)!important;
+  -webkit-backdrop-filter:blur(18px)!important;
+}
+#imagePencilOptions.egm-pencil-panel[hidden]{display:none!important}
+.egm-pencil-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:2px}
+.egm-pencil-panel-head strong{font-size:16px;line-height:1;color:#111}
+.egm-pencil-panel-close{width:30px!important;min-width:30px!important;height:30px!important;padding:0!important;border:0!important;border-radius:9px!important;background:#f0f0f0!important;color:#111!important;font-size:22px!important;line-height:1!important}
+.egm-pencil-section{display:grid;gap:8px}
+.egm-pencil-label{font-size:12px;font-weight:750;letter-spacing:.02em;color:#555}
+#imagePencilOptions .egm-color-grid{display:grid!important;grid-template-columns:repeat(5,1fr)!important;gap:12px!important}
+#imagePencilOptions .egm-color-grid button{justify-self:center!important;box-sizing:border-box!important;width:34px!important;min-width:34px!important;max-width:34px!important;height:34px!important;min-height:34px!important;max-height:34px!important;aspect-ratio:1!important;padding:0!important;border:0!important;border-radius:50%!important;box-shadow:none!important;outline:none!important;transform:none!important}
+#imagePencilOptions .egm-color-grid button[data-image-pencil-color="#ffffff"]{border:1px solid #aaa!important}
+#imagePencilOptions .egm-color-grid button.is-active{outline:3px solid rgba(22,119,255,.32)!important;outline-offset:3px!important}
+.egm-pencil-size-grid,.egm-pencil-mode-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.egm-pencil-mode-grid{grid-template-columns:repeat(3,1fr)}
+.egm-pencil-size-grid button,.egm-pencil-mode-grid button{height:42px!important;min-width:0!important;padding:0 8px!important;border:1px solid #dedede!important;border-radius:10px!important;background:#f7f7f7!important;color:#111!important;box-shadow:none!important}
+.egm-pencil-size-grid button.is-active,.egm-pencil-mode-grid button.is-active{background:#f3d789!important;border-color:#e1be54!important;box-shadow:inset 0 0 0 1px rgba(120,80,0,.08)!important}
+.egm-pencil-size-grid button span{display:block;width:72%;margin:auto;border-radius:999px;background:#111}
+.egm-mode-line{display:block;width:72%;height:3px;margin:auto;border-radius:999px;background:#111}
+.egm-mode-arrow{display:block;font-size:28px;line-height:1;font-weight:400}
+@media(max-width:480px){#imagePencilOptions.egm-pencil-panel{width:min(310px,calc(100vw - 16px))!important;padding:12px!important;gap:12px!important}.egm-pencil-size-grid button,.egm-pencil-mode-grid button{height:40px!important}}
