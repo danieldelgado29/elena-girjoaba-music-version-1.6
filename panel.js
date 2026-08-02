@@ -1244,7 +1244,34 @@
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();}));
   $('#imageBold').addEventListener('click',()=>{imageEditorState.textBold=!imageEditorState.textBold;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();});
   $('#imageItalic').addEventListener('click',()=>{imageEditorState.textItalic=!imageEditorState.textItalic;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();});
-  $('#imageToolPencil').addEventListener('click',e=>{const menu=$('#imagePencilOptions');if(menu&&!menu.hidden){menu.hidden=true;e.preventDefault();return;}if(!imageInlineText.hidden)commitImageText();imageEditorState.tool='pencil';imageEditorPaper().classList.remove('text-mode');$('#imageTextTool').classList.remove('is-active');$('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');});
+  $('#imageToolPencil').addEventListener('click',e=>{
+    const button=$('#imageToolPencil');
+    const menu=$('#imagePencilOptions');
+    if(button?.dataset?.egmIgnoreClick==='1'){
+      button.dataset.egmIgnoreClick='0';
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    if(menu&&!menu.hidden){
+      menu.hidden=true;
+      menu.style.visibility='';
+      e.preventDefault();
+      return;
+    }
+    const wasActive=imageEditorState.tool==='pencil'&&button.classList.contains('is-active');
+    if(!imageInlineText.hidden)commitImageText();
+    imageEditorState.tool='pencil';
+    imageEditorPaper().classList.remove('text-mode');
+    $('#imageTextTool').classList.remove('is-active');
+    button.classList.add('is-active');
+    $('#imageToolEraser').classList.remove('is-active');
+    // Si el lápiz ya estaba activo, un clic normal también abre el menú.
+    // Esto sirve como respaldo visible en Mac/iPhone sin alterar el primer clic de activación.
+    if(wasActive&&typeof window.egmOpenImagePencilMenu==='function'){
+      window.egmOpenImagePencilMenu();
+    }
+  });
   function syncPencilOptionState(){
     $$('[data-image-pencil-color]').forEach(b=>b.classList.toggle('is-active',b.dataset.imagePencilColor.toLowerCase()===imageEditorState.pencilColor.toLowerCase()));
     $$('[data-image-pencil-size]').forEach(b=>b.classList.toggle('is-active',Number(b.dataset.imagePencilSize)===imageEditorState.pencilSize));
@@ -1402,79 +1429,67 @@
   bindHold($id('imageToolEraser'),$id('imageEraserOptions'));
   bindHold($id('imageUploadTrigger'),null);
 
-  // Entrega 6.36.12 · pulsación larga dedicada para el lápiz.
-  // No depende del click nativo de Safari/iOS y también funciona con mouse.
+  // Entrega 6.36.13 · controlador robusto del menú del lápiz.
+  // Pulsación larga en touch/pen/mouse y clic de respaldo cuando el lápiz ya está activo.
   (function bindImagePencilMenu(){
     const button=$id('imageToolPencil');
     const popover=$id('imagePencilOptions');
     if(!button||!popover)return;
     let timer=0;
-    let pointerId=null;
+    let activeId=null;
     let startX=0,startY=0;
-    let openedByHold=false;
-    let blockNextClick=false;
-    const cancelTimer=()=>{if(timer){clearTimeout(timer);timer=0;}};
-    const openMenu=()=>{
-      cancelTimer();
-      openedByHold=true;
-      blockNextClick=true;
+    let opened=false;
+    const clearTimer=()=>{if(timer){clearTimeout(timer);timer=0;}};
+    const open=()=>{
+      clearTimer();
+      opened=true;
       showHeldPopover(button,popover);
+      try{navigator.vibrate?.(15);}catch(_){ }
     };
-    const start=(e)=>{
+    window.egmOpenImagePencilMenu=open;
+    const begin=(e)=>{
       if(e.type==='pointerdown'&&e.button!==undefined&&e.button!==0)return;
-      pointerId=e.pointerId??'fallback';
-      startX=e.clientX??e.touches?.[0]?.clientX??0;
-      startY=e.clientY??e.touches?.[0]?.clientY??0;
-      openedByHold=false;
-      blockNextClick=false;
-      cancelTimer();
-      // Evita selección, arrastre y el menú Copiar/Traducir de iOS.
+      activeId=e.pointerId??'touch';
+      const point=e.touches?.[0]||e;
+      startX=point.clientX||0;startY=point.clientY||0;
+      opened=false;
+      clearTimer();
       if(e.cancelable)e.preventDefault();
-      timer=setTimeout(openMenu,480);
+      timer=setTimeout(open,420);
     };
     const move=(e)=>{
-      if(pointerId===null)return;
-      const x=e.clientX??e.touches?.[0]?.clientX??startX;
-      const y=e.clientY??e.touches?.[0]?.clientY??startY;
-      if(Math.hypot(x-startX,y-startY)>14)cancelTimer();
+      if(activeId===null)return;
+      const point=e.touches?.[0]||e;
+      const x=point.clientX??startX,y=point.clientY??startY;
+      if(Math.hypot(x-startX,y-startY)>10)clearTimer();
+      if(e.cancelable)e.preventDefault();
     };
-    const finish=(e)=>{
-      if(pointerId===null)return;
-      cancelTimer();
-      pointerId=null;
-      if(openedByHold){
-        if(e?.cancelable)e.preventDefault();
-        setTimeout(()=>{openedByHold=false;},80);
-      }else{
-        // En touch, preventDefault evita el click nativo; lo generamos una vez.
-        if(e?.pointerType==='touch'||e?.pointerType==='pen'||e?.type==='touchend'){
-          blockNextClick=false;
-          button.click();
-        }
+    const endPress=(e)=>{
+      if(activeId===null)return;
+      clearTimer();
+      activeId=null;
+      if(opened){
+        button.dataset.egmIgnoreClick='1';
+        if(e.cancelable)e.preventDefault();
+        setTimeout(()=>{opened=false;},0);
       }
     };
     button.style.webkitTouchCallout='none';
     button.style.webkitUserSelect='none';
     button.style.userSelect='none';
     button.style.touchAction='none';
-    button.addEventListener('pointerdown',start,{passive:false});
+    button.addEventListener('pointerdown',begin,{passive:false});
     button.addEventListener('pointermove',move,{passive:false});
-    button.addEventListener('pointerup',finish,{passive:false});
-    button.addEventListener('pointercancel',()=>{cancelTimer();pointerId=null;openedByHold=false;});
-    // Fallback para Safari antiguos que no entreguen Pointer Events de forma estable.
-    button.addEventListener('touchstart',e=>{if(pointerId===null)start(e);},{passive:false});
-    button.addEventListener('touchmove',move,{passive:false});
-    button.addEventListener('touchend',finish,{passive:false});
-    button.addEventListener('contextmenu',e=>e.preventDefault());
-    button.addEventListener('selectstart',e=>e.preventDefault());
-    button.addEventListener('dragstart',e=>e.preventDefault());
-    button.addEventListener('click',e=>{
-      if(blockNextClick||openedByHold){
-        blockNextClick=false;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-      }
-    },true);
+    button.addEventListener('pointerup',endPress,{passive:false});
+    button.addEventListener('pointercancel',()=>{clearTimer();activeId=null;opened=false;});
+    // Solo usar eventos Touch como fallback cuando Pointer Events no existen.
+    if(!window.PointerEvent){
+      button.addEventListener('touchstart',begin,{passive:false});
+      button.addEventListener('touchmove',move,{passive:false});
+      button.addEventListener('touchend',endPress,{passive:false});
+      button.addEventListener('touchcancel',()=>{clearTimer();activeId=null;opened=false;},{passive:false});
+    }
+    ['contextmenu','selectstart','dragstart'].forEach(type=>button.addEventListener(type,e=>e.preventDefault()));
   })();
 
   const textModeButtons=[$id('songbookTextTool'),$id('songbookDrawToggle'),$id('songbookEraserToggle')].filter(Boolean);
