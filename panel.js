@@ -1320,18 +1320,31 @@
   if(!textDialog||!imageDialog)return;
 
   function closeAllPopovers(except){
-    document.querySelectorAll('.egm-editor-toolbar .compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
+    document.querySelectorAll('.compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
   }
   function showHeldPopover(button,popover){
     if(!button||!popover)return;
     closeAllPopovers(popover);
+    // Sacamos el menú de la barra antes de mostrarlo. En Safari/iPhone y en
+    // la app instalada, overflow-x:auto de la barra recortaba el contenido
+    // y dejaba visible únicamente el encabezado.
+    if(popover.parentElement!==document.body){
+      popover._egmHome={parent:popover.parentElement,next:popover.nextSibling};
+      document.body.appendChild(popover);
+    }
     const r=button.getBoundingClientRect();
     popover.hidden=false;
+    popover.style.visibility='hidden';
     requestAnimationFrame(()=>{
       const pr=popover.getBoundingClientRect();
       const left=Math.max(8,Math.min(innerWidth-pr.width-8,r.left+r.width/2-pr.width/2));
-      const top=Math.max(8,r.top-pr.height-8);
-      popover.style.left=left+'px';popover.style.top=top+'px';
+      const roomBelow=innerHeight-r.bottom-8;
+      const top=roomBelow>=pr.height
+        ? r.bottom+8
+        : Math.max(8,r.top-pr.height-8);
+      popover.style.left=left+'px';
+      popover.style.top=top+'px';
+      popover.style.visibility='visible';
     });
   }
   function bindHold(button,popover,delay=520){
