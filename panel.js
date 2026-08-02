@@ -1314,17 +1314,31 @@
   function closeAllPopovers(except){
     document.querySelectorAll('.egm-editor-toolbar .compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
   }
+  let activeToolbarPopover=null;
+  function placePopover(button,popover){
+    if(!button||!popover||popover.hidden)return;
+    const r=button.getBoundingClientRect();
+    const pr=popover.getBoundingClientRect();
+    const margin=8;
+    const centered=r.left+(r.width/2)-(pr.width/2);
+    const left=Math.max(margin,Math.min(window.innerWidth-pr.width-margin,centered));
+    const roomBelow=window.innerHeight-r.bottom;
+    const openBelow=roomBelow>=pr.height+12 || r.top<pr.height+12;
+    const top=openBelow ? r.bottom+8 : Math.max(margin,r.top-pr.height-8);
+    popover.dataset.placement=openBelow?'bottom':'top';
+    popover.style.left=Math.round(left)+'px';
+    popover.style.top=Math.round(top)+'px';
+  }
   function showHeldPopover(button,popover){
     if(!button||!popover)return;
     closeAllPopovers(popover);
-    const r=button.getBoundingClientRect();
+    activeToolbarPopover={button,popover};
+    popover.classList.remove('is-visible');
+    popover.style.visibility='hidden';
     popover.hidden=false;
-    requestAnimationFrame(()=>{
-      const pr=popover.getBoundingClientRect();
-      const left=Math.max(8,Math.min(innerWidth-pr.width-8,r.left+r.width/2-pr.width/2));
-      const top=Math.max(8,r.top-pr.height-8);
-      popover.style.left=left+'px';popover.style.top=top+'px';
-    });
+    placePopover(button,popover);
+    popover.style.visibility='visible';
+    requestAnimationFrame(()=>popover.classList.add('is-visible'));
   }
   function bindHold(button,popover,delay=520){
     if(!button||!popover)return;
@@ -1353,8 +1367,11 @@
     document.execCommand(command,false,null);$id('songbookAlignOptions').hidden=true;$id('songbookEditor')?.focus();
   });
 
-  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover'))closeAllPopovers();});
-  [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',closeAllPopovers));
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.egm-tool-wrap,.compact-popover')){closeAllPopovers();activeToolbarPopover=null;}});
+  const refreshPopoverPosition=()=>{if(activeToolbarPopover&&!activeToolbarPopover.popover.hidden)placePopover(activeToolbarPopover.button,activeToolbarPopover.popover);};
+  window.addEventListener('resize',refreshPopoverPosition,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(refreshPopoverPosition,120),{passive:true});
+  [textDialog,imageDialog].forEach(dialog=>dialog.addEventListener('close',()=>{closeAllPopovers();activeToolbarPopover=null;}));
 })();
 
 /* Entrega V4.1 · sincronización visual de colores en T y lápiz */
