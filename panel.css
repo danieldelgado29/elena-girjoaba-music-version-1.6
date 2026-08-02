@@ -706,3 +706,10 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
   -webkit-user-select:none!important;
   user-select:none!important;
 }
+
+
+/* Entrega 6.36.8 · menú del lápiz y muestras de color */
+#imagePencilOptions .egm-color-grid{display:flex!important;align-items:center!important;gap:7px!important}
+#imagePencilOptions .egm-color-grid button{box-sizing:border-box!important;flex:0 0 29px!important;width:29px!important;min-width:29px!important;max-width:29px!important;height:29px!important;min-height:29px!important;max-height:29px!important;aspect-ratio:1/1!important;padding:0!important;border:0!important;border-radius:50%!important;box-shadow:none!important;outline:none!important}
+#imagePencilOptions .egm-color-grid button[data-image-pencil-color="#ffffff"]{border:1px solid #9b9b9b!important}
+#imagePencilOptions .egm-color-grid button.is-active{outline:2px solid #1677ff!important;outline-offset:2px!important}
