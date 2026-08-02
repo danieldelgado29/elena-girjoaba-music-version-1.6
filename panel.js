@@ -1258,7 +1258,20 @@
   $('#imageToolEraser').addEventListener('click',()=>{if(!imageInlineText.hidden)commitImageText();imageEditorState.tool='eraser';imageEditorPaper().classList.remove('text-mode');$('#imageToolEraser').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');});
   $$('[data-image-eraser-target]').forEach(btn=>btn.addEventListener('click',()=>{imageEditorState.eraserTarget=btn.dataset.imageEraserTarget;imageEditorState.tool='eraser';$('#imageEraserOptions').hidden=true;toast(imageEditorState.eraserTarget==='photo'?'Borrador: parte de la foto':'Borrador: anotaciones');}));
   $$('[data-image-eraser-size]').forEach(btn=>btn.addEventListener('click',()=>{imageEditorState.eraserSize=Number(btn.dataset.imageEraserSize);imageEditorState.tool='eraser';$('#imageEraserOptions').hidden=true;}));
-  $('#imageDrawSize').addEventListener('change',e=>{activateImagePencil();imageEditorState.pencilSize=Number(e.target.value);});$('#imageDrawMode').addEventListener('change',e=>{activateImagePencil();imageEditorState.drawMode=e.target.value;});
+  function finishImagePencilOptionChange(control){
+    activateImagePencil();
+    const menu=$('#imagePencilOptions');
+    if(menu)menu.hidden=true;
+    control?.blur?.();
+  }
+  $('#imageDrawSize').addEventListener('change',e=>{
+    imageEditorState.pencilSize=Number(e.target.value);
+    finishImagePencilOptionChange(e.currentTarget);
+  });
+  $('#imageDrawMode').addEventListener('change',e=>{
+    imageEditorState.drawMode=e.target.value;
+    finishImagePencilOptionChange(e.currentTarget);
+  });
   function imagePoint(e){const c=imageEditorCanvas(),r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};}
   function arrowTangent(path,atEnd=true){if(!path||path.length<2)return null;const edge=atEnd?path.length-1:0,step=atEnd?-1:1,tip=path[edge];let i=edge+step;while(i>=0&&i<path.length){const q=path[i];if(Math.hypot(tip.x-q.x,tip.y-q.y)>=Math.max(5,imageEditorState.pencilSize*.8))return {from:q,tip};i+=step;}const q=path[Math.max(0,Math.min(path.length-1,edge+step))];return {from:q,tip};}
   function strokeArrow(ctx,path,both=false){const len=Math.max(18,imageEditorState.pencilSize*3);const head=t=>{const ang=Math.atan2(t.tip.y-t.from.y,t.tip.x-t.from.x);ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang-Math.PI/6),t.tip.y-len*Math.sin(ang-Math.PI/6));ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang+Math.PI/6),t.tip.y-len*Math.sin(ang+Math.PI/6));};const end=arrowTangent(path,true);if(end)head(end);if(both){const start=arrowTangent(path,false);if(start)head(start);}}
