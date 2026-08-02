@@ -1399,9 +1399,83 @@
   bindHold($id('songbookAlign'),$id('songbookAlignOptions'));
   bindHold($id('songbookDrawToggle'),$id('songbookDrawOptions'));
   bindHold($id('songbookEraserToggle'),$id('songbookEraserOptions'));
-  bindHold($id('imageToolPencil'),$id('imagePencilOptions'));
   bindHold($id('imageToolEraser'),$id('imageEraserOptions'));
   bindHold($id('imageUploadTrigger'),null);
+
+  // Entrega 6.36.12 · pulsación larga dedicada para el lápiz.
+  // No depende del click nativo de Safari/iOS y también funciona con mouse.
+  (function bindImagePencilMenu(){
+    const button=$id('imageToolPencil');
+    const popover=$id('imagePencilOptions');
+    if(!button||!popover)return;
+    let timer=0;
+    let pointerId=null;
+    let startX=0,startY=0;
+    let openedByHold=false;
+    let blockNextClick=false;
+    const cancelTimer=()=>{if(timer){clearTimeout(timer);timer=0;}};
+    const openMenu=()=>{
+      cancelTimer();
+      openedByHold=true;
+      blockNextClick=true;
+      showHeldPopover(button,popover);
+    };
+    const start=(e)=>{
+      if(e.type==='pointerdown'&&e.button!==undefined&&e.button!==0)return;
+      pointerId=e.pointerId??'fallback';
+      startX=e.clientX??e.touches?.[0]?.clientX??0;
+      startY=e.clientY??e.touches?.[0]?.clientY??0;
+      openedByHold=false;
+      blockNextClick=false;
+      cancelTimer();
+      // Evita selección, arrastre y el menú Copiar/Traducir de iOS.
+      if(e.cancelable)e.preventDefault();
+      timer=setTimeout(openMenu,480);
+    };
+    const move=(e)=>{
+      if(pointerId===null)return;
+      const x=e.clientX??e.touches?.[0]?.clientX??startX;
+      const y=e.clientY??e.touches?.[0]?.clientY??startY;
+      if(Math.hypot(x-startX,y-startY)>14)cancelTimer();
+    };
+    const finish=(e)=>{
+      if(pointerId===null)return;
+      cancelTimer();
+      pointerId=null;
+      if(openedByHold){
+        if(e?.cancelable)e.preventDefault();
+        setTimeout(()=>{openedByHold=false;},80);
+      }else{
+        // En touch, preventDefault evita el click nativo; lo generamos una vez.
+        if(e?.pointerType==='touch'||e?.pointerType==='pen'||e?.type==='touchend'){
+          blockNextClick=false;
+          button.click();
+        }
+      }
+    };
+    button.style.webkitTouchCallout='none';
+    button.style.webkitUserSelect='none';
+    button.style.userSelect='none';
+    button.style.touchAction='none';
+    button.addEventListener('pointerdown',start,{passive:false});
+    button.addEventListener('pointermove',move,{passive:false});
+    button.addEventListener('pointerup',finish,{passive:false});
+    button.addEventListener('pointercancel',()=>{cancelTimer();pointerId=null;openedByHold=false;});
+    // Fallback para Safari antiguos que no entreguen Pointer Events de forma estable.
+    button.addEventListener('touchstart',e=>{if(pointerId===null)start(e);},{passive:false});
+    button.addEventListener('touchmove',move,{passive:false});
+    button.addEventListener('touchend',finish,{passive:false});
+    button.addEventListener('contextmenu',e=>e.preventDefault());
+    button.addEventListener('selectstart',e=>e.preventDefault());
+    button.addEventListener('dragstart',e=>e.preventDefault());
+    button.addEventListener('click',e=>{
+      if(blockNextClick||openedByHold){
+        blockNextClick=false;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    },true);
+  })();
 
   const textModeButtons=[$id('songbookTextTool'),$id('songbookDrawToggle'),$id('songbookEraserToggle')].filter(Boolean);
   function setExclusive(button,buttons){buttons.forEach(b=>b.classList.toggle('is-active',b===button));}

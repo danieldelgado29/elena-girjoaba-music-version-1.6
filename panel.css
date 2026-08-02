@@ -757,3 +757,13 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 }
 #imagePencilOptions{position:fixed!important;z-index:2147483000!important;}
 #imageEditorCanvas{touch-action:none!important;}
+
+
+/* Entrega 6.36.12 · el botón lápiz no invoca menús nativos */
+#imageToolPencil,#imageToolPencil *{
+  -webkit-touch-callout:none!important;
+  -webkit-user-select:none!important;
+  user-select:none!important;
+  touch-action:none!important;
+  -webkit-tap-highlight-color:transparent!important;
+}
