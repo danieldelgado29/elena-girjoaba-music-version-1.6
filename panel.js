@@ -1261,7 +1261,7 @@
   function imagePoint(e){const c=imageEditorCanvas(),r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};}
   function arrowTangent(path,atEnd=true){if(!path||path.length<2)return null;const edge=atEnd?path.length-1:0,step=atEnd?-1:1,tip=path[edge];let i=edge+step;while(i>=0&&i<path.length){const q=path[i];if(Math.hypot(tip.x-q.x,tip.y-q.y)>=Math.max(5,imageEditorState.pencilSize*.8))return {from:q,tip};i+=step;}const q=path[Math.max(0,Math.min(path.length-1,edge+step))];return {from:q,tip};}
   function strokeArrow(ctx,path,both=false){const len=Math.max(18,imageEditorState.pencilSize*3);const head=t=>{const ang=Math.atan2(t.tip.y-t.from.y,t.tip.x-t.from.x);ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang-Math.PI/6),t.tip.y-len*Math.sin(ang-Math.PI/6));ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang+Math.PI/6),t.tip.y-len*Math.sin(ang+Math.PI/6));};const end=arrowTangent(path,true);if(end)head(end);if(both){const start=arrowTangent(path,false);if(start)head(start);}}
-  imageEditorCanvas().addEventListener('pointerdown',e=>{if(imageEditorState.tool==='text'||(e.pointerType==='touch'&&imageEditorState.pointers.size>1))return;const pencilMenu=$('#imagePencilOptions');if(pencilMenu&&!pencilMenu.hidden)pencilMenu.hidden=true;e.preventDefault();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);imageEditorState.path=[imageEditorState.last];e.currentTarget.setPointerCapture(e.pointerId);},{capture:true});
+  imageEditorCanvas().addEventListener('pointerdown',e=>{if(imageEditorState.tool==='text'||(e.pointerType==='touch'&&imageEditorState.pointers.size>1))return;const pencilMenu=$('#imagePencilOptions');if(pencilMenu&&!pencilMenu.hidden){pencilMenu.hidden=true;pencilMenu.style.visibility='';}e.preventDefault();e.stopPropagation();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);imageEditorState.path=[imageEditorState.last];try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}},{capture:true});
   imageEditorCanvas().addEventListener('pointermove',e=>{if(!imageEditorState.drawing)return;e.preventDefault();const p=imagePoint(e),target=imageEditorState.tool==='eraser'&&imageEditorState.eraserTarget==='photo'?imageBaseCanvas():imageEditorCanvas(),ctx=target.getContext('2d');ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=imageEditorState.tool==='eraser'?imageEditorState.eraserSize:imageEditorState.pencilSize;ctx.strokeStyle=imageEditorState.pencilColor;ctx.globalCompositeOperation=imageEditorState.tool==='eraser'?'destination-out':'source-over';ctx.beginPath();ctx.moveTo(imageEditorState.last.x,imageEditorState.last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();imageEditorState.last=p;imageEditorState.path.push(p);});
   const finishImageDraw=()=>{if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
@@ -1349,50 +1349,50 @@
   }
   function bindHold(button,popover,delay=520){
     if(!button||!popover)return;
-    let timer=0,held=false,touchActive=false,suppressClickUntil=0,startX=0,startY=0;
-    const clear=()=>{clearTimeout(timer);timer=0;};
+    let timer=0;
+    let held=false;
+    let suppressClick=false;
+    let activePointer=null;
+    let startX=0,startY=0;
+    const clear=()=>{if(timer){clearTimeout(timer);timer=0;}};
     const open=()=>{
+      timer=0;
       held=true;
-      suppressClickUntil=Date.now()+700;
+      suppressClick=true;
       showHeldPopover(button,popover);
-      if(navigator.vibrate) navigator.vibrate(18);
+      if(navigator.vibrate)navigator.vibrate(18);
     };
-
-    // iPhone/iPad: Safari puede abrir “Copiar / Traducir” antes del click.
-    // Capturamos el gesto táctil desde touchstart y anulamos el menú nativo.
-    button.addEventListener('touchstart',e=>{
-      if(e.touches.length!==1)return;
-      touchActive=true;held=false;
-      startX=e.touches[0].clientX;startY=e.touches[0].clientY;
-      e.preventDefault();
-      clear();timer=setTimeout(open,delay);
-    },{passive:false});
-    button.addEventListener('touchmove',e=>{
-      if(!touchActive||e.touches.length!==1)return;
-      const t=e.touches[0];
-      if(Math.hypot(t.clientX-startX,t.clientY-startY)>12)clear();
-      e.preventDefault();
-    },{passive:false});
-    button.addEventListener('touchend',e=>{
-      if(!touchActive)return;
-      e.preventDefault();clear();touchActive=false;
-      if(!held){suppressClickUntil=Date.now()+500;button.click();}
-      held=false;
-    },{passive:false});
-    button.addEventListener('touchcancel',()=>{clear();touchActive=false;held=false;},{passive:true});
-
-    // Mouse, trackpad, Android y Apple Pencil mediante Pointer Events.
+    button.style.webkitTouchCallout='none';
+    button.style.webkitUserSelect='none';
+    button.style.userSelect='none';
+    button.style.touchAction='manipulation';
     button.addEventListener('pointerdown',e=>{
-      if(e.pointerType==='touch'||touchActive)return;
-      held=false;clear();timer=setTimeout(open,delay);
-    });
-    ['pointerup','pointercancel','pointerleave'].forEach(type=>button.addEventListener(type,clear));
-
+      if(e.button!==undefined&&e.button!==0)return;
+      activePointer=e.pointerId;
+      startX=e.clientX;startY=e.clientY;
+      held=false;suppressClick=false;clear();
+      if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
+      timer=setTimeout(open,delay);
+    },{passive:false});
+    button.addEventListener('pointermove',e=>{
+      if(activePointer!==e.pointerId)return;
+      if(Math.hypot(e.clientX-startX,e.clientY-startY)>12)clear();
+    },{passive:true});
+    const finish=e=>{
+      if(activePointer!==null&&e.pointerId!==undefined&&activePointer!==e.pointerId)return;
+      clear();activePointer=null;
+      if(!held&&(e.pointerType==='touch'||e.pointerType==='pen')){
+        suppressClick=true;
+        button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+      }
+      setTimeout(()=>{held=false;suppressClick=false;},0);
+    };
+    button.addEventListener('pointerup',finish,{passive:false});
+    button.addEventListener('pointercancel',()=>{clear();activePointer=null;held=false;suppressClick=false;});
+    button.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')clear();});
     ['contextmenu','selectstart','dragstart'].forEach(type=>button.addEventListener(type,e=>e.preventDefault()));
     button.addEventListener('click',e=>{
-      if(held||Date.now()<suppressClickUntil){
-        e.preventDefault();e.stopImmediatePropagation();held=false;
-      }
+      if(held||suppressClick){e.preventDefault();e.stopImmediatePropagation();}
     },true);
   }
   bindHold($id('songbookTextTool'),$id('songbookTextOptions'));

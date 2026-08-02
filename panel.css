@@ -748,3 +748,12 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .egm-mode-line{display:block;width:72%;height:3px;margin:auto;border-radius:999px;background:#111}
 .egm-mode-arrow{display:block;font-size:28px;line-height:1;font-weight:400}
 @media(max-width:480px){#imagePencilOptions.egm-pencil-panel{width:min(310px,calc(100vw - 16px))!important;padding:12px!important;gap:12px!important}.egm-pencil-size-grid button,.egm-pencil-mode-grid button{height:40px!important}}
+
+/* Entrega 6.36.11 · interacción estable del menú lápiz */
+#imageToolPencil,#imageToolPencil *{
+  -webkit-touch-callout:none!important;
+  -webkit-user-select:none!important;
+  user-select:none!important;
+}
+#imagePencilOptions{position:fixed!important;z-index:2147483000!important;}
+#imageEditorCanvas{touch-action:none!important;}
