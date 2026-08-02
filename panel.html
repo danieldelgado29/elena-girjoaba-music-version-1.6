@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.12">
+  <link rel="stylesheet" href="panel.css?v=6.36.14">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -470,35 +470,16 @@
         <button id="imageRedo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Rehacer"><svg class="egm-toolbar-svg egm-redo-svg" viewBox="0 0 32 32" aria-hidden="true"><path d="m19 8 7 6-7 6"/><path d="M25 14H14c-5 0-8 3-8 8"/></svg></button>
         <div class="toolbar-popover-wrap egm-tool-wrap">
           <button id="imageToolPencil" class="egm-editor-tool is-active" type="button" aria-label="Lápiz" title="Lápiz: mantener para opciones"><span class="egm-pencil-icon" aria-hidden="true">✎</span><span id="imagePencilSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
-          <div id="imagePencilOptions" class="compact-popover egm-draw-options egm-pencil-panel" hidden role="dialog" aria-label="Opciones del lápiz">
-            <div class="egm-pencil-panel-head"><strong>Lápiz</strong><button type="button" class="egm-pencil-panel-close" data-close-pencil-menu aria-label="Cerrar menú">×</button></div>
-            <div class="egm-pencil-section">
-              <span class="egm-pencil-label">Color</span>
-              <div class="egm-color-grid" role="group" aria-label="Color del lápiz">
-                <button type="button" data-image-pencil-color="#d00000" style="background:#d00000" aria-label="Rojo"></button>
-                <button type="button" data-image-pencil-color="#111111" style="background:#111111" aria-label="Negro"></button>
-                <button type="button" data-image-pencil-color="#ffffff" style="background:#ffffff" aria-label="Blanco"></button>
-                <button type="button" data-image-pencil-color="#0057d9" style="background:#0057d9" aria-label="Azul"></button>
-                <button type="button" data-image-pencil-color="#ffd400" style="background:#ffd400" aria-label="Amarillo"></button>
-              </div>
+          <div id="imagePencilOptions" class="compact-popover egm-draw-options" hidden>
+            <div class="egm-color-grid" role="group" aria-label="Color del lápiz">
+              <button type="button" data-image-pencil-color="#d00000" style="background:#d00000" aria-label="Rojo"></button>
+              <button type="button" data-image-pencil-color="#111111" style="background:#111111" aria-label="Negro"></button>
+              <button type="button" data-image-pencil-color="#ffffff" style="background:#ffffff" aria-label="Blanco"></button>
+              <button type="button" data-image-pencil-color="#0057d9" style="background:#0057d9" aria-label="Azul"></button>
+              <button type="button" data-image-pencil-color="#ffd400" style="background:#ffd400" aria-label="Amarillo"></button>
             </div>
-            <div class="egm-pencil-section">
-              <span class="egm-pencil-label">Grosor</span>
-              <div class="egm-pencil-size-grid" role="group" aria-label="Grosor del lápiz">
-                <button type="button" data-image-pencil-size="4" aria-label="Fino"><span style="height:2px"></span></button>
-                <button type="button" data-image-pencil-size="8" class="is-active" aria-label="Medio"><span style="height:4px"></span></button>
-                <button type="button" data-image-pencil-size="16" aria-label="Grande"><span style="height:7px"></span></button>
-                <button type="button" data-image-pencil-size="30" aria-label="Extra grande"><span style="height:10px"></span></button>
-              </div>
-            </div>
-            <div class="egm-pencil-section">
-              <span class="egm-pencil-label">Tipo de trazo</span>
-              <div class="egm-pencil-mode-grid" role="group" aria-label="Tipo de trazo">
-                <button type="button" data-image-pencil-mode="free" class="is-active" aria-label="Línea"><span class="egm-mode-line"></span></button>
-                <button type="button" data-image-pencil-mode="arrow" aria-label="Flecha final"><span class="egm-mode-arrow">→</span></button>
-                <button type="button" data-image-pencil-mode="double-arrow" aria-label="Flecha doble"><span class="egm-mode-arrow">↔</span></button>
-              </div>
-            </div>
+            <select id="imageDrawSize" aria-label="Grosor"><option value="4">Fino</option><option value="8" selected>Medio</option><option value="16">Grande</option><option value="30">Extra grande</option></select>
+            <select id="imageDrawMode" aria-label="Tipo de trazo"><option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option></select>
           </div>
         </div>
         <div class="toolbar-popover-wrap egm-tool-wrap">
@@ -536,7 +517,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.13"></script>
+  <script type="module" src="panel.js?v=6.36.14"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>

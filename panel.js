@@ -1230,7 +1230,7 @@
     const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const raw=song[imageField(owner)];imageEditorState.sources=[...(raw&&typeof raw==='object'&&raw.original?[raw.original]:[]),...imageCandidates(song,owner)].filter((v,i,a)=>v&&a.indexOf(v)===i);imageEditorState.original=imageEditorState.sources[0]||'';imageEditorState.overlay=raw&&typeof raw==='object'?(raw.overlay||''):'';
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:18,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
-    $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();syncPencilOptionState();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
+    $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
   $('#imageUploadTrigger').addEventListener('click',()=>{const input=$('#imageSourceInput');input.value='';input.click();});
   $('#imageSourceInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;if(!/^image\/(jpeg|png|webp)$/i.test(file.type)){toast('Selecciona una imagen JPG, PNG o WEBP');e.target.value='';return;}if(file.size>12*1024*1024){toast('La imagen supera 12 MB');e.target.value='';return;}const proceed=()=>{const r=new FileReader();r.onerror=()=>toast('No se pudo leer la imagen');r.onload=()=>{imageEditorState.original=String(r.result||'');imageEditorState.sources=[imageEditorState.original];imageEditorState.overlay='';renderImageEditor();toast('Imagen cargada');};r.readAsDataURL(file);};if(imageEditorState.original)askConfirm('Reemplazar imagen','La fotografía vinculada será reemplazada. Las anotaciones actuales se conservarán en una capa separada.',proceed,'Reemplazar');else proceed();});
@@ -1244,51 +1244,25 @@
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();}));
   $('#imageBold').addEventListener('click',()=>{imageEditorState.textBold=!imageEditorState.textBold;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();});
   $('#imageItalic').addEventListener('click',()=>{imageEditorState.textItalic=!imageEditorState.textItalic;syncInlineTextStyle();if(!imageInlineText.hidden)imageInlineText.focus();});
-  $('#imageToolPencil').addEventListener('click',e=>{
-    const button=$('#imageToolPencil');
-    const menu=$('#imagePencilOptions');
-    if(button?.dataset?.egmIgnoreClick==='1'){
-      button.dataset.egmIgnoreClick='0';
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
-    if(menu&&!menu.hidden){
-      menu.hidden=true;
-      menu.style.visibility='';
-      e.preventDefault();
-      return;
-    }
-    const wasActive=imageEditorState.tool==='pencil'&&button.classList.contains('is-active');
+  function activateImagePencil(){
     if(!imageInlineText.hidden)commitImageText();
     imageEditorState.tool='pencil';
     imageEditorPaper().classList.remove('text-mode');
     $('#imageTextTool').classList.remove('is-active');
-    button.classList.add('is-active');
+    $('#imageToolPencil').classList.add('is-active');
     $('#imageToolEraser').classList.remove('is-active');
-    // Si el lápiz ya estaba activo, un clic normal también abre el menú.
-    // Esto sirve como respaldo visible en Mac/iPhone sin alterar el primer clic de activación.
-    if(wasActive&&typeof window.egmOpenImagePencilMenu==='function'){
-      window.egmOpenImagePencilMenu();
-    }
-  });
-  function syncPencilOptionState(){
-    $$('[data-image-pencil-color]').forEach(b=>b.classList.toggle('is-active',b.dataset.imagePencilColor.toLowerCase()===imageEditorState.pencilColor.toLowerCase()));
-    $$('[data-image-pencil-size]').forEach(b=>b.classList.toggle('is-active',Number(b.dataset.imagePencilSize)===imageEditorState.pencilSize));
-    $$('[data-image-pencil-mode]').forEach(b=>b.classList.toggle('is-active',b.dataset.imagePencilMode===imageEditorState.drawMode));
   }
-  $$('[data-image-pencil-color]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();imageEditorState.pencilColor=b.dataset.imagePencilColor;imageEditorState.tool='pencil';syncImageSwatches();syncPencilOptionState();}));
-  $$('[data-image-pencil-size]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();imageEditorState.pencilSize=Number(b.dataset.imagePencilSize);imageEditorState.tool='pencil';syncPencilOptionState();}));
-  $$('[data-image-pencil-mode]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();imageEditorState.drawMode=b.dataset.imagePencilMode;imageEditorState.tool='pencil';syncPencilOptionState();}));
-  $('[data-close-pencil-menu]')?.addEventListener('click',e=>{e.preventDefault();$('#imagePencilOptions').hidden=true;});
+  $('#imageToolPencil').addEventListener('click',e=>{const menu=$('#imagePencilOptions');if(menu&&!menu.hidden){menu.hidden=true;e.preventDefault();return;}activateImagePencil();});
+  $$('[data-image-pencil-color]').forEach(b=>b.addEventListener('click',()=>{activateImagePencil();imageEditorState.pencilColor=b.dataset.imagePencilColor;$('#imagePencilOptions').hidden=true;syncImageSwatches();}));
   let imageEraserHold=0;$('#imageToolEraser').addEventListener('pointerdown',e=>{imageEraserHold=setTimeout(()=>positionPopover($('#imageEraserOptions'),e.currentTarget),550);});['pointerup','pointercancel','pointerleave'].forEach(name=>$('#imageToolEraser').addEventListener(name,()=>clearTimeout(imageEraserHold)));
   $('#imageToolEraser').addEventListener('click',()=>{if(!imageInlineText.hidden)commitImageText();imageEditorState.tool='eraser';imageEditorPaper().classList.remove('text-mode');$('#imageToolEraser').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');});
   $$('[data-image-eraser-target]').forEach(btn=>btn.addEventListener('click',()=>{imageEditorState.eraserTarget=btn.dataset.imageEraserTarget;imageEditorState.tool='eraser';$('#imageEraserOptions').hidden=true;toast(imageEditorState.eraserTarget==='photo'?'Borrador: parte de la foto':'Borrador: anotaciones');}));
   $$('[data-image-eraser-size]').forEach(btn=>btn.addEventListener('click',()=>{imageEditorState.eraserSize=Number(btn.dataset.imageEraserSize);imageEditorState.tool='eraser';$('#imageEraserOptions').hidden=true;}));
+  $('#imageDrawSize').addEventListener('change',e=>{activateImagePencil();imageEditorState.pencilSize=Number(e.target.value);});$('#imageDrawMode').addEventListener('change',e=>{activateImagePencil();imageEditorState.drawMode=e.target.value;});
   function imagePoint(e){const c=imageEditorCanvas(),r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};}
   function arrowTangent(path,atEnd=true){if(!path||path.length<2)return null;const edge=atEnd?path.length-1:0,step=atEnd?-1:1,tip=path[edge];let i=edge+step;while(i>=0&&i<path.length){const q=path[i];if(Math.hypot(tip.x-q.x,tip.y-q.y)>=Math.max(5,imageEditorState.pencilSize*.8))return {from:q,tip};i+=step;}const q=path[Math.max(0,Math.min(path.length-1,edge+step))];return {from:q,tip};}
   function strokeArrow(ctx,path,both=false){const len=Math.max(18,imageEditorState.pencilSize*3);const head=t=>{const ang=Math.atan2(t.tip.y-t.from.y,t.tip.x-t.from.x);ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang-Math.PI/6),t.tip.y-len*Math.sin(ang-Math.PI/6));ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang+Math.PI/6),t.tip.y-len*Math.sin(ang+Math.PI/6));};const end=arrowTangent(path,true);if(end)head(end);if(both){const start=arrowTangent(path,false);if(start)head(start);}}
-  imageEditorCanvas().addEventListener('pointerdown',e=>{if(imageEditorState.tool==='text'||(e.pointerType==='touch'&&imageEditorState.pointers.size>1))return;const pencilMenu=$('#imagePencilOptions');if(pencilMenu&&!pencilMenu.hidden){pencilMenu.hidden=true;pencilMenu.style.visibility='';}e.preventDefault();e.stopPropagation();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);imageEditorState.path=[imageEditorState.last];try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}},{capture:true});
+  imageEditorCanvas().addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&imageEditorState.pointers.size>1)return;const pencilMenu=$('#imagePencilOptions');if(pencilMenu&&!pencilMenu.hidden){pencilMenu.hidden=true;activateImagePencil();}if(imageEditorState.tool==='text')return;e.preventDefault();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);imageEditorState.path=[imageEditorState.last];e.currentTarget.setPointerCapture(e.pointerId);});
   imageEditorCanvas().addEventListener('pointermove',e=>{if(!imageEditorState.drawing)return;e.preventDefault();const p=imagePoint(e),target=imageEditorState.tool==='eraser'&&imageEditorState.eraserTarget==='photo'?imageBaseCanvas():imageEditorCanvas(),ctx=target.getContext('2d');ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=imageEditorState.tool==='eraser'?imageEditorState.eraserSize:imageEditorState.pencilSize;ctx.strokeStyle=imageEditorState.pencilColor;ctx.globalCompositeOperation=imageEditorState.tool==='eraser'?'destination-out':'source-over';ctx.beginPath();ctx.moveTo(imageEditorState.last.x,imageEditorState.last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();imageEditorState.last=p;imageEditorState.path.push(p);});
   const finishImageDraw=()=>{if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
@@ -1347,150 +1321,75 @@
   if(!textDialog||!imageDialog)return;
 
   function closeAllPopovers(except){
-    document.querySelectorAll('.compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
+    document.querySelectorAll('.egm-editor-toolbar .compact-popover').forEach(p=>{if(p!==except)p.hidden=true;});
   }
   function showHeldPopover(button,popover){
     if(!button||!popover)return;
     closeAllPopovers(popover);
-    // Sacamos el menú de la barra antes de mostrarlo. En Safari/iPhone y en
-    // la app instalada, overflow-x:auto de la barra recortaba el contenido
-    // y dejaba visible únicamente el encabezado.
-    if(popover.parentElement!==document.body){
-      popover._egmHome={parent:popover.parentElement,next:popover.nextSibling};
-      document.body.appendChild(popover);
-    }
     const r=button.getBoundingClientRect();
     popover.hidden=false;
-    popover.style.visibility='hidden';
     requestAnimationFrame(()=>{
       const pr=popover.getBoundingClientRect();
       const left=Math.max(8,Math.min(innerWidth-pr.width-8,r.left+r.width/2-pr.width/2));
-      const roomBelow=innerHeight-r.bottom-8;
-      const top=roomBelow>=pr.height
-        ? r.bottom+8
-        : Math.max(8,r.top-pr.height-8);
-      popover.style.left=left+'px';
-      popover.style.top=top+'px';
-      popover.style.visibility='visible';
+      const top=Math.max(8,r.top-pr.height-8);
+      popover.style.left=left+'px';popover.style.top=top+'px';
     });
   }
   function bindHold(button,popover,delay=520){
     if(!button||!popover)return;
-    let timer=0;
-    let held=false;
-    let suppressClick=false;
-    let activePointer=null;
-    let startX=0,startY=0;
-    const clear=()=>{if(timer){clearTimeout(timer);timer=0;}};
+    let timer=0,held=false,touchActive=false,suppressClickUntil=0,startX=0,startY=0;
+    const clear=()=>{clearTimeout(timer);timer=0;};
     const open=()=>{
-      timer=0;
       held=true;
-      suppressClick=true;
+      suppressClickUntil=Date.now()+700;
       showHeldPopover(button,popover);
-      if(navigator.vibrate)navigator.vibrate(18);
+      if(navigator.vibrate) navigator.vibrate(18);
     };
-    button.style.webkitTouchCallout='none';
-    button.style.webkitUserSelect='none';
-    button.style.userSelect='none';
-    button.style.touchAction='manipulation';
-    button.addEventListener('pointerdown',e=>{
-      if(e.button!==undefined&&e.button!==0)return;
-      activePointer=e.pointerId;
-      startX=e.clientX;startY=e.clientY;
-      held=false;suppressClick=false;clear();
-      if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
-      timer=setTimeout(open,delay);
+
+    // iPhone/iPad: Safari puede abrir “Copiar / Traducir” antes del click.
+    // Capturamos el gesto táctil desde touchstart y anulamos el menú nativo.
+    button.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1)return;
+      touchActive=true;held=false;
+      startX=e.touches[0].clientX;startY=e.touches[0].clientY;
+      e.preventDefault();
+      clear();timer=setTimeout(open,delay);
     },{passive:false});
-    button.addEventListener('pointermove',e=>{
-      if(activePointer!==e.pointerId)return;
-      if(Math.hypot(e.clientX-startX,e.clientY-startY)>12)clear();
-    },{passive:true});
-    const finish=e=>{
-      if(activePointer!==null&&e.pointerId!==undefined&&activePointer!==e.pointerId)return;
-      clear();activePointer=null;
-      if(!held&&(e.pointerType==='touch'||e.pointerType==='pen')){
-        suppressClick=true;
-        button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-      }
-      setTimeout(()=>{held=false;suppressClick=false;},0);
-    };
-    button.addEventListener('pointerup',finish,{passive:false});
-    button.addEventListener('pointercancel',()=>{clear();activePointer=null;held=false;suppressClick=false;});
-    button.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')clear();});
+    button.addEventListener('touchmove',e=>{
+      if(!touchActive||e.touches.length!==1)return;
+      const t=e.touches[0];
+      if(Math.hypot(t.clientX-startX,t.clientY-startY)>12)clear();
+      e.preventDefault();
+    },{passive:false});
+    button.addEventListener('touchend',e=>{
+      if(!touchActive)return;
+      e.preventDefault();clear();touchActive=false;
+      if(!held){suppressClickUntil=Date.now()+500;button.click();}
+      held=false;
+    },{passive:false});
+    button.addEventListener('touchcancel',()=>{clear();touchActive=false;held=false;},{passive:true});
+
+    // Mouse, trackpad, Android y Apple Pencil mediante Pointer Events.
+    button.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='touch'||touchActive)return;
+      held=false;clear();timer=setTimeout(open,delay);
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(type=>button.addEventListener(type,clear));
+
     ['contextmenu','selectstart','dragstart'].forEach(type=>button.addEventListener(type,e=>e.preventDefault()));
     button.addEventListener('click',e=>{
-      if(held||suppressClick){e.preventDefault();e.stopImmediatePropagation();}
+      if(held||Date.now()<suppressClickUntil){
+        e.preventDefault();e.stopImmediatePropagation();held=false;
+      }
     },true);
   }
   bindHold($id('songbookTextTool'),$id('songbookTextOptions'));
   bindHold($id('songbookAlign'),$id('songbookAlignOptions'));
   bindHold($id('songbookDrawToggle'),$id('songbookDrawOptions'));
   bindHold($id('songbookEraserToggle'),$id('songbookEraserOptions'));
+  bindHold($id('imageToolPencil'),$id('imagePencilOptions'));
   bindHold($id('imageToolEraser'),$id('imageEraserOptions'));
   bindHold($id('imageUploadTrigger'),null);
-
-  // Entrega 6.36.13 · controlador robusto del menú del lápiz.
-  // Pulsación larga en touch/pen/mouse y clic de respaldo cuando el lápiz ya está activo.
-  (function bindImagePencilMenu(){
-    const button=$id('imageToolPencil');
-    const popover=$id('imagePencilOptions');
-    if(!button||!popover)return;
-    let timer=0;
-    let activeId=null;
-    let startX=0,startY=0;
-    let opened=false;
-    const clearTimer=()=>{if(timer){clearTimeout(timer);timer=0;}};
-    const open=()=>{
-      clearTimer();
-      opened=true;
-      showHeldPopover(button,popover);
-      try{navigator.vibrate?.(15);}catch(_){ }
-    };
-    window.egmOpenImagePencilMenu=open;
-    const begin=(e)=>{
-      if(e.type==='pointerdown'&&e.button!==undefined&&e.button!==0)return;
-      activeId=e.pointerId??'touch';
-      const point=e.touches?.[0]||e;
-      startX=point.clientX||0;startY=point.clientY||0;
-      opened=false;
-      clearTimer();
-      if(e.cancelable)e.preventDefault();
-      timer=setTimeout(open,420);
-    };
-    const move=(e)=>{
-      if(activeId===null)return;
-      const point=e.touches?.[0]||e;
-      const x=point.clientX??startX,y=point.clientY??startY;
-      if(Math.hypot(x-startX,y-startY)>10)clearTimer();
-      if(e.cancelable)e.preventDefault();
-    };
-    const endPress=(e)=>{
-      if(activeId===null)return;
-      clearTimer();
-      activeId=null;
-      if(opened){
-        button.dataset.egmIgnoreClick='1';
-        if(e.cancelable)e.preventDefault();
-        setTimeout(()=>{opened=false;},0);
-      }
-    };
-    button.style.webkitTouchCallout='none';
-    button.style.webkitUserSelect='none';
-    button.style.userSelect='none';
-    button.style.touchAction='none';
-    button.addEventListener('pointerdown',begin,{passive:false});
-    button.addEventListener('pointermove',move,{passive:false});
-    button.addEventListener('pointerup',endPress,{passive:false});
-    button.addEventListener('pointercancel',()=>{clearTimer();activeId=null;opened=false;});
-    // Solo usar eventos Touch como fallback cuando Pointer Events no existen.
-    if(!window.PointerEvent){
-      button.addEventListener('touchstart',begin,{passive:false});
-      button.addEventListener('touchmove',move,{passive:false});
-      button.addEventListener('touchend',endPress,{passive:false});
-      button.addEventListener('touchcancel',()=>{clearTimer();activeId=null;opened=false;},{passive:false});
-    }
-    ['contextmenu','selectstart','dragstart'].forEach(type=>button.addEventListener(type,e=>e.preventDefault()));
-  })();
 
   const textModeButtons=[$id('songbookTextTool'),$id('songbookDrawToggle'),$id('songbookEraserToggle')].filter(Boolean);
   function setExclusive(button,buttons){buttons.forEach(b=>b.classList.toggle('is-active',b===button));}
