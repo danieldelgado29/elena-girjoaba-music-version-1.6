@@ -713,3 +713,22 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 #imagePencilOptions .egm-color-grid button{box-sizing:border-box!important;flex:0 0 29px!important;width:29px!important;min-width:29px!important;max-width:29px!important;height:29px!important;min-height:29px!important;max-height:29px!important;aspect-ratio:1/1!important;padding:0!important;border:0!important;border-radius:50%!important;box-shadow:none!important;outline:none!important}
 #imagePencilOptions .egm-color-grid button[data-image-pencil-color="#ffffff"]{border:1px solid #9b9b9b!important}
 #imagePencilOptions .egm-color-grid button.is-active{outline:2px solid #1677ff!important;outline-offset:2px!important}
+
+
+/* Entrega 6.36.16 · indicador circular del borrador */
+.image-eraser-cursor{
+  position:absolute!important;
+  z-index:12000!important;
+  box-sizing:border-box!important;
+  border:1.5px solid rgba(20,20,20,.82)!important;
+  border-radius:50%!important;
+  background:rgba(255,255,255,.16)!important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.7),0 1px 4px rgba(0,0,0,.2)!important;
+  pointer-events:none!important;
+  transform:translate(-50%,-50%)!important;
+  will-change:left,top,width,height!important;
+}
+.image-eraser-cursor[data-target="photo"]{border-style:dashed!important}
+.image-eraser-cursor[hidden]{display:none!important}
+#imageEditorPaper.eraser-mode #imageEditorCanvas{cursor:none!important}
+@media (pointer:coarse){.image-eraser-cursor{border-width:2px!important;background:rgba(255,255,255,.22)!important}}
