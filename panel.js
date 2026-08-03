@@ -1843,8 +1843,7 @@
     song[imageField(activeImageOwner)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
-    await refreshOpenImageViewer(saved,song,activeImageOwner);
-    return true;
+    return saved;
   }
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
@@ -1859,13 +1858,18 @@
       try{
         // Guardar primero la edición completa en IndexedDB y Firestore.
         // El editor solo se cierra después de que la copia local quede confirmada.
-        const ok=await persistImageEditorLayers(true);
-        if(!ok)throw new Error('No se pudo preparar la edición');
+        const saved=await persistImageEditorLayers(true);
+        if(!saved)throw new Error('No se pudo preparar la edición');
         const editId=remoteImageKey(saveSongId,saveOwner);
         const local=await offlineStoreGet('imageEdits',editId);
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
+        // Refrescar el visor DESPUÉS de cerrar el editor. Mientras el editor estaba
+        // encima, Safari/iOS podía conservar el canvas anterior hasta reabrir Imagen.
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
+        await refreshOpenImageViewer(saved,savedSong,saveOwner);
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
