@@ -558,11 +558,48 @@
 
 
   async function composeRemoteImageEdit(remote,song,owner){
-    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0];if(!src)return '';
-    return await new Promise(resolve=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);c.width=Math.max(1,Math.round(img.naturalWidth*ratio));c.height=Math.max(1,Math.round(img.naturalHeight*ratio));const ctx=c.getContext('2d');ctx.drawImage(img,0,0,c.width,c.height);const overlay=document.createElement('canvas');overlay.width=c.width;overlay.height=c.height;const oc=overlay.getContext('2d');
-      const arrowHead=(target,tip,from,size)=>{const angle=Math.atan2(tip.y-from.y,tip.x-from.x),len=Math.max(12,size*3.2),spread=Math.PI/6;target.beginPath();target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle-spread),tip.y-len*Math.sin(angle-spread));target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle+spread),tip.y-len*Math.sin(angle+spread));target.stroke();};
-      for(const op of remote.operations||[]){const target=op.tool==='eraser'&&op.target==='photo'?ctx:oc,pts=(op.points||[]).map(p=>({x:p.x*c.width,y:p.y*c.height}));if(pts.length<2)continue;target.save();target.lineCap='round';target.lineJoin='round';target.lineWidth=Math.max(1,(op.size||.008)*c.width);target.strokeStyle=op.color||'#d00000';target.globalCompositeOperation=op.tool==='eraser'?'destination-out':'source-over';target.beginPath();target.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)target.lineTo(pts[i].x,pts[i].y);target.stroke();if(op.tool==='pencil'&&op.mode&&op.mode!=='free'){arrowHead(target,pts.at(-1),pts.at(-2),target.lineWidth);if(op.mode==='double-arrow')arrowHead(target,pts[0],pts[1],target.lineWidth);}target.restore();}
-      ctx.drawImage(overlay,0,0);const old=imageEditorState.textBoxes;imageEditorState.textBoxes=Array.isArray(remote.textBoxes)?remote.textBoxes:[];drawTextBoxesToContext(ctx,c.width,c.height);imageEditorState.textBoxes=old;resolve(c.toDataURL('image/png'));};img.onerror=()=>resolve('');img.src=src.startsWith('data:')?src:encodeURI(src);});
+    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0];
+    if(!src)return '';
+    return await new Promise(resolve=>{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          const c=document.createElement('canvas');
+          const ratio=Math.min(1,1800/Math.max(1,img.naturalWidth),2400/Math.max(1,img.naturalHeight));
+          c.width=Math.max(1,Math.round(img.naturalWidth*ratio));
+          c.height=Math.max(1,Math.round(img.naturalHeight*ratio));
+          const ctx=c.getContext('2d');
+          ctx.drawImage(img,0,0,c.width,c.height);
+          const overlay=document.createElement('canvas');overlay.width=c.width;overlay.height=c.height;const oc=overlay.getContext('2d');
+          const arrowHead=(target,tip,from,size)=>{const angle=Math.atan2(tip.y-from.y,tip.x-from.x),len=Math.max(12,size*3.2),spread=Math.PI/6;target.beginPath();target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle-spread),tip.y-len*Math.sin(angle-spread));target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle+spread),tip.y-len*Math.sin(angle+spread));target.stroke();};
+          for(const op of remote.operations||[]){
+            const target=op.tool==='eraser'&&op.target==='photo'?ctx:oc;
+            const pts=(op.points||[]).map(p=>({x:p.x*c.width,y:p.y*c.height}));
+            if(pts.length<2)continue;
+            target.save();target.lineCap='round';target.lineJoin='round';target.lineWidth=Math.max(1,(op.size||.008)*c.width);target.strokeStyle=op.color||'#d00000';target.globalCompositeOperation=op.tool==='eraser'?'destination-out':'source-over';target.beginPath();target.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)target.lineTo(pts[i].x,pts[i].y);target.stroke();if(op.tool==='pencil'&&op.mode&&op.mode!=='free'){arrowHead(target,pts.at(-1),pts.at(-2),target.lineWidth);if(op.mode==='double-arrow')arrowHead(target,pts[0],pts[1],target.lineWidth);}target.restore();
+          }
+          ctx.drawImage(overlay,0,0);
+          for(const box of (Array.isArray(remote.textBoxes)?remote.textBoxes:[])){
+            if(!String(box.text||'').trim())continue;
+            ctx.save();
+            const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
+            ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
+            const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
+            ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';
+            const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
+            for(const paragraph of String(box.text||'').split(/\n/)){
+              const words=paragraph.split(/\s+/);let line='';
+              for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}
+              if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;
+            }
+            ctx.restore();
+          }
+          resolve(c.toDataURL('image/png'));
+        }catch(err){console.warn('No se pudo componer la vista de imagen',err);resolve('');}
+      };
+      img.onerror=()=>resolve('');
+      img.src=src.startsWith('data:')?src:encodeURI(src);
+    });
   }
   function showViewerImage(content,src,song){
     if(!src)return false;
@@ -1259,7 +1296,7 @@
   function restoreImageSnapshot(snap){if(!snap)return;drawDataUrl(imageBaseCanvas(),snap.base);drawDataUrl(imageEditorCanvas(),snap.overlay);}
   function applyImageTransform(){imageEditorPaper().style.transform=`translate3d(${imageEditorState.panX}px,${imageEditorState.panY}px,0) scale(${imageEditorState.scale})`;}
   function resetImageViewport(){imageEditorState.scale=1;imageEditorState.panX=0;imageEditorState.panY=0;applyImageTransform();requestAnimationFrame(()=>{const stage=$('#imageEditorStage'),paper=imageEditorPaper();const sr=stage.getBoundingClientRect(),pr=paper.getBoundingClientRect();imageEditorState.panX=Math.max(12,(sr.width-pr.width)/2);imageEditorState.panY=Math.max(12,(sr.height-pr.height)/2);applyImageTransform();});}
-  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.97,Math.min(1.03,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
+  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.94,Math.min(1.06,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
   function replayImageOperations(){
     const base=imageBaseCanvas(), overlay=imageEditorCanvas(), bw=base.width, bh=base.height;
     for(const op of imageEditorState.operations||[]){
@@ -1410,7 +1447,7 @@
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
   const imageStage=$('#imageEditorStage');
-  // 6.36.31 · Trackpad Mac: pellizco suave y desplazamiento con dos dedos.
+  // 6.36.32 · Trackpad Mac fluido y visor de imagen corregido.
   // - Safari/Chrome envían el pellizco como wheel + ctrlKey.
   // - El desplazamiento fino del trackpad mueve la hoja.
   // - La rueda física del mouse conserva el zoom centrado en el cursor.
@@ -1433,8 +1470,8 @@
     if(imageWheelFrame)return;
     imageWheelFrame=requestAnimationFrame(()=>{
       const delta=imageWheelZoomDelta;imageWheelZoomDelta=0;imageWheelFrame=0;
-      const sensitivity=e.ctrlKey?0.00042:0.00105;
-      const factor=Math.max(.975,Math.min(1.025,Math.exp(-delta*sensitivity)));
+      const sensitivity=e.ctrlKey?0.00115:0.00165;
+      const factor=Math.max(.94,Math.min(1.06,Math.exp(-delta*sensitivity)));
       zoomImageAt(imageWheelX,imageWheelY,factor);
     });
   },{passive:false});
@@ -1446,7 +1483,7 @@
     const current=Number(e.scale)||safariGestureScale;
     const ratio=current/Math.max(.001,safariGestureScale);
     safariGestureScale=current;
-    zoomImageAt(e.clientX||innerWidth/2,e.clientY||innerHeight/2,Math.max(.985,Math.min(1.015,ratio)));
+    zoomImageAt(e.clientX||innerWidth/2,e.clientY||innerHeight/2,Math.max(.96,Math.min(1.04,ratio)));
   },{passive:false});
   imageStage.addEventListener('gestureend',e=>{e.preventDefault();safariGestureScale=1;},{passive:false});
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){const [a,b]=[...imageEditorState.pointers.values()];imageEditorState.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};imageEditorState.panning=null;imageEditorState.textGesture=null;}else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
