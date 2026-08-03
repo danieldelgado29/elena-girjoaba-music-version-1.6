@@ -1399,7 +1399,7 @@
   }
   function renderImageEditor(){
     const sources=[...(imageEditorState.sources||[])];
-    const blank=()=>{setCanvasSize(1000,1300);const b=imageBaseContext(),o=imageEditorContext();b.fillStyle='#fff';b.fillRect(0,0,1000,1300);o.clearRect(0,0,1000,1300);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};
+    const blank=()=>{setCanvasSize(1000,1300);const b=imageBaseContext(),o=imageEditorContext();b.fillStyle='#fff';b.fillRect(0,0,1000,1300);o.clearRect(0,0,1000,1300);replayImageOperations();imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};
     const loadNext=()=>{const base=sources.shift();if(!base){blank();return;}const img=new Image();img.onload=()=>{imageEditorState.original=base;const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.clearRect(0,0,w,h);b.drawImage(img,0,0,w,h);o.clearRect(0,0,w,h);replayImageOperations();if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{o.drawImage(ov,0,0,w,h);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.onerror=()=>{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();}};img.onerror=loadNext;img.src=encodeURI(base);};loadNext();
   }
   function syncImageSwatches(){$('#imageTextSwatch').style.background=imageEditorState.textColor;$('#imagePencilSwatch').style.background=imageEditorState.pencilColor;}
@@ -1426,10 +1426,31 @@
   }
   async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
-    let raw=song[imageField(owner)];
+    const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
-    if(remote&&(!raw?.updatedAt||Number(remote.updatedAt||0)>=Number(raw.updatedAt||0))){raw={original:remote.originalSrc||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};song[imageField(owner)]=raw;}
-    imageEditorState.sources=[...(raw&&typeof raw==='object'&&raw.original?[raw.original]:[]),...imageCandidates(song,owner)].filter((v,i,a)=>v&&a.indexOf(v)===i);imageEditorState.original=imageEditorState.sources[0]||'';imageEditorState.overlay=raw&&typeof raw==='object'?(raw.drawingOverlay||raw.overlay||''):'';imageEditorState.operations=raw&&typeof raw==='object'&&Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=raw&&typeof raw==='object'&&Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
+    // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
+    // imageEdits, sus capas siempre prevalecen sobre copias antiguas del objeto canción.
+    const raw=remote ? {
+      original:remote.originalSrc||remote.original||'',
+      operations:Array.isArray(remote.operations)?remote.operations:[],
+      textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],
+      updatedAt:remote.updatedAt||Date.now(),remote:true
+    } : (localRaw&&typeof localRaw==='object'?localRaw:{});
+    if(remote) song[imageField(owner)]={...raw};
+    const baseSources=[];
+    const addBase=value=>{if(!value)return;const v=String(value);if(!baseSources.includes(v))baseSources.push(v);};
+    addBase(raw.original);
+    // Evitar usar una previsualización compuesta como foto base: el editor debe
+    // reconstruir siempre foto + operaciones + cajas editables.
+    const fieldValue=localRaw&&typeof localRaw==='object'?(localRaw.original||localRaw.src||localRaw.dataUrl||''):localRaw;
+    addBase(fieldValue);
+    if(owner==='elena'){
+      const fallback=state.notes[slug(song.titulo)];
+      (Array.isArray(fallback)?fallback:[fallback]).forEach(value=>{
+        if(!value)return;const v=String(value);addBase(v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`);
+      });
+    }
+    imageEditorState.sources=baseSources;imageEditorState.original=baseSources[0]||'';imageEditorState.overlay=raw.drawingOverlay||raw.overlay||'';imageEditorState.operations=Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
