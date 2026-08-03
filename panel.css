@@ -732,3 +732,12 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-eraser-cursor[hidden]{display:none!important}
 #imageEditorPaper.eraser-mode #imageEditorCanvas{cursor:none!important}
 @media (pointer:coarse){.image-eraser-cursor{border-width:2px!important;background:rgba(255,255,255,.22)!important}}
+
+/* Entrega 6.36.17: texto anclado a la fotografía */
+.image-inline-text{border:1px dashed rgba(208,0,0,.5)!important;border-radius:6px!important;background:rgba(255,255,255,.08)!important;box-shadow:0 0 0 1px rgba(255,255,255,.25) inset!important;transform-origin:0 0!important}
+.image-inline-text:focus{border-color:currentColor!important;background:rgba(255,255,255,.16)!important}
+#imageTextTool,#imageTextOptions{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important}
+
+/* Entrega 6.36.18: teclado y cursor de texto en iPhone */
+.image-inline-text{touch-action:manipulation!important;-webkit-touch-callout:none!important;-webkit-user-select:text!important;user-select:text!important;cursor:text!important;font-size:max(16px,var(--image-inline-font-size,16px))!important}
+.image-editor-paper.text-mode #imageEditorCanvas{pointer-events:auto!important}
