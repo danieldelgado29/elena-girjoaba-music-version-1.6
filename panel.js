@@ -1341,10 +1341,37 @@
     const settings=structuredClone(loadPhotoSettings()),sources=loadPhotoSources();photoDrafts={};
     ['inicio','hero'].forEach(slot=>{const saved=settings[slot]||{};photoDrafts[slot]={...PHOTO_DEFAULTS,...saved,src:sources[slot]||saved.src||''};});
     activePhotoSlot='inicio';$$('[data-photo-slot]').forEach(b=>b.classList.toggle('is-active',b.dataset.photoSlot===activePhotoSlot));
-    syncPhotoControls();$('#photoSourceInput').value='';$('#photoManagerDialog').showModal();rememberDialogState($('#photoManagerDialog'));
+    syncPhotoControls();$('#photoSourceInput').value='';$('#photoSourceStatus').textContent=currentPhotoDraft().fileName||'Ninguna imagen seleccionada';$('#photoManagerDialog').showModal();rememberDialogState($('#photoManagerDialog'));
   }
-  $$('[data-photo-slot]').forEach(b=>b.addEventListener('click',()=>{activePhotoSlot=b.dataset.photoSlot;$$('[data-photo-slot]').forEach(x=>x.classList.toggle('is-active',x===b));syncPhotoControls();$('#photoSourceInput').value='';}));
-  $('#photoSourceInput').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;if(!/^image\/(jpeg|png|webp)$/i.test(f.type))return toast('Selecciona una imagen JPG, PNG o WEBP');const r=new FileReader();r.onload=()=>{currentPhotoDraft().src=r.result;currentPhotoDraft().fileName=f.name;renderPhotoPreview();};r.readAsDataURL(f);});
+  $$('[data-photo-slot]').forEach(b=>b.addEventListener('click',()=>{activePhotoSlot=b.dataset.photoSlot;$$('[data-photo-slot]').forEach(x=>x.classList.toggle('is-active',x===b));syncPhotoControls();$('#photoSourceInput').value='';$('#photoSourceStatus').textContent=currentPhotoDraft().fileName||'Ninguna imagen seleccionada';}));
+  const photoSourceInput=$('#photoSourceInput');
+  const photoSourceStatus=$('#photoSourceStatus');
+  $('#choosePhotoSourceBtn').addEventListener('click',()=>{photoSourceInput.value='';photoSourceInput.click();});
+  async function preparePhotoForPanel(file){
+    if(!file||!String(file.type||'').startsWith('image/'))throw new Error('Selecciona un archivo de imagen');
+    if(file.size>25*1024*1024)throw new Error('La imagen supera 25 MB');
+    const objectUrl=URL.createObjectURL(file);
+    try{
+      const img=new Image();img.decoding='async';
+      await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Este formato no pudo abrirse en este dispositivo'));img.src=objectUrl;});
+      const maxSide=1800,ratio=Math.min(1,maxSide/Math.max(img.naturalWidth||1,img.naturalHeight||1));
+      const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+      let data=canvas.toDataURL('image/webp',.84);
+      if(!data.startsWith('data:image/webp'))data=canvas.toDataURL('image/jpeg',.86);
+      return data;
+    }finally{URL.revokeObjectURL(objectUrl);}
+  }
+  photoSourceInput.addEventListener('change',async e=>{
+    const f=e.target.files?.[0];if(!f)return;
+    photoSourceStatus.textContent='Procesando imagen…';
+    try{
+      const src=await preparePhotoForPanel(f);
+      currentPhotoDraft().src=src;currentPhotoDraft().fileName=f.name;
+      photoSourceStatus.textContent=f.name;renderPhotoPreview();toast('Imagen lista para guardar');
+    }catch(err){photoSourceStatus.textContent='Ninguna imagen seleccionada';toast(err?.message||'No se pudo leer la imagen');}
+  });
   const photoMap={photoPosX:'x',photoPosY:'y',photoZoom:'zoom',gradientIntensity:'intensity',gradientDirection:'direction',gradientColor:'color',gradientOpacity:'opacity'};
   Object.entries(photoMap).forEach(([id,key])=>$('#'+id).addEventListener('input',e=>{currentPhotoDraft()[key]=e.target.value;renderPhotoPreview();}));
   $('#resetPhotoFrameBtn').addEventListener('click',()=>askConfirm('Restablecer encuadre','La imagen original se conservará y solo se restablecerán los ajustes de esta foto.',()=>{const src=currentPhotoDraft().src,fileName=currentPhotoDraft().fileName;photoDrafts[activePhotoSlot]={...PHOTO_DEFAULTS,src,fileName};syncPhotoControls();},'Restablecer'));

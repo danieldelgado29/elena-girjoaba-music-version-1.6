@@ -812,3 +812,6 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 /* 6.36.36: evita pull-to-refresh y rebote de la página principal sin bloquear áreas internas. */
 html,body{overscroll-behavior-y:none!important;}
 body{touch-action:pan-x pan-y;}
+
+/* Entrega 6.36.38 · selector de fotos estable */
+.photo-file-picker-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid #323640;border-radius:14px;background:#111318}.photo-source-status{min-width:0;color:#aeb4bf;font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}@media(max-width:650px){.photo-file-picker-actions{align-items:stretch}.photo-file-picker-actions button{width:100%}.photo-source-status{width:100%;white-space:normal}}

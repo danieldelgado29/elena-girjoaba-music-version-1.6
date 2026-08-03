@@ -426,7 +426,11 @@
       <button class="modal-x" type="button" data-dialog-close aria-label="Cerrar">×</button>
       <p class="eyebrow">IMÁGENES</p><h3>Subir fotos</h3>
       <div class="photo-tabs"><button type="button" data-photo-slot="inicio" class="is-active">Foto inicio</button><button type="button" data-photo-slot="hero">Foto Hero</button></div>
-      <label class="photo-file-picker"><span>Seleccionar imagen original</span><input id="photoSourceInput" type="file" accept="image/*"></label>
+      <div class="photo-file-picker photo-file-picker-actions">
+        <button id="choosePhotoSourceBtn" class="secondary-btn" type="button">Seleccionar imagen</button>
+        <input id="photoSourceInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.avif" hidden>
+        <span id="photoSourceStatus" class="photo-source-status">Ninguna imagen seleccionada</span>
+      </div>
       <div id="photoPreview" class="photo-preview is-inicio" tabindex="0" aria-label="Vista previa de la imagen. Arrastra para cambiar el encuadre."><div class="photo-preview-image"></div><div class="photo-preview-gradient"></div><div class="photo-preview-badge"><strong id="photoPreviewLabel">Foto inicio</strong><span>Arrastra para encuadrar</span></div></div>
       <div class="photo-controls">
         <label>Posición X <input id="photoPosX" type="range" min="0" max="100" value="50"><output>50%</output></label>
