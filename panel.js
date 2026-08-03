@@ -533,24 +533,54 @@
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'||type==='daniel-image'){
       const owner=type==='daniel-image'?'daniel':'elena';
-      const files=imageCandidates(song,owner);
-      if(files.length){
-        const img=new Image();
-        img.alt=`Notas de ${song.titulo}`;
-        let fileIndex=0;
-        const tryNext=()=>{
-          if(fileIndex>=files.length){
-            content.classList.remove('is-note-viewer');
-            content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';
-            return;
-          }
-          img.src=encodeURI(files[fileIndex++]);
-        };
-        img.addEventListener('load',()=>installNoteGestures(img),{once:true});
-        img.addEventListener('error',tryNext);
-        content.append(img);
-        tryNext();
-      } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
+      const raw=song[imageField(owner)];
+      // Las ediciones se guardan como dos capas. El visor las compone aquí
+      // directamente para no depender de una miniatura/composite desactualizada.
+      if(raw&&typeof raw==='object'&&raw.original){
+        const stage=document.createElement('div');
+        stage.className='viewer-layered-image';
+        const base=new Image(),overlay=new Image();
+        base.alt=`Imagen de ${song.titulo}`;
+        overlay.alt='Capa de anotaciones';
+        base.className='viewer-layer-base';
+        overlay.className='viewer-layer-overlay';
+        stage.append(base,overlay);
+        content.append(stage);
+        base.addEventListener('load',()=>{
+          const nw=base.naturalWidth||1,nh=base.naturalHeight||1;
+          const fit=Math.min(1,Math.max(1,content.clientWidth)/nw,Math.max(1,content.clientHeight)/nh);
+          stage.style.width=`${Math.max(1,Math.round(nw*fit))}px`;
+          stage.style.height=`${Math.max(1,Math.round(nh*fit))}px`;
+          stage.style.aspectRatio=`${nw} / ${nh}`;
+          installNoteGestures(stage);
+        },{once:true});
+        base.addEventListener('error',()=>{
+          content.classList.remove('is-note-viewer');
+          content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La imagen guardada no pudo cargarse.</p></div>';
+        },{once:true});
+        base.src=raw.original;
+        if(raw.overlay){overlay.src=raw.overlay;}else overlay.hidden=true;
+      } else {
+        const files=imageCandidates(song,owner);
+        if(files.length){
+          const img=new Image();
+          img.alt=`Notas de ${song.titulo}`;
+          let fileIndex=0;
+          const tryNext=()=>{
+            if(fileIndex>=files.length){
+              content.classList.remove('is-note-viewer');
+              content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';
+              return;
+            }
+            const src=files[fileIndex++];
+            img.src=src.startsWith('data:')?src:encodeURI(src);
+          };
+          img.addEventListener('load',()=>installNoteGestures(img),{once:true});
+          img.addEventListener('error',tryNext);
+          content.append(img);
+          tryNext();
+        } else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';
+      }
     } else {
       const isDaniel=type==='daniel';
       const storedLyrics=state.lyrics[song.id]||{};
@@ -1300,8 +1330,33 @@
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){const [a,b]=[...imageEditorState.pointers.values()];imageEditorState.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};imageEditorState.panning=null;imageEditorState.textGesture=null;}else if(imageEditorState.tool==='text'&&e.target!==imageInlineText&&!e.target.closest('.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
   imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){const [a,b]=[...imageEditorState.pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;zoomImageAt(cx,cy,d/imageEditorState.pinch.distance);imageEditorState.panX+=cx-imageEditorState.pinch.cx;imageEditorState.panY+=cy-imageEditorState.pinch.cy;imageEditorState.pinch={distance:d,cx,cy};applyImageTransform();e.preventDefault();}else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;if(!imageInlineText.hidden&&imageInlineText.value.trim())commitImageText();placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
-  function persistImageEditorLayers(syncRemote=false){const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;const base=imageBaseCanvas().toDataURL('image/png'),overlay=imageEditorCanvas().toDataURL('image/png'),composite=imageEditorComposite();song[imageField(activeImageOwner)]={original:base,overlay,composite};const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();if(syncRemote)syncRemoteState(true);renderSongbookList();return true;}
-  $('#saveImageEditorBtn').addEventListener('click',()=>{if(!imageInlineText.hidden)commitImageText();const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;askConfirm('Guardar imagen',`Se guardarán por separado la fotografía y la capa de anotaciones de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,()=>{persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));toast('Guardado exitosamente');$('#imageEditorDialog').close();},'Guardar');});
+  async function persistImageEditorLayers(syncRemote=false){
+    const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
+    const base=imageBaseCanvas().toDataURL('image/png');
+    const overlay=imageEditorCanvas().toDataURL('image/png');
+    const composite=imageEditorComposite();
+    song[imageField(activeImageOwner)]={original:base,overlay,composite,updatedAt:Date.now()};
+    const ci=state.customSongs.findIndex(x=>x.id===song.id);
+    if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
+    saveStateLocalOnly();
+    renderSongbookList();
+    // La imagen queda guardada y visible localmente de inmediato. La copia remota
+    // se intenta después sin impedir cerrar el editor si la red está lenta.
+    if(syncRemote){
+      try{await syncRemoteState(true);}catch(err){console.warn('La capa quedó guardada localmente; no se pudo sincronizar todavía.',err);}
+    }
+    return true;
+  }
+  $('#saveImageEditorBtn').addEventListener('click',()=>{
+    if(!imageInlineText.hidden)commitImageText();
+    const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
+    askConfirm('Guardar imagen',`Se guardarán por separado la fotografía y la capa de anotaciones de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
+      await persistImageEditorLayers(true);
+      rememberDialogState($('#imageEditorDialog'));
+      toast('Guardado exitosamente');
+      $('#imageEditorDialog').close();
+    },'Guardar');
+  });
 
   const viewerEdit=$('#viewerEditBtn');
   let viewerEditHold=0;
