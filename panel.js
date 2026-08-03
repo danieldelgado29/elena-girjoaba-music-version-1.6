@@ -740,10 +740,23 @@
         content.append(img);tryNext();
       };
       content.innerHTML='<div class="viewer-empty"><p>Cargando imagen…</p></div>';
+      // Mostrar inmediatamente la copia que ya está en memoria. La consulta
+      // remota queda solo como actualización posterior y nunca debe dejar el visor
+      // mostrando la versión anterior después de guardar.
+      if(raw&&typeof raw==='object'){
+        const immediate={...raw,originalSrc:raw.originalSrc||raw.original||'',operations:Array.isArray(raw.operations)?raw.operations:[],textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[]};
+        void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(ok)rendered=true;});
+      }
       loadRemoteImageEdit(song.id,owner).then(async remote=>{
-        if(remote){const ok=await showComposedViewerEdit(content,remote,song,owner);if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}}
-        renderFallback();
-      }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);renderFallback();});
+        const localUpdated=Number((raw&&typeof raw==='object'&&raw.updatedAt)||0);
+        const remoteUpdated=Number(remote?.updatedAt||0);
+        // No reemplazar una edición recién guardada por una respuesta remota vieja.
+        if(remote&&remoteUpdated>=localUpdated){
+          const ok=await showComposedViewerEdit(content,remote,song,owner);
+          if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
+        }
+        if(!rendered)renderFallback();
+      }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(!rendered)renderFallback();});
     } else {
       const isDaniel=type==='daniel';
       const storedLyrics=state.lyrics[song.id]||{};
@@ -1823,14 +1836,21 @@
   async function refreshOpenImageViewer(edit,song,owner){
     const viewer=$('#viewerDialog');
     const expectedType=owner==='daniel'?'daniel-image':'notes';
-    if(!viewer?.open||activeViewerSongId!==song.id||activeViewerType!==expectedType)return false;
+    if(!viewer?.open)return false;
+    // El editor puede cerrarse antes de que Safari actualice la pila de dialogs.
+    // Forzamos el visor activo a la canción recién guardada y pintamos la copia
+    // en memoria, sin esperar otra lectura de Firestore.
+    activeViewerSongId=song.id;
+    activeViewerType=expectedType;
+    $('#viewerTitle').textContent=`${expectedType==='daniel-image'?'Imagen Daniel':'Imagen'} · ${song.titulo}`;
+    const normalized={...edit,originalSrc:edit?.originalSrc||edit?.original||'',operations:Array.isArray(edit?.operations)?edit.operations:[],textBoxes:Array.isArray(edit?.textBoxes)?edit.textBoxes:[]};
     const content=$('#viewerContent');
-    content.innerHTML='<div class="viewer-empty"><p>Actualizando imagen…</p></div>';
+    content.innerHTML='';
     content.classList.remove('is-note-viewer');
-    const ok=await showComposedViewerEdit(content,edit,song,owner);
+    const ok=await showComposedViewerEdit(content,normalized,song,owner);
     if(!ok){
-      const src=imageCandidates(song,owner)[0];
-      if(src)showViewerImage(content,src,song);
+      const src=normalized.originalSrc||imageCandidates(song,owner)[0];
+      if(src)return showViewerImage(content,src,song);
     }
     return ok;
   }
@@ -1869,7 +1889,8 @@
         // encima, Safari/iOS podía conservar el canvas anterior hasta reabrir Imagen.
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
-        await refreshOpenImageViewer(saved,savedSong,saveOwner);
+        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
+        await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
