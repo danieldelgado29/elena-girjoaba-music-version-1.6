@@ -558,46 +558,52 @@
 
 
   async function composeRemoteImageEdit(remote,song,owner){
-    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0];
-    if(!src)return '';
-    return await new Promise(resolve=>{
-      const img=new Image();
-      img.onload=()=>{
-        try{
-          const c=document.createElement('canvas');
+    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'';
+    const paintComposition=(img=null)=>{
+      try{
+        const c=document.createElement('canvas');
+        if(img&&img.naturalWidth&&img.naturalHeight){
           const ratio=Math.min(1,1800/Math.max(1,img.naturalWidth),2400/Math.max(1,img.naturalHeight));
           c.width=Math.max(1,Math.round(img.naturalWidth*ratio));
           c.height=Math.max(1,Math.round(img.naturalHeight*ratio));
-          const ctx=c.getContext('2d');
-          ctx.drawImage(img,0,0,c.width,c.height);
-          const overlay=document.createElement('canvas');overlay.width=c.width;overlay.height=c.height;const oc=overlay.getContext('2d');
-          const arrowHead=(target,tip,from,size)=>{const angle=Math.atan2(tip.y-from.y,tip.x-from.x),len=Math.max(12,size*3.2),spread=Math.PI/6;target.beginPath();target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle-spread),tip.y-len*Math.sin(angle-spread));target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle+spread),tip.y-len*Math.sin(angle+spread));target.stroke();};
-          for(const op of remote.operations||[]){
-            const target=op.tool==='eraser'&&op.target==='photo'?ctx:oc;
-            const pts=(op.points||[]).map(p=>({x:p.x*c.width,y:p.y*c.height}));
-            if(pts.length<2)continue;
-            target.save();target.lineCap='round';target.lineJoin='round';target.lineWidth=Math.max(1,(op.size||.008)*c.width);target.strokeStyle=op.color||'#d00000';target.globalCompositeOperation=op.tool==='eraser'?'destination-out':'source-over';target.beginPath();target.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)target.lineTo(pts[i].x,pts[i].y);target.stroke();if(op.tool==='pencil'&&op.mode&&op.mode!=='free'){arrowHead(target,pts.at(-1),pts.at(-2),target.lineWidth);if(op.mode==='double-arrow')arrowHead(target,pts[0],pts[1],target.lineWidth);}target.restore();
+        }else{
+          c.width=1000;c.height=1300;
+        }
+        const ctx=c.getContext('2d');
+        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);
+        if(img)ctx.drawImage(img,0,0,c.width,c.height);
+        const overlay=document.createElement('canvas');overlay.width=c.width;overlay.height=c.height;const oc=overlay.getContext('2d');
+        const arrowHead=(target,tip,from,size)=>{const angle=Math.atan2(tip.y-from.y,tip.x-from.x),len=Math.max(12,size*3.2),spread=Math.PI/6;target.beginPath();target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle-spread),tip.y-len*Math.sin(angle-spread));target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle+spread),tip.y-len*Math.sin(angle+spread));target.stroke();};
+        for(const op of remote?.operations||[]){
+          const target=op.tool==='eraser'&&op.target==='photo'?ctx:oc;
+          const pts=(op.points||[]).map(p=>({x:p.x*c.width,y:p.y*c.height}));
+          if(pts.length<2)continue;
+          target.save();target.lineCap='round';target.lineJoin='round';target.lineWidth=Math.max(1,(op.size||.008)*c.width);target.strokeStyle=op.color||'#d00000';target.globalCompositeOperation=op.tool==='eraser'?'destination-out':'source-over';target.beginPath();target.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)target.lineTo(pts[i].x,pts[i].y);target.stroke();if(op.tool==='pencil'&&op.mode&&op.mode!=='free'){arrowHead(target,pts.at(-1),pts.at(-2),target.lineWidth);if(op.mode==='double-arrow')arrowHead(target,pts[0],pts[1],target.lineWidth);}target.restore();
+        }
+        ctx.drawImage(overlay,0,0);
+        for(const box of (Array.isArray(remote?.textBoxes)?remote.textBoxes:[])){
+          if(!String(box.text||'').trim())continue;
+          ctx.save();
+          const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
+          ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
+          const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
+          ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';
+          const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
+          for(const paragraph of String(box.text||'').split(/\n/)){
+            const words=paragraph.split(/\s+/);let line='';
+            for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}
+            if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;
           }
-          ctx.drawImage(overlay,0,0);
-          for(const box of (Array.isArray(remote.textBoxes)?remote.textBoxes:[])){
-            if(!String(box.text||'').trim())continue;
-            ctx.save();
-            const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
-            ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
-            const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
-            ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';
-            const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
-            for(const paragraph of String(box.text||'').split(/\n/)){
-              const words=paragraph.split(/\s+/);let line='';
-              for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}
-              if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;
-            }
-            ctx.restore();
-          }
-          resolve(c.toDataURL('image/png'));
-        }catch(err){console.warn('No se pudo componer la vista de imagen',err);resolve('');}
-      };
-      img.onerror=()=>resolve('');
+          ctx.restore();
+        }
+        return c.toDataURL('image/png');
+      }catch(err){console.warn('No se pudo componer la vista de imagen',err);return '';}
+    };
+    if(!src)return paintComposition(null);
+    return await new Promise(resolve=>{
+      const img=new Image();
+      img.onload=()=>resolve(paintComposition(img));
+      img.onerror=()=>resolve(paintComposition(null));
       img.src=src.startsWith('data:')?src:encodeURI(src);
     });
   }
@@ -1447,7 +1453,7 @@
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
   const imageStage=$('#imageEditorStage');
-  // 6.36.32 · Trackpad Mac fluido y visor de imagen corregido.
+  // 6.36.33 · Visor Mac robusto y lienzo blanco sin imagen.
   // - Safari/Chrome envían el pellizco como wheel + ctrlKey.
   // - El desplazamiento fino del trackpad mueve la hoja.
   // - La rueda física del mouse conserva el zoom centrado en el cursor.
