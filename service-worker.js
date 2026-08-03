@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260802-entrega-63619";
+const VERSION = "egm-offline-v6-20260803-entrega-63623";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
