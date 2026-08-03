@@ -1849,25 +1849,33 @@
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
-    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
-      const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
+    const saveSongId=activeImageSongId;
+    const saveOwner=activeImageOwner;
+    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
+      const btn=$('#saveImageEditorBtn');
+      btn.disabled=true;
+      btn.textContent='Guardando…';
+      toast('Guardando…');
       try{
-        // Primero se confirma la copia local. El editor puede cerrar sin quedarse
-        // bloqueado por la red y la X ya no vuelve a indicar cambios sin guardar.
-        await persistImageEditorLayers(false);
+        // Guardar primero la edición completa en IndexedDB y Firestore.
+        // El editor solo se cierra después de que la copia local quede confirmada.
+        const ok=await persistImageEditorLayers(true);
+        if(!ok)throw new Error('No se pudo preparar la edición');
+        const editId=remoteImageKey(saveSongId,saveOwner);
+        const local=await offlineStoreGet('imageEdits',editId);
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
-        toast('Guardado en el dispositivo · sincronizando…');
-        // La sincronización continúa en segundo plano y actualiza todos los dispositivos.
-        saveImageEditorVectorsRemote().then(async remote=>{
-          const saved={original:remote.originalSrc||'',operations:remote.operations||[],textBoxes:remote.textBoxes||[],updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};
-          song[imageField(activeImageOwner)]={...(song[imageField(activeImageOwner)]||{}),...saved};
-          saveStateLocalOnly();
-          if(!remote.pendingSync)toast(`Guardado y sincronizado · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);
-        }).catch(err=>{console.warn('Sincronización pendiente',err);toast('Guardado localmente · pendiente de sincronización');});
-      }catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa el dispositivo'}`);}
-      finally{btn.disabled=false;btn.textContent='Guardar';}
+        toast(local?.pendingSync
+          ? 'Guardado en el dispositivo · pendiente de sincronización'
+          : `Guardado y sincronizado · imageEdits/${editId}`);
+      }catch(err){
+        console.error('No se pudo guardar la imagen',err);
+        toast(`No se guardó: ${err.message||'revisa Firestore'}`);
+      }finally{
+        btn.disabled=false;
+        btn.textContent='Guardar';
+      }
     },'Guardar');
   });
 
