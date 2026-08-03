@@ -792,3 +792,19 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-text-box .text-box-delete small,.image-text-box .text-box-move small,.image-text-box .text-box-rotate small,.image-text-box .text-box-resize small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
 .text-box-rotate:after{display:none!important}
 @media(max-width:480px){.image-text-box .text-box-delete,.image-text-box .text-box-move,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{min-width:42px;height:36px}.image-text-box .text-box-delete,.image-text-box .text-box-move{top:-42px}.image-text-box .text-box-rotate,.image-text-box .text-box-resize{bottom:-42px}}
+
+/* 6.36.30: evita que Safari interprete los códigos internos como credenciales de AutoFill. */
+.masked-code-input{-webkit-text-security:disc!important;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;}
+
+/* Entrega 6.36.31 · navegación estable con trackpad y mouse */
+.image-editor-stage{
+  overflow:hidden!important;
+  contain:layout paint!important;
+  min-height:0!important;
+  touch-action:none!important;
+}
+.image-editor-paper{
+  transform-origin:0 0!important;
+  max-width:none!important;
+  max-height:none!important;
+}

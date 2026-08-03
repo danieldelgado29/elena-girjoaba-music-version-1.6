@@ -1,3 +1,25 @@
+"use strict";
+
+// 6.36.30 — El panel no solicita ni utiliza datos del llavero.
+// Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
+(function disablePanelAutofill(){
+  const harden=()=>{
+    document.querySelectorAll("form").forEach(form=>form.setAttribute("autocomplete","off"));
+    document.querySelectorAll('input:not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, [contenteditable="true"]').forEach(el=>{
+      el.setAttribute("autocomplete","off");
+      el.setAttribute("data-form-type","other");
+      el.setAttribute("data-lpignore","true");
+      el.setAttribute("data-1p-ignore","true");
+      el.setAttribute("data-bwignore","");
+      if(el.tagName!=="TEXTAREA" && !el.hasAttribute("contenteditable")){
+        el.setAttribute("autocorrect","off");
+        el.setAttribute("spellcheck","false");
+      }
+    });
+  };
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",harden,{once:true});
+  else harden();
+})();
 (() => {
   'use strict';
   const $ = (s, p=document) => p.querySelector(s);
@@ -1220,7 +1242,7 @@
 
 
   const IMAGE_COLORS=['#d00000','#111111','#ffffff','#0057d9','#ffd400'];
-  const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:18,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
+  const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
   const imageInlineText=$('#imageInlineText');
   function imageEditorCanvas(){return $('#imageEditorCanvas');}
   function imageBaseCanvas(){return $('#imageBaseCanvas');}
@@ -1237,7 +1259,7 @@
   function restoreImageSnapshot(snap){if(!snap)return;drawDataUrl(imageBaseCanvas(),snap.base);drawDataUrl(imageEditorCanvas(),snap.overlay);}
   function applyImageTransform(){imageEditorPaper().style.transform=`translate3d(${imageEditorState.panX}px,${imageEditorState.panY}px,0) scale(${imageEditorState.scale})`;}
   function resetImageViewport(){imageEditorState.scale=1;imageEditorState.panX=0;imageEditorState.panY=0;applyImageTransform();requestAnimationFrame(()=>{const stage=$('#imageEditorStage'),paper=imageEditorPaper();const sr=stage.getBoundingClientRect(),pr=paper.getBoundingClientRect();imageEditorState.panX=Math.max(12,(sr.width-pr.width)/2);imageEditorState.panY=Math.max(12,(sr.height-pr.height)/2);applyImageTransform();});}
-  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.88,Math.min(1.12,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
+  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.97,Math.min(1.03,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
   function replayImageOperations(){
     const base=imageBaseCanvas(), overlay=imageEditorCanvas(), bw=base.width, bh=base.height;
     for(const op of imageEditorState.operations||[]){
@@ -1280,7 +1302,7 @@
     const remote=await loadRemoteImageEdit(songId,owner);
     if(remote&&(!raw?.updatedAt||Number(remote.updatedAt||0)>=Number(raw.updatedAt||0))){raw={original:remote.originalSrc||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};song[imageField(owner)]=raw;}
     imageEditorState.sources=[...(raw&&typeof raw==='object'&&raw.original?[raw.original]:[]),...imageCandidates(song,owner)].filter((v,i,a)=>v&&a.indexOf(v)===i);imageEditorState.original=imageEditorState.sources[0]||'';imageEditorState.overlay=raw&&typeof raw==='object'?(raw.drawingOverlay||raw.overlay||''):'';imageEditorState.operations=raw&&typeof raw==='object'&&Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=raw&&typeof raw==='object'&&Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
-    Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:18,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
+    Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
   $('#imageUploadTrigger').addEventListener('click',()=>{const input=$('#imageSourceInput');input.value='';input.click();});
@@ -1388,7 +1410,45 @@
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
   const imageStage=$('#imageEditorStage');
-  imageStage.addEventListener('wheel',e=>{e.preventDefault();const raw=Math.max(-80,Math.min(80,e.deltaY));const sensitivity=e.ctrlKey?0.00075:0.00115;zoomImageAt(e.clientX,e.clientY,Math.exp(-raw*sensitivity));},{passive:false});
+  // 6.36.31 · Trackpad Mac: pellizco suave y desplazamiento con dos dedos.
+  // - Safari/Chrome envían el pellizco como wheel + ctrlKey.
+  // - El desplazamiento fino del trackpad mueve la hoja.
+  // - La rueda física del mouse conserva el zoom centrado en el cursor.
+  let imageWheelFrame=0,imageWheelZoomDelta=0,imageWheelX=0,imageWheelY=0;
+  imageStage.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const dx=Number.isFinite(e.deltaX)?e.deltaX:0;
+    const dy=Number.isFinite(e.deltaY)?e.deltaY:0;
+    const looksLikeTrackpadScroll=!e.ctrlKey&&e.deltaMode===0&&(Math.abs(dx)>0.01||Math.abs(dy)<48);
+    if(looksLikeTrackpadScroll){
+      // Dos dedos: mover la hoja sin límites artificiales.
+      imageEditorState.panX-=dx;
+      imageEditorState.panY-=dy;
+      applyImageTransform();
+      return;
+    }
+    // Pellizco o rueda física: acumular eventos y aplicar un solo cambio por frame.
+    imageWheelZoomDelta+=Math.max(-36,Math.min(36,dy));
+    imageWheelX=e.clientX;imageWheelY=e.clientY;
+    if(imageWheelFrame)return;
+    imageWheelFrame=requestAnimationFrame(()=>{
+      const delta=imageWheelZoomDelta;imageWheelZoomDelta=0;imageWheelFrame=0;
+      const sensitivity=e.ctrlKey?0.00042:0.00105;
+      const factor=Math.max(.975,Math.min(1.025,Math.exp(-delta*sensitivity)));
+      zoomImageAt(imageWheelX,imageWheelY,factor);
+    });
+  },{passive:false});
+  // Safari puede emitir GestureEvent en algunas versiones/PWA.
+  let safariGestureScale=1;
+  imageStage.addEventListener('gesturestart',e=>{e.preventDefault();safariGestureScale=Number(e.scale)||1;},{passive:false});
+  imageStage.addEventListener('gesturechange',e=>{
+    e.preventDefault();
+    const current=Number(e.scale)||safariGestureScale;
+    const ratio=current/Math.max(.001,safariGestureScale);
+    safariGestureScale=current;
+    zoomImageAt(e.clientX||innerWidth/2,e.clientY||innerHeight/2,Math.max(.985,Math.min(1.015,ratio)));
+  },{passive:false});
+  imageStage.addEventListener('gestureend',e=>{e.preventDefault();safariGestureScale=1;},{passive:false});
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){const [a,b]=[...imageEditorState.pointers.values()];imageEditorState.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};imageEditorState.panning=null;imageEditorState.textGesture=null;}else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
   imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){const [a,b]=[...imageEditorState.pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;zoomImageAt(cx,cy,Math.max(.94,Math.min(1.06,d/imageEditorState.pinch.distance)));imageEditorState.panX+=cx-imageEditorState.pinch.cx;imageEditorState.panY+=cy-imageEditorState.pinch.cy;imageEditorState.pinch={distance:d,cx,cy};applyImageTransform();e.preventDefault();}else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
@@ -1412,6 +1472,21 @@
     console.info('[EGM imageEdits] guardado confirmado:',editId,remote.updatedAt);
     return remote;
   }
+  async function refreshOpenImageViewer(edit,song,owner){
+    const viewer=$('#viewerDialog');
+    const expectedType=owner==='daniel'?'daniel-image':'notes';
+    if(!viewer?.open||activeViewerSongId!==song.id||activeViewerType!==expectedType)return false;
+    const content=$('#viewerContent');
+    content.innerHTML='<div class="viewer-empty"><p>Actualizando imagen…</p></div>';
+    content.classList.remove('is-note-viewer');
+    const ok=await showComposedViewerEdit(content,edit,song,owner);
+    if(!ok){
+      const src=imageCandidates(song,owner)[0];
+      if(src)showViewerImage(content,src,song);
+    }
+    return ok;
+  }
+
   async function persistImageEditorLayers(syncRemote=false){
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
@@ -1420,6 +1495,7 @@
     song[imageField(activeImageOwner)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
+    await refreshOpenImageViewer(saved,song,activeImageOwner);
     return true;
   }
   $('#saveImageEditorBtn').addEventListener('click',()=>{

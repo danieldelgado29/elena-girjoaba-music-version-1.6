@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.15">
+  <link rel="stylesheet" href="panel.css?v=6.36.30">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -55,7 +55,7 @@
         <form id="showForm" class="config-grid" autocomplete="off">
           <label class="field">
             <span>Lugar</span>
-            <input id="venueInput" type="text" list="venueHistory" placeholder="Ej. Hotel Oro Verde" required>
+            <input id="venueInput" name="egm-show-place" type="text" list="venueHistory" placeholder="Ej. Hotel Oro Verde" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required>
             <datalist id="venueHistory"></datalist>
           </label>
 
@@ -156,7 +156,7 @@
       <p class="eyebrow">SEGURIDAD</p>
       <h3>Confirmar contraseña</h3>
       <form id="securityAuthForm" class="module-form" autocomplete="off">
-        <label class="field full"><span>Contraseña actual</span><input id="securityCurrentPassword" type="password" inputmode="numeric" required></label>
+        <label class="field full"><span>Contraseña actual</span><input id="securityCurrentPassword" name="egm-current-code" class="masked-code-input" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required></label>
         <p id="securityAuthError" class="form-error full" hidden>Contraseña incorrecta.</p>
         <button class="primary-btn full" type="submit">Continuar</button>
       </form>
@@ -169,10 +169,10 @@
       <p class="eyebrow">SEGURIDAD</p>
       <h3>Contraseña y teléfonos</h3>
       <form id="securityForm" class="module-form" autocomplete="off">
-        <label class="field"><span>Nueva contraseña</span><input id="securityNewPassword" type="password" inputmode="numeric" minlength="4" required></label>
-        <label class="field"><span>Confirmar nueva contraseña</span><input id="securityConfirmPassword" type="password" inputmode="numeric" minlength="4" required></label>
-        <label class="field"><span>WhatsApp Daniel</span><input id="securityDanielPhone" type="tel" inputmode="tel" required placeholder="593..."></label>
-        <label class="field"><span>WhatsApp Elena</span><input id="securityElenaPhone" type="tel" inputmode="tel" required placeholder="593..."></label>
+        <label class="field"><span>Nueva contraseña</span><input id="securityNewPassword" name="egm-new-code" class="masked-code-input" type="text" inputmode="numeric" pattern="[0-9]*" minlength="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required></label>
+        <label class="field"><span>Confirmar nueva contraseña</span><input id="securityConfirmPassword" name="egm-confirm-code" class="masked-code-input" type="text" inputmode="numeric" pattern="[0-9]*" minlength="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required></label>
+        <label class="field"><span>WhatsApp Daniel</span><input id="securityDanielPhone" name="egm-daniel-phone" type="tel" inputmode="tel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required placeholder="593..."></label>
+        <label class="field"><span>WhatsApp Elena</span><input id="securityElenaPhone" name="egm-elena-phone" type="tel" inputmode="tel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore required placeholder="593..."></label>
         <p class="module-note full">Escribe los números con código de país, solo números.</p>
         <p id="securityFormError" class="form-error full" hidden></p>
         <button class="primary-btn full" type="submit">Guardar cambios</button>
@@ -487,7 +487,7 @@
           <div id="imageEraserOptions" class="compact-popover egm-eraser-options" hidden>
             <button type="button" data-image-eraser-target="annotations">Anotaciones</button>
             <button type="button" data-image-eraser-target="photo">Foto</button>
-            <button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="60">XL</button>
+            <button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="100">XL</button>
           </div>
         </div>
         <div class="toolbar-popover-wrap egm-tool-wrap">
@@ -517,7 +517,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.28"></script>
+  <script type="module" src="panel.js?v=6.36.30"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>
