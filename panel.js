@@ -1492,7 +1492,30 @@
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
-  $('#imageUploadTrigger').addEventListener('click',()=>{const input=$('#imageSourceInput');input.value='';input.click();});
+  const imageUploadMenu=$('#imageUploadOptions');
+  $('#imageUploadTrigger').addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    imageUploadMenu.hidden=!imageUploadMenu.hidden;
+  });
+  $('#imageChoosePhotoBtn').addEventListener('click',()=>{
+    imageUploadMenu.hidden=true;
+    const input=$('#imageSourceInput');input.value='';input.click();
+  });
+  $('#imageDeletePhotoBtn').addEventListener('click',()=>{
+    imageUploadMenu.hidden=true;
+    if(!imageEditorState.original){toast('No hay una foto para eliminar');return;}
+    askConfirm('Eliminar fotografía','Se eliminará únicamente la fotografía. Los dibujos y cajas de texto se conservarán sobre un lienzo blanco.',async()=>{
+      imageEditorState.original='';
+      imageEditorState.sources=[];
+      imageEditorState.overlay='';
+      renderImageEditor();
+      await persistImageEditorLayers(false);
+      toast('Fotografía eliminada · lienzo blanco activo');
+    },'Eliminar');
+  });
+  document.addEventListener('pointerdown',e=>{
+    if(!imageUploadMenu.hidden&&!e.target.closest('#imageUploadOptions,#imageUploadTrigger'))imageUploadMenu.hidden=true;
+  });
   async function compressEditorPhoto(file){
     const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(new Error('No se pudo leer la imagen'));r.onload=()=>resolve(String(r.result||''));r.readAsDataURL(file);});
     const img=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=()=>reject(new Error('No se pudo abrir la imagen'));x.src=dataUrl;});
