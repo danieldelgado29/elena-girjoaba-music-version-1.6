@@ -60,22 +60,8 @@
             saveStateLocalOnly();
           }
         }
-        if(data.imageEdits&&typeof data.imageEdits==='object'&&state.songs.length){
-          state.songs=state.songs.map(song=>{
-            let next=song;
-            for(const owner of ['elena','daniel']){
-              const edit=data.imageEdits[remoteImageKey(song.id,owner)];
-              if(edit&&typeof edit==='object') next={...next,[imageField(owner)]:{original:edit.originalSrc||edit.original||'',operations:Array.isArray(edit.operations)?edit.operations:[],textBoxes:Array.isArray(edit.textBoxes)?edit.textBoxes:[],updatedAt:edit.updatedAt||0,remote:true}};
-            }
-            return next;
-          });
-          renderSongs();
-          renderSongbookList();
-          if(activeViewerSongId&&(activeViewerType==='notes'||activeViewerType==='daniel-image')){
-            const current=state.songs.find(x=>x.id===activeViewerSongId);
-            if(current) openViewer(current,activeViewerType);
-          }
-        }
+        // Las ediciones de imagen ya no se leen desde config/estado.
+        // La única fuente oficial es imageEdits/{owner-songId}.
         if(state.config){
           state.config.whatsapp=data.pedidos_whatsapp!==false;
           state.config.publicQueue=data.mostrar_cola!==false;
@@ -581,8 +567,8 @@
       content.innerHTML='<div class="viewer-empty"><p>Cargando imagen…</p></div>';
       loadRemoteImageEdit(song.id,owner).then(async remote=>{
         if(remote){const ok=await showComposedViewerEdit(content,remote,song,owner);if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}}
-        const localOk=await showComposedViewerEdit(content,raw,song,owner);rendered=localOk;if(!localOk)renderFallback();
-      }).catch(async err=>{console.warn('No se pudo actualizar el visor remoto',err);const localOk=await showComposedViewerEdit(content,raw,song,owner);rendered=localOk;if(!localOk)renderFallback();});
+        renderFallback();
+      }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);renderFallback();});
     } else {
       const isDaniel=type==='daniel';
       const storedLyrics=state.lyrics[song.id]||{};
@@ -1281,23 +1267,12 @@
     return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner));
   }
   async function loadRemoteImageEdit(songId,owner){
-    try{
-      await initRemoteSync();
-      if(!remoteGetDoc)return null;
-      const ref=remoteImageRef(songId,owner);
-      if(ref){
-        const snap=await remoteGetDoc(ref);
-        if(snap.exists()) return snap.data()||null;
-      }
-      // Compatibilidad de lectura con entregas anteriores: solo para migrar.
-      if(remoteStateRef){
-        const legacy=await remoteGetDoc(remoteStateRef);
-        const key=remoteImageKey(songId,owner);
-        const data=legacy.exists()?(legacy.data()||{}):{};
-        return data.imageEdits&&typeof data.imageEdits==='object'?data.imageEdits[key]||null:null;
-      }
-      return null;
-    }catch(err){console.warn('No se pudo cargar la edición remota',err);return null;}
+    await initRemoteSync();
+    if(!remoteGetDoc) throw new Error('Firestore todavía no está listo');
+    const ref=remoteImageRef(songId,owner);
+    if(!ref) throw new Error('No se pudo crear la referencia imageEdits');
+    const snap=await remoteGetDoc(ref);
+    return snap.exists() ? (snap.data()||null) : null;
   }
   async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
@@ -1425,14 +1400,16 @@
     if(!remoteSetDoc||!remoteGetDoc)throw new Error('Firestore todavía no está listo');
     if(String(imageEditorState.original||'').startsWith('data:'))throw new Error('La foto elegida desde el dispositivo no puede sincronizarse sin Firebase Storage. Usa la foto vinculada existente.');
     const stamp=Date.now();
-    const metadata={songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v3'};
+    const editId=remoteImageKey(activeImageSongId,activeImageOwner);
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits'};
     const ref=remoteImageRef(activeImageSongId,activeImageOwner);
     if(!ref)throw new Error('No se pudo crear el documento remoto de la edición');
     const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
     await Promise.race([remoteSetDoc(ref,metadata,{merge:false}),timeout]);
     const check=await Promise.race([remoteGetDoc(ref),timeout]);
     const remote=check.exists()?check.data():null;
-    if(!remote||Number(remote.updatedAt)!==stamp)throw new Error('Firestore no confirmó la edición');
+    if(!remote||Number(remote.updatedAt)!==stamp||remote.source!=='imageEdits')throw new Error('Firestore no confirmó la edición en imageEdits/'+editId);
+    console.info('[EGM imageEdits] guardado confirmado:',editId,remote.updatedAt);
     return remote;
   }
   async function persistImageEditorLayers(syncRemote=false){
@@ -1450,7 +1427,7 @@
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     askConfirm('Guardar imagen',`Se guardarán en Firestore las capas vectoriales de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
-      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));toast('Guardado exitosamente en todos los dispositivos');$('#imageEditorDialog').close();}
+      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));toast(`Guardado exitosamente · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);$('#imageEditorDialog').close();}
       catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa Firestore'}`);}
       finally{btn.disabled=false;btn.textContent='Guardar';}
     },'Guardar');

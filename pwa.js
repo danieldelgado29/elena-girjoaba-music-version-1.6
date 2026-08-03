@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "6.33.8-content-borders";
+  const APP_VERSION = "6.36.28";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
