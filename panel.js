@@ -1286,10 +1286,12 @@
   async function loadRemoteImageEdit(songId,owner){
     try{
       await initRemoteSync();
-      if(!remoteDoc||!remoteGetDoc||!remoteStateRef)return null;
-      const ref=remoteDoc(remoteStateRef.firestore,'config',`imageEdit_${remoteImageKey(songId,owner)}`);
-      const snap=await remoteGetDoc(ref);
-      return snap.exists()?snap.data():null;
+      if(!remoteGetDoc||!remoteStateRef)return null;
+      const key=remoteImageKey(songId,owner);
+      const snap=await remoteGetDoc(remoteStateRef);
+      if(!snap.exists())return null;
+      const data=snap.data()||{};
+      return data.imageEdits&&typeof data.imageEdits==='object'?data.imageEdits[key]||null:null;
     }catch(err){console.warn('No se pudo cargar la edición remota',err);return null;}
   }
   async function openImageEditor(songId,owner){
@@ -1415,13 +1417,15 @@
   }
   async function saveImageEditorVectorsRemote(){
     await initRemoteSync();
-    if(!remoteDoc||!remoteSetDoc||!remoteGetDoc||!remoteStateRef)throw new Error('Firestore todavía no está listo');
+    if(!remoteSetDoc||!remoteGetDoc||!remoteStateRef)throw new Error('Firestore todavía no está listo');
     if(String(imageEditorState.original||'').startsWith('data:'))throw new Error('La foto elegida desde el dispositivo no puede sincronizarse sin Firebase Storage. Usa la foto vinculada existente.');
     const key=remoteImageKey(activeImageSongId,activeImageOwner),stamp=Date.now();
-    const metadata={songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v1'};
-    const ref=remoteDoc(remoteStateRef.firestore,'config',`imageEdit_${key}`);
-    await remoteSetDoc(ref,metadata,{merge:false});
-    const check=await remoteGetDoc(ref);if(!check.exists()||check.data().updatedAt!==stamp)throw new Error('Firestore no confirmó la edición');
+    const metadata={songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v2'};
+    const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
+    await Promise.race([remoteSetDoc(remoteStateRef,{imageEdits:{[key]:metadata}},{merge:true}),timeout]);
+    const check=await Promise.race([remoteGetDoc(remoteStateRef),timeout]);
+    const remote=check.exists()?check.data()?.imageEdits?.[key]:null;
+    if(!remote||Number(remote.updatedAt)!==stamp)throw new Error('Firestore no confirmó la edición');
     return metadata;
   }
   async function persistImageEditorLayers(syncRemote=false){
@@ -1439,7 +1443,7 @@
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     askConfirm('Guardar imagen',`Se guardarán en Firestore las capas vectoriales de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
-      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));toast('Guardado exitosamente en todos los dispositivos');$('#imageEditorDialog').close();}
+      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));toast('Guardado exitosamente en todos los dispositivos');$('#imageEditorDialog').close();}
       catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa Firestore'}`);}
       finally{btn.disabled=false;btn.textContent='Guardar';}
     },'Guardar');
