@@ -1416,7 +1416,7 @@
   function drawDataUrl(canvas,src,done){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);if(!src){done?.();return;}const img=new Image();img.onload=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);done?.();};img.onerror=()=>done?.();img.src=src;}
   function restoreImageSnapshot(snap){if(!snap)return;drawDataUrl(imageBaseCanvas(),snap.base);drawDataUrl(imageEditorCanvas(),snap.overlay);}
   function applyImageTransform(){imageEditorPaper().style.transform=`translate3d(${imageEditorState.panX}px,${imageEditorState.panY}px,0) scale(${imageEditorState.scale})`;}
-  function resetImageViewport(){imageEditorState.scale=1;imageEditorState.panX=0;imageEditorState.panY=0;applyImageTransform();requestAnimationFrame(()=>{const stage=$('#imageEditorStage'),paper=imageEditorPaper();const sr=stage.getBoundingClientRect(),pr=paper.getBoundingClientRect();imageEditorState.panX=Math.max(12,(sr.width-pr.width)/2);imageEditorState.panY=Math.max(12,(sr.height-pr.height)/2);applyImageTransform();});}
+  function resetImageViewport(){imageEditorState.scale=1;imageEditorState.panX=0;imageEditorState.panY=0;applyImageTransform();requestAnimationFrame(()=>{const stage=$('#imageEditorStage'),paper=imageEditorPaper();if(!stage||!paper)return;const stageW=Math.max(1,stage.clientWidth),stageH=Math.max(1,stage.clientHeight),paperW=Math.max(1,paper.offsetWidth),paperH=Math.max(1,paper.offsetHeight);const margin=24;const fitScale=Math.max(.12,Math.min(1,(stageW-margin*2)/paperW,(stageH-margin*2)/paperH));imageEditorState.scale=fitScale;imageEditorState.panX=(stageW-paperW*fitScale)/2;imageEditorState.panY=(stageH-paperH*fitScale)/2;applyImageTransform();});}
   function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.94,Math.min(1.06,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
   function replayImageOperations(){
     const base=imageBaseCanvas(), overlay=imageEditorCanvas(), bw=base.width, bh=base.height;
@@ -1659,22 +1659,52 @@
     });
   },{passive:false});
   // Safari puede emitir GestureEvent en algunas versiones/PWA.
-  let safariGestureScale=1;
-  imageStage.addEventListener('gesturestart',e=>{e.preventDefault();safariGestureScale=Number(e.scale)||1;},{passive:false});
-  imageStage.addEventListener('gesturechange',e=>{
+  let safariGesture=null;
+  imageStage.addEventListener('gesturestart',e=>{
     e.preventDefault();
-    const current=Number(e.scale)||safariGestureScale;
-    const ratio=current/Math.max(.001,safariGestureScale);
-    safariGestureScale=current;
-    zoomImageAt(e.clientX||innerWidth/2,e.clientY||innerHeight/2,Math.max(.96,Math.min(1.04,ratio)));
+    const r=imageStage.getBoundingClientRect();
+    const cx=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
+    const cy=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
+    safariGesture={startScale:imageEditorState.scale,cx,cy,localX:(cx-imageEditorState.panX)/imageEditorState.scale,localY:(cy-imageEditorState.panY)/imageEditorState.scale};
   },{passive:false});
-  imageStage.addEventListener('gestureend',e=>{e.preventDefault();safariGestureScale=1;},{passive:false});
+  imageStage.addEventListener('gesturechange',e=>{
+    e.preventDefault();if(!safariGesture)return;
+    const r=imageStage.getBoundingClientRect();
+    const cx=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
+    const cy=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
+    const next=Math.max(.12,Math.min(20,safariGesture.startScale*Math.pow(Math.max(.05,Number(e.scale)||1),.82)));
+    imageEditorState.scale=next;
+    imageEditorState.panX=cx-safariGesture.localX*next;
+    imageEditorState.panY=cy-safariGesture.localY*next;
+    applyImageTransform();
+  },{passive:false});
+  imageStage.addEventListener('gestureend',e=>{e.preventDefault();safariGesture=null;},{passive:false});
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){
     // El segundo dedo convierte inmediatamente el gesto en zoom y cancela cualquier trazo iniciado por el primero.
     if(imageEditorState.drawing){imageEditorState.drawing=false;imageEditorState.path=[];restoreImageSnapshot(imageEditorState.undo.at(-1));}
-    const [a,b]=[...imageEditorState.pointers.values()];imageEditorState.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};imageEditorState.panning=null;imageEditorState.textGesture=null;
+    const [a,b]=[...imageEditorState.pointers.values()];
+    const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    imageEditorState.pinch={
+      distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
+      cx,cy,
+      scale:imageEditorState.scale,
+      // Punto de la hoja situado exactamente bajo el centro inicial del pellizco.
+      localX:(cx-imageEditorState.panX)/imageEditorState.scale,
+      localY:(cy-imageEditorState.panY)/imageEditorState.scale
+    };
+    imageEditorState.panning=null;imageEditorState.textGesture=null;
   }else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
-  imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){const [a,b]=[...imageEditorState.pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;const raw=d/Math.max(1,imageEditorState.pinch.distance);const factor=Math.max(.97,Math.min(1.03,Math.pow(raw,.55)));zoomImageAt(cx,cy,factor);imageEditorState.panX+=cx-imageEditorState.pinch.cx;imageEditorState.panY+=cy-imageEditorState.pinch.cy;imageEditorState.pinch={distance:d,cx,cy};applyImageTransform();e.preventDefault();}else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
+  imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){
+    const [a,b]=[...imageEditorState.pointers.values()],d=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    const pinch=imageEditorState.pinch;
+    // Escala absoluta desde el inicio del gesto: evita acumular errores y que la imagen derive abajo/derecha.
+    const raw=d/pinch.distance;
+    const next=Math.max(.12,Math.min(20,pinch.scale*Math.pow(raw,.82)));
+    imageEditorState.scale=next;
+    imageEditorState.panX=cx-pinch.localX*next;
+    imageEditorState.panY=cy-pinch.localY*next;
+    applyImageTransform();e.preventDefault();
+  }else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
     imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
