@@ -1677,12 +1677,48 @@
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});
 
+  // 6.36.36 — Sesión persistente y bloqueo de pull-to-refresh dentro del panel.
+  const PANEL_AUTH_KEY='egm-panel-auth-v2';
+  const PANEL_AUTH_TTL=12*60*60*1000;
+  function panelAuthValid(){
+    try{
+      if(sessionStorage.getItem('egm-panel-auth')==='1')return true;
+      const saved=JSON.parse(localStorage.getItem(PANEL_AUTH_KEY)||'null');
+      if(saved&&Number(saved.expiresAt)>Date.now()){
+        sessionStorage.setItem('egm-panel-auth','1');
+        return true;
+      }
+      localStorage.removeItem(PANEL_AUTH_KEY);
+    }catch(_){}
+    return false;
+  }
+  function rememberPanelAuth(){
+    sessionStorage.setItem('egm-panel-auth','1');
+    try{localStorage.setItem(PANEL_AUTH_KEY,JSON.stringify({expiresAt:Date.now()+PANEL_AUTH_TTL}));}catch(_){}
+  }
+
+  // Impide el gesto de recarga al jalar hacia abajo, sin bloquear el scroll normal de listas/modales.
+  let pullStartY=null;
+  document.addEventListener('touchstart',event=>{
+    if(event.touches.length!==1){pullStartY=null;return;}
+    pullStartY=event.touches[0].clientY;
+  },{passive:true,capture:true});
+  document.addEventListener('touchmove',event=>{
+    if(pullStartY===null||event.touches.length!==1)return;
+    const deltaY=event.touches[0].clientY-pullStartY;
+    if(deltaY<=0)return;
+    const scroller=event.target.closest('.viewer-content,.songbook-paper-wrap,.image-editor-stage,.modal-card,.queue-list,.song-list,[data-scrollable]');
+    if(scroller&&scroller.scrollTop>0)return;
+    if(window.scrollY<=0)event.preventDefault();
+  },{passive:false,capture:true});
+  ['touchend','touchcancel'].forEach(name=>document.addEventListener(name,()=>{pullStartY=null;},{passive:true,capture:true}));
+
   const login=$('#panelLogin'),loginForm=$('#panelLoginForm'),loginPassword=$('#panelLoginPassword'),loginError=$('#panelLoginError');
   const params=new URLSearchParams(location.search);
-  const trusted=params.get('trusted')==='1';
+  const trusted=params.get('trusted')==='1'||panelAuthValid();
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
   login.hidden=!trusted ? false : true;
-  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){sessionStorage.setItem('egm-panel-auth','1');login.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   Promise.all([loadData(),initRemoteSync()]).then(()=>{
     if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
   });

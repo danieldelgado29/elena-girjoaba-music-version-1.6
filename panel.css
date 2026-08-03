@@ -808,3 +808,7 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
   max-width:none!important;
   max-height:none!important;
 }
+
+/* 6.36.36: evita pull-to-refresh y rebote de la página principal sin bloquear áreas internas. */
+html,body{overscroll-behavior-y:none!important;}
+body{touch-action:pan-x pan-y;}
