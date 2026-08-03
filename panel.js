@@ -628,7 +628,30 @@
     if(type==='notes'||type==='daniel-image'){
       const owner=type==='daniel-image'?'daniel':'elena',raw=song[imageField(owner)];
       let rendered=false;
-      const renderFallback=()=>{if(rendered)return;const files=imageCandidates(song,owner);if(files.length){const img=new Image();img.alt=`Notas de ${song.titulo}`;let fileIndex=0;const tryNext=()=>{if(fileIndex>=files.length){content.classList.remove('is-note-viewer');content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';return;}const src=files[fileIndex++];img.src=src.startsWith('data:')?src:encodeURI(src);};img.addEventListener('load',()=>installNoteGestures(img),{once:true});img.addEventListener('error',tryNext);content.append(img);tryNext();}else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';};
+      // 6.36.34 · Si no existe una foto, el visor muestra un lienzo blanco editable.
+      // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
+      const renderBlankCanvas=async()=>{
+        if(rendered)return;
+        const blankSrc=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner);
+        if(blankSrc){rendered=showViewerImage(content,blankSrc,song);return;}
+        content.classList.remove('is-note-viewer');
+        content.innerHTML='<div class="viewer-empty viewer-blank-canvas" aria-label="Lienzo blanco editable"></div>';
+        rendered=true;
+      };
+      const renderFallback=()=>{
+        if(rendered)return;
+        const files=imageCandidates(song,owner);
+        if(!files.length){void renderBlankCanvas();return;}
+        content.innerHTML='';content.classList.add('is-note-viewer');
+        const img=new Image();img.alt=`Notas de ${song.titulo}`;let fileIndex=0;
+        const tryNext=()=>{
+          if(fileIndex>=files.length){content.innerHTML='';void renderBlankCanvas();return;}
+          const src=files[fileIndex++];img.src=src.startsWith('data:')?src:encodeURI(src);
+        };
+        img.addEventListener('load',()=>{rendered=true;installNoteGestures(img);},{once:true});
+        img.addEventListener('error',tryNext);
+        content.append(img);tryNext();
+      };
       content.innerHTML='<div class="viewer-empty"><p>Cargando imagen…</p></div>';
       loadRemoteImageEdit(song.id,owner).then(async remote=>{
         if(remote){const ok=await showComposedViewerEdit(content,remote,song,owner);if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}}
