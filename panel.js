@@ -523,7 +523,9 @@
     noteViewerState.pointers.clear();
   }
   function applyNoteTransform(img){
-    img.style.transform=`translate3d(${noteViewerState.x}px,${noteViewerState.y}px,0) scale(${noteViewerState.scale})`;
+    // El elemento parte siempre del centro real del visor. x/y son desplazamientos
+    // relativos a ese centro, por lo que abrir Imagen nunca hereda una posición lateral.
+    img.style.transform=`translate(-50%,-50%) translate3d(${noteViewerState.x}px,${noteViewerState.y}px,0) scale(${noteViewerState.scale})`;
   }
   function clampNotePosition(img){
     const stage=$('#viewerContent');
@@ -570,6 +572,9 @@
     stage.classList.add('is-note-viewer');
     img.classList.add('note-photo');
     img.draggable=false;
+    img.style.position='absolute';
+    img.style.left='50%';
+    img.style.top='50%';
     fitNoteViewer(img);
     const distance=()=>{const [a,b]=[...noteViewerState.pointers.values()];return Math.hypot(a.x-b.x,a.y-b.y);};
     const midpoint=()=>{const [a,b]=[...noteViewerState.pointers.values()];return {x:(a.x+b.x)/2-stage.clientWidth/2,y:(a.y+b.y)/2-stage.clientHeight/2};};
@@ -1671,6 +1676,35 @@
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
   const imageStage=$('#imageEditorStage');
+  let nativeTouchPinch=null;
+  const touchCenterAndDistance=touches=>{
+    const a=touches[0],b=touches[1],r=imageStage.getBoundingClientRect();
+    return {cx:(a.clientX+b.clientX)/2-r.left,cy:(a.clientY+b.clientY)/2-r.top,distance:Math.max(1,Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY))};
+  };
+  // iPhone/Android: una sola ruta táctil para el pellizco. Evita que Safari procese
+  // a la vez GestureEvent + PointerEvent, que era lo que desplazaba la imagen.
+  imageStage.addEventListener('touchstart',e=>{
+    if(e.touches.length!==2)return;
+    e.preventDefault();
+    const g=touchCenterAndDistance(e.touches);
+    nativeTouchPinch={distance:g.distance,scale:imageEditorState.scale,localX:(g.cx-imageEditorState.panX)/imageEditorState.scale,localY:(g.cy-imageEditorState.panY)/imageEditorState.scale};
+    imageEditorState.pinch=null;
+    imageEditorState.pointers.clear();
+    if(imageEditorState.drawing){imageEditorState.drawing=false;imageEditorState.path=[];restoreImageSnapshot(imageEditorState.undo.at(-1));}
+  },{passive:false,capture:true});
+  imageStage.addEventListener('touchmove',e=>{
+    if(!nativeTouchPinch||e.touches.length!==2)return;
+    e.preventDefault();
+    const g=touchCenterAndDistance(e.touches),raw=g.distance/nativeTouchPinch.distance;
+    const next=Math.max(.12,Math.min(20,nativeTouchPinch.scale*Math.pow(raw,.9)));
+    imageEditorState.scale=next;
+    imageEditorState.panX=g.cx-nativeTouchPinch.localX*next;
+    imageEditorState.panY=g.cy-nativeTouchPinch.localY*next;
+    applyImageTransform();
+  },{passive:false,capture:true});
+  const finishNativeTouchPinch=e=>{if(e.touches.length<2)nativeTouchPinch=null;};
+  imageStage.addEventListener('touchend',finishNativeTouchPinch,{passive:true,capture:true});
+  imageStage.addEventListener('touchcancel',()=>{nativeTouchPinch=null;},{passive:true,capture:true});
   // 6.36.33 · Visor Mac robusto y lienzo blanco sin imagen.
   // - Safari/Chrome envían el pellizco como wheel + ctrlKey.
   // - El desplazamiento fino del trackpad mueve la hoja.
@@ -1703,6 +1737,7 @@
   let safariGesture=null;
   imageStage.addEventListener('gesturestart',e=>{
     e.preventDefault();
+    if(nativeTouchPinch)return;
     const r=imageStage.getBoundingClientRect();
     const clientX=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
     const clientY=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
@@ -1710,7 +1745,7 @@
     safariGesture={startScale:imageEditorState.scale,localX:(cx-imageEditorState.panX)/imageEditorState.scale,localY:(cy-imageEditorState.panY)/imageEditorState.scale};
   },{passive:false});
   imageStage.addEventListener('gesturechange',e=>{
-    e.preventDefault();if(!safariGesture)return;
+    e.preventDefault();if(nativeTouchPinch||!safariGesture)return;
     const r=imageStage.getBoundingClientRect();
     const clientX=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
     const clientY=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
@@ -1722,7 +1757,7 @@
     applyImageTransform();
   },{passive:false});
   imageStage.addEventListener('gestureend',e=>{e.preventDefault();safariGesture=null;},{passive:false});
-  imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){
+  imageStage.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&nativeTouchPinch)return;imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){
     // El segundo dedo convierte inmediatamente el gesto en zoom y cancela cualquier trazo iniciado por el primero.
     if(imageEditorState.drawing){imageEditorState.drawing=false;imageEditorState.path=[];restoreImageSnapshot(imageEditorState.undo.at(-1));}
     const [a,b]=[...imageEditorState.pointers.values()],r=imageStage.getBoundingClientRect();
@@ -1736,7 +1771,7 @@
     };
     imageEditorState.panning=null;imageEditorState.textGesture=null;
   }else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
-  imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){
+  imageStage.addEventListener('pointermove',e=>{if(e.pointerType==='touch'&&nativeTouchPinch)return;if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){
     const [a,b]=[...imageEditorState.pointers.values()],d=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),r=imageStage.getBoundingClientRect(),cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top;
     const pinch=imageEditorState.pinch;
     // Escala absoluta desde el inicio del gesto: evita acumular errores y que la imagen derive abajo/derecha.
@@ -1814,10 +1849,24 @@
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
-    askConfirm('Guardar imagen',`Se guardarán en Firestore las capas vectoriales de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
+    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
-      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));const local=await offlineStoreGet('imageEdits',remoteImageKey(activeImageSongId,activeImageOwner));toast(local?.pendingSync?'Guardado en el dispositivo · se sincronizará al volver internet':`Guardado y sincronizado · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);$('#imageEditorDialog').close();}
-      catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa Firestore'}`);}
+      try{
+        // Primero se confirma la copia local. El editor puede cerrar sin quedarse
+        // bloqueado por la red y la X ya no vuelve a indicar cambios sin guardar.
+        await persistImageEditorLayers(false);
+        rememberDialogState($('#imageEditorDialog'));
+        dialogBaselines.delete($('#imageEditorDialog'));
+        $('#imageEditorDialog').close();
+        toast('Guardado en el dispositivo · sincronizando…');
+        // La sincronización continúa en segundo plano y actualiza todos los dispositivos.
+        saveImageEditorVectorsRemote().then(async remote=>{
+          const saved={original:remote.originalSrc||'',operations:remote.operations||[],textBoxes:remote.textBoxes||[],updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};
+          song[imageField(activeImageOwner)]={...(song[imageField(activeImageOwner)]||{}),...saved};
+          saveStateLocalOnly();
+          if(!remote.pendingSync)toast(`Guardado y sincronizado · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);
+        }).catch(err=>{console.warn('Sincronización pendiente',err);toast('Guardado localmente · pendiente de sincronización');});
+      }catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa el dispositivo'}`);}
       finally{btn.disabled=false;btn.textContent='Guardar';}
     },'Guardar');
   });

@@ -837,3 +837,8 @@ body{touch-action:pan-x pan-y;}
   display:block;
   transform-origin:center center;
 }
+
+
+/* 6.36.46 · visor centrado real y pellizco táctil estable */
+.viewer-content.is-note-viewer{position:relative!important;display:block!important;overflow:hidden!important;}
+.viewer-content.is-note-viewer .note-photo{position:absolute!important;left:50%!important;top:50%!important;margin:0!important;max-width:none!important;max-height:none!important;transform-origin:center center!important;touch-action:none!important;}
