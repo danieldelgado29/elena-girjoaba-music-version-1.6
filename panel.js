@@ -43,6 +43,60 @@
   let remoteInitPromise = null;
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null;
 
+
+  // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
+  const OFFLINE_DB_NAME='egm-editor-offline-v1';
+  const OFFLINE_DB_VERSION=1;
+  let offlineDbPromise=null;
+  function openOfflineDb(){
+    if(offlineDbPromise)return offlineDbPromise;
+    offlineDbPromise=new Promise((resolve,reject)=>{
+      if(!('indexedDB' in window)){reject(new Error('IndexedDB no disponible'));return;}
+      const req=indexedDB.open(OFFLINE_DB_NAME,OFFLINE_DB_VERSION);
+      req.onupgradeneeded=()=>{
+        const db=req.result;
+        if(!db.objectStoreNames.contains('imageEdits'))db.createObjectStore('imageEdits',{keyPath:'editId'});
+        if(!db.objectStoreNames.contains('pendingSync'))db.createObjectStore('pendingSync',{keyPath:'editId'});
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||new Error('No se pudo abrir IndexedDB'));
+    });
+    return offlineDbPromise;
+  }
+  async function offlineStoreGet(store,key){
+    try{const db=await openOfflineDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(store,'readonly');const req=tx.objectStore(store).get(key);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error);});}catch(_){return null;}
+  }
+  async function offlineStorePut(store,value){
+    try{const db=await openOfflineDb();await new Promise((resolve,reject)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(value);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});return true;}catch(err){console.warn('No se pudo guardar offline',err);return false;}
+  }
+  async function offlineStoreDelete(store,key){
+    try{const db=await openOfflineDb();await new Promise((resolve,reject)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}catch(_){}
+  }
+  async function offlineStoreAll(store){
+    try{const db=await openOfflineDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(store,'readonly');const req=tx.objectStore(store).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});}catch(_){return [];}
+  }
+  async function cacheEditorImage(src){
+    if(!src||src.startsWith('data:')||!('caches' in window))return;
+    try{const cache=await caches.open('egm-editor-images-v1');const req=new Request(src,{mode:'cors',credentials:'same-origin'});if(!(await cache.match(req))){const res=await fetch(req);if(res.ok||res.type==='opaque')await cache.put(req,res.clone());}}catch(err){console.warn('No se pudo guardar la foto para uso offline',err);}
+  }
+  async function flushPendingImageEdits(){
+    if(!navigator.onLine)return;
+    const pending=await offlineStoreAll('pendingSync');
+    for(const edit of pending){
+      try{
+        await initRemoteSync();
+        const ref=remoteImageRef(edit.songId,edit.owner);
+        if(!ref||!remoteSetDoc)continue;
+        await remoteSetDoc(ref,{...edit,pendingSync:false,syncedAt:Date.now()},{merge:false});
+        const synced={...edit,pendingSync:false,syncedAt:Date.now()};
+        await offlineStorePut('imageEdits',synced);
+        await offlineStoreDelete('pendingSync',edit.editId);
+      }catch(err){console.warn('Edición pendiente de sincronización',edit.editId,err);}
+    }
+  }
+  window.addEventListener('online',()=>{flushPendingImageEdits();});
+  setTimeout(()=>flushPendingImageEdits(),1500);
+
   async function initRemoteSync(){
     if(remoteStateRef) return remoteStateRef;
     if(remoteInitPromise) return remoteInitPromise;
@@ -1355,12 +1409,20 @@
     return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner));
   }
   async function loadRemoteImageEdit(songId,owner){
-    await initRemoteSync();
-    if(!remoteGetDoc) throw new Error('Firestore todavía no está listo');
-    const ref=remoteImageRef(songId,owner);
-    if(!ref) throw new Error('No se pudo crear la referencia imageEdits');
-    const snap=await remoteGetDoc(ref);
-    return snap.exists() ? (snap.data()||null) : null;
+    const editId=remoteImageKey(songId,owner);
+    const local=await offlineStoreGet('imageEdits',editId);
+    if(!navigator.onLine)return local;
+    try{
+      await initRemoteSync();
+      if(!remoteGetDoc)throw new Error('Firestore todavía no está listo');
+      const ref=remoteImageRef(songId,owner);
+      if(!ref)throw new Error('No se pudo crear la referencia imageEdits');
+      const snap=await remoteGetDoc(ref);
+      const remote=snap.exists()?(snap.data()||null):null;
+      const latest=remote&&Number(remote.updatedAt||0)>=Number(local?.updatedAt||0)?remote:local;
+      if(latest){await offlineStorePut('imageEdits',{...latest,editId});cacheEditorImage(latest.originalSrc||latest.original||'');}
+      return latest;
+    }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
   async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
@@ -1522,21 +1584,35 @@
     imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
   }
   async function saveImageEditorVectorsRemote(){
-    await initRemoteSync();
-    if(!remoteSetDoc||!remoteGetDoc)throw new Error('Firestore todavía no está listo');
-    if(String(imageEditorState.original||'').startsWith('data:'))throw new Error('La foto elegida desde el dispositivo no puede sincronizarse sin Firebase Storage. Usa la foto vinculada existente.');
     const stamp=Date.now();
     const editId=remoteImageKey(activeImageSongId,activeImageOwner);
-    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits'};
-    const ref=remoteImageRef(activeImageSongId,activeImageOwner);
-    if(!ref)throw new Error('No se pudo crear el documento remoto de la edición');
-    const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
-    await Promise.race([remoteSetDoc(ref,metadata,{merge:false}),timeout]);
-    const check=await Promise.race([remoteGetDoc(ref),timeout]);
-    const remote=check.exists()?check.data():null;
-    if(!remote||Number(remote.updatedAt)!==stamp||remote.source!=='imageEdits')throw new Error('Firestore no confirmó la edición en imageEdits/'+editId);
-    console.info('[EGM imageEdits] guardado confirmado:',editId,remote.updatedAt);
-    return remote;
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
+    // El guardado local siempre ocurre primero y nunca depende de internet.
+    await offlineStorePut('imageEdits',metadata);
+    await offlineStorePut('pendingSync',metadata);
+    cacheEditorImage(metadata.originalSrc);
+    if(!navigator.onLine)return metadata;
+    try{
+      await initRemoteSync();
+      if(!remoteSetDoc||!remoteGetDoc)throw new Error('Firestore todavía no está listo');
+      // Una foto elegida desde el dispositivo queda disponible offline; las capas sí se conservan.
+      const remotePayload={...metadata,originalSrc:String(metadata.originalSrc||'').startsWith('data:')?'':metadata.originalSrc,pendingSync:false,syncedAt:Date.now()};
+      const ref=remoteImageRef(activeImageSongId,activeImageOwner);
+      if(!ref)throw new Error('No se pudo crear el documento remoto de la edición');
+      const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
+      await Promise.race([remoteSetDoc(ref,remotePayload,{merge:false}),timeout]);
+      const check=await Promise.race([remoteGetDoc(ref),timeout]);
+      const remote=check.exists()?check.data():null;
+      if(!remote||Number(remote.updatedAt)!==stamp||remote.source!=='imageEdits')throw new Error('Firestore no confirmó la edición en imageEdits/'+editId);
+      const synced={...metadata,...remote,pendingSync:false};
+      await offlineStorePut('imageEdits',synced);
+      await offlineStoreDelete('pendingSync',editId);
+      console.info('[EGM imageEdits] guardado confirmado:',editId,remote.updatedAt);
+      return synced;
+    }catch(err){
+      console.warn('Guardado local; sincronización pendiente',err);
+      return metadata;
+    }
   }
   async function refreshOpenImageViewer(edit,song,owner){
     const viewer=$('#viewerDialog');
@@ -1557,7 +1633,7 @@
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
-    if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:true};}
+    if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
     song[imageField(activeImageOwner)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
@@ -1569,7 +1645,7 @@
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     askConfirm('Guardar imagen',`Se guardarán en Firestore las capas vectoriales de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
-      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));toast(`Guardado exitosamente · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);$('#imageEditorDialog').close();}
+      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));const local=await offlineStoreGet('imageEdits',remoteImageKey(activeImageSongId,activeImageOwner));toast(local?.pendingSync?'Guardado en el dispositivo · se sincronizará al volver internet':`Guardado y sincronizado · imageEdits/${remoteImageKey(activeImageSongId,activeImageOwner)}`);$('#imageEditorDialog').close();}
       catch(err){console.error(err);toast(`No se guardó: ${err.message||'revisa Firestore'}`);}
       finally{btn.disabled=false;btn.textContent='Guardar';}
     },'Guardar');
