@@ -12,6 +12,12 @@
   const fallbackRepertoires = [{id:'todas',name:'Todas las canciones'}];
   let remoteStateRef = null;
   let remoteGetDoc = null;
+  let remoteDoc = null;
+  let remoteSetDoc = null;
+  let remoteStorage = null;
+  let remoteStorageRef = null;
+  let remoteUploadBytes = null;
+  let remoteGetDownloadURL = null;
   let remoteReady = false;
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
@@ -24,9 +30,10 @@
     remoteInitPromise=(async()=>{
     if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc }] = await Promise.all([
+      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc }, { getStorage, ref: storageRef, uploadBytes, getDownloadURL }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
-        import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
+        import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js'),
+        import('https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js')
       ]);
       const response=await fetch('configuracion.json');
       const cfg=await response.json();
@@ -36,6 +43,12 @@
       remoteStateRef=doc(panelDb,'config','estado');
       window.__egmSetDoc=firebaseSetDoc;
       remoteGetDoc=getDoc;
+      remoteDoc=doc;
+      remoteSetDoc=firebaseSetDoc;
+      remoteStorage=getStorage(app);
+      remoteStorageRef=storageRef;
+      remoteUploadBytes=uploadBytes;
+      remoteGetDownloadURL=getDownloadURL;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
@@ -1256,9 +1269,22 @@
     const loadNext=()=>{const base=sources.shift();if(!base){blank();return;}const img=new Image();img.onload=()=>{imageEditorState.original=base;const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.clearRect(0,0,w,h);b.drawImage(img,0,0,w,h);o.clearRect(0,0,w,h);if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{o.drawImage(ov,0,0,w,h);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.onerror=()=>{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();}};img.onerror=loadNext;img.src=encodeURI(base);};loadNext();
   }
   function syncImageSwatches(){$('#imageTextSwatch').style.background=imageEditorState.textColor;$('#imagePencilSwatch').style.background=imageEditorState.pencilColor;}
-  function openImageEditor(songId,owner){
+  function remoteImageKey(songId,owner){return `${owner}-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
+  async function loadRemoteImageEdit(songId,owner){
+    try{
+      await initRemoteSync();
+      if(!remoteDoc||!remoteGetDoc||!remoteStateRef)return null;
+      const ref=remoteDoc(remoteStateRef.firestore,'imageEdits',remoteImageKey(songId,owner));
+      const snap=await remoteGetDoc(ref);
+      return snap.exists()?snap.data():null;
+    }catch(err){console.warn('No se pudo cargar la edición remota',err);return null;}
+  }
+  async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
-    const raw=song[imageField(owner)];imageEditorState.sources=[...(raw&&typeof raw==='object'&&raw.original?[raw.original]:[]),...imageCandidates(song,owner)].filter((v,i,a)=>v&&a.indexOf(v)===i);imageEditorState.original=imageEditorState.sources[0]||'';imageEditorState.overlay=raw&&typeof raw==='object'?(raw.drawingOverlay||raw.overlay||''):'';imageEditorState.textBoxes=raw&&typeof raw==='object'&&Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
+    let raw=song[imageField(owner)];
+    const remote=await loadRemoteImageEdit(songId,owner);
+    if(remote&&(!raw?.updatedAt||Number(remote.updatedAt||0)>=Number(raw.updatedAt||0))){raw={original:remote.baseUrl||remote.originalUrl||'',drawingOverlay:remote.drawingUrl||'',overlay:remote.overlayUrl||remote.drawingUrl||'',composite:remote.previewUrl||'',textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};song[imageField(owner)]=raw;}
+    imageEditorState.sources=[...(raw&&typeof raw==='object'&&raw.original?[raw.original]:[]),...imageCandidates(song,owner)].filter((v,i,a)=>v&&a.indexOf(v)===i);imageEditorState.original=imageEditorState.sources[0]||'';imageEditorState.overlay=raw&&typeof raw==='object'?(raw.drawingOverlay||raw.overlay||''):'';imageEditorState.textBoxes=raw&&typeof raw==='object'&&Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:18,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
@@ -1270,7 +1296,7 @@
     return layer;
   }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x:Math.max(0,Math.min(.9,x)),y:Math.max(0,Math.min(.9,y)),w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
@@ -1282,26 +1308,25 @@
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto">×</button><span class="text-box-resize" aria-hidden="true"></span><span class="text-box-rotate" aria-hidden="true"></span>';
+      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
       const area=el.querySelector('textarea');
       area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
       area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
       el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
-      bindTextBoxDrag(el,box,area);
+      bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
     });
     if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] textarea`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}area.setSelectionRange?.(area.value.length,area.value.length);}}
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
-  function bindTextBoxDrag(el,box,area){
-    let drag=null;
-    el.addEventListener('pointerdown',e=>{if(e.target!==area&&e.target.closest('button,.text-box-resize,.text-box-rotate'))return;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();if(e.target===area&&document.activeElement===area)return;const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};el.setPointerCapture?.(e.pointerId);e.preventDefault();});
-    el.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(0,Math.min(1-box.w,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(0,Math.min(1-box.h,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
-    const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+  function bindTextBoxDrag(handle,el,box){let drag=null;
+    handle.addEventListener('pointerdown',e=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(-1.5,Math.min(2.5,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(-1.5,Math.min(2.5,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
+    const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
   }
-  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(1-box.x,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(1-box.y,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function syncInlineTextStyle(){
     const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
@@ -1375,36 +1400,45 @@
   function drawTextBoxesToContext(ctx,w,h){
     imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
   }
+  function canvasToBlob(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('No se pudo crear la imagen PNG')),'image/png'));}
+  async function uploadImageEditorLayers(baseCanvas,drawingCanvas,previewCanvas,textBoxes){
+    await initRemoteSync();
+    if(!remoteStorage||!remoteStorageRef||!remoteUploadBytes||!remoteGetDownloadURL||!remoteDoc||!remoteSetDoc)throw new Error('Firebase Storage todavía no está disponible');
+    const key=remoteImageKey(activeImageSongId,activeImageOwner),stamp=Date.now(),root=`image-edits/${key}`;
+    const [baseBlob,drawingBlob,previewBlob]=await Promise.all([canvasToBlob(baseCanvas),canvasToBlob(drawingCanvas),canvasToBlob(previewCanvas)]);
+    const baseRef=remoteStorageRef(remoteStorage,`${root}/base-${stamp}.png`),drawingRef=remoteStorageRef(remoteStorage,`${root}/drawing-${stamp}.png`),previewRef=remoteStorageRef(remoteStorage,`${root}/preview-${stamp}.png`);
+    await Promise.all([remoteUploadBytes(baseRef,baseBlob,{contentType:'image/png'}),remoteUploadBytes(drawingRef,drawingBlob,{contentType:'image/png'}),remoteUploadBytes(previewRef,previewBlob,{contentType:'image/png'})]);
+    const [baseUrl,drawingUrl,previewUrl]=await Promise.all([remoteGetDownloadURL(baseRef),remoteGetDownloadURL(drawingRef),remoteGetDownloadURL(previewRef)]);
+    const metadata={songId:activeImageSongId,owner:activeImageOwner,baseUrl,drawingUrl,overlayUrl:drawingUrl,previewUrl,textBoxes:textBoxes.map(x=>({...x})),updatedAt:stamp};
+    const ref=remoteDoc(remoteStateRef.firestore,'imageEdits',key);
+    await remoteSetDoc(ref,metadata,{merge:true});
+    const check=await remoteGetDoc(ref);if(!check.exists()||check.data().updatedAt!==stamp)throw new Error('Firebase no confirmó la edición');
+    return metadata;
+  }
   async function persistImageEditorLayers(syncRemote=false){
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
-    const base=imageBaseCanvas().toDataURL('image/png');
-    const drawingOverlay=imageEditorCanvas().toDataURL('image/png');
-    const overlayCanvas=document.createElement('canvas');overlayCanvas.width=imageEditorCanvas().width;overlayCanvas.height=imageEditorCanvas().height;
-    const overlayCtx=overlayCanvas.getContext('2d');overlayCtx.drawImage(imageEditorCanvas(),0,0);
-    drawTextBoxesToContext(overlayCtx,overlayCanvas.width,overlayCanvas.height);
-    const overlay=overlayCanvas.toDataURL('image/png');
-    const compositeCanvas=document.createElement('canvas');compositeCanvas.width=overlayCanvas.width;compositeCanvas.height=overlayCanvas.height;const compositeCtx=compositeCanvas.getContext('2d');compositeCtx.drawImage(imageBaseCanvas(),0,0);compositeCtx.drawImage(overlayCanvas,0,0);const composite=compositeCanvas.toDataURL('image/png');
-    song[imageField(activeImageOwner)]={original:base,drawingOverlay,overlay,composite,textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:Date.now()};
-    const ci=state.customSongs.findIndex(x=>x.id===song.id);
-    if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
-    saveStateLocalOnly();
-    renderSongbookList();
-    renderSongs();
-    // La imagen queda guardada y visible localmente de inmediato. La copia remota
-    // se intenta después sin impedir cerrar el editor si la red está lenta.
+    const baseCanvas=imageBaseCanvas(),drawingCanvas=imageEditorCanvas();
+    const overlayCanvas=document.createElement('canvas');overlayCanvas.width=drawingCanvas.width;overlayCanvas.height=drawingCanvas.height;const overlayCtx=overlayCanvas.getContext('2d');overlayCtx.drawImage(drawingCanvas,0,0);drawTextBoxesToContext(overlayCtx,overlayCanvas.width,overlayCanvas.height);
+    const compositeCanvas=document.createElement('canvas');compositeCanvas.width=overlayCanvas.width;compositeCanvas.height=overlayCanvas.height;const compositeCtx=compositeCanvas.getContext('2d');compositeCtx.drawImage(baseCanvas,0,0);compositeCtx.drawImage(overlayCanvas,0,0);
+    let saved={original:baseCanvas.toDataURL('image/png'),drawingOverlay:drawingCanvas.toDataURL('image/png'),overlay:overlayCanvas.toDataURL('image/png'),composite:compositeCanvas.toDataURL('image/png'),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:Date.now()};
     if(syncRemote){
-      try{await syncRemoteState(true);}catch(err){console.warn('La capa quedó guardada localmente; no se pudo sincronizar todavía.',err);}
+      const remote=await uploadImageEditorLayers(baseCanvas,drawingCanvas,compositeCanvas,imageEditorState.textBoxes);
+      saved={original:remote.baseUrl,drawingOverlay:remote.drawingUrl,overlay:remote.drawingUrl,composite:remote.previewUrl,textBoxes:remote.textBoxes,updatedAt:remote.updatedAt,remote:true};
     }
+    song[imageField(activeImageOwner)]=saved;
+    const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
+    saveStateLocalOnly();renderSongbookList();renderSongs();
+    if(syncRemote)await syncRemoteState(true);
     return true;
   }
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
-    askConfirm('Guardar imagen',`Se guardarán por separado la fotografía y la capa de anotaciones de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
-      await persistImageEditorLayers(true);
-      rememberDialogState($('#imageEditorDialog'));
-      toast('Guardado exitosamente');
-      $('#imageEditorDialog').close();
+    askConfirm('Guardar imagen',`Se guardarán en la nube la fotografía y las capas de ${ownerLabel(activeImageOwner)} para “${song.titulo}”.`,async()=>{
+      const btn=$('#saveImageEditorBtn');btn.disabled=true;btn.textContent='Guardando…';
+      try{await persistImageEditorLayers(true);rememberDialogState($('#imageEditorDialog'));toast('Guardado exitosamente en todos los dispositivos');$('#imageEditorDialog').close();}
+      catch(err){console.error(err);toast(`No se guardó en la nube: ${err.message||'revisa Firebase Storage'}`);}
+      finally{btn.disabled=false;btn.textContent='Guardar';}
     },'Guardar');
   });
 

@@ -779,3 +779,16 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .text-box-rotate{left:50%;top:-36px;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:#fff;border:2px solid #d00000;cursor:grab}
 .text-box-rotate:after{content:"";position:absolute;left:7px;top:18px;width:2px;height:16px;background:#d00000}
 @media (pointer:coarse){.text-box-delete{right:-18px;top:-18px;width:34px;height:34px;line-height:30px}.text-box-resize,.text-box-rotate{width:26px;height:26px}.text-box-resize{right:-13px;bottom:-13px}.text-box-rotate{top:-44px;margin-left:-13px}.text-box-rotate:after{left:10px;top:24px;height:18px}}
+
+/* Entrega 6.36.22 — controles de caja y guardado remoto */
+.image-editor-paper,.image-textbox-layer{overflow:visible!important}
+.image-text-box .text-box-delete,.image-text-box .text-box-move,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:5;box-sizing:border-box;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:none;-webkit-touch-callout:none}
+.image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-move,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:flex}
+.image-text-box .text-box-delete{left:-8px;right:auto;top:-44px;background:#b00020;color:#fff;border-color:#b00020}
+.image-text-box .text-box-move{right:-8px;top:-44px;cursor:move}
+.image-text-box .text-box-rotate{left:-8px;bottom:-44px;top:auto;margin:0;cursor:grab}
+.image-text-box .text-box-resize{right:-8px;bottom:-44px;cursor:nwse-resize}
+.image-text-box .text-box-delete b,.image-text-box .text-box-move b,.image-text-box .text-box-rotate b,.image-text-box .text-box-resize b{font-size:17px;line-height:15px}
+.image-text-box .text-box-delete small,.image-text-box .text-box-move small,.image-text-box .text-box-rotate small,.image-text-box .text-box-resize small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
+.text-box-rotate:after{display:none!important}
+@media(max-width:480px){.image-text-box .text-box-delete,.image-text-box .text-box-move,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{min-width:42px;height:36px}.image-text-box .text-box-delete,.image-text-box .text-box-move{top:-42px}.image-text-box .text-box-rotate,.image-text-box .text-box-resize{bottom:-42px}}
