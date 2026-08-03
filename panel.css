@@ -821,3 +821,19 @@ body{touch-action:pan-x pan-y;}
 .egm-upload-options[hidden]{display:none!important}
 .egm-upload-options button{width:100%!important;min-height:38px!important;padding:8px 10px!important;border:1px solid #d5d5d5!important;border-radius:8px!important;background:#fff!important;color:#111!important;font-weight:700!important;text-align:left!important}
 .egm-upload-options .danger-option{color:#b00020!important;border-color:#e1b6bd!important;background:#fff7f8!important}
+
+/* 6.36.44 · menú de imagen estable */
+.egm-upload-options{width:min(260px,calc(100vw - 16px))!important;min-width:0!important;height:auto!important;max-height:none!important;overflow:visible!important;grid-template-columns:1fr!important;align-items:stretch!important;white-space:normal!important;}
+.egm-upload-options button{display:block!important;white-space:normal!important;}
+
+/* 6.36.45 · visor Imagen siempre completo y centrado */
+.viewer-content.is-note-viewer .note-photo{
+  min-width:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  width:auto;
+  height:auto;
+  margin:0!important;
+  display:block;
+  transform-origin:center center;
+}

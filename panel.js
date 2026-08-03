@@ -548,12 +548,29 @@
       clampNotePosition(img);applyNoteTransform(img);
     }
   }
+  function fitNoteViewer(img){
+    const stage=$('#viewerContent');
+    if(!stage||!img)return;
+    requestAnimationFrame(()=>{
+      const stageW=Math.max(1,stage.clientWidth),stageH=Math.max(1,stage.clientHeight);
+      const baseW=Math.max(1,img.naturalWidth||img.width||img.offsetWidth||1);
+      const baseH=Math.max(1,img.naturalHeight||img.height||img.offsetHeight||1);
+      const margin=24;
+      const fit=Math.max(.03,Math.min(1,(stageW-margin*2)/baseW,(stageH-margin*2)/baseH));
+      noteViewerState.scale=fit;
+      noteViewerState.minScale=Math.max(.02,fit*.2);
+      noteViewerState.x=0;
+      noteViewerState.y=0;
+      applyNoteTransform(img);
+    });
+  }
   function installNoteGestures(img){
     const stage=$('#viewerContent');
     resetNoteViewer();
     stage.classList.add('is-note-viewer');
     img.classList.add('note-photo');
     img.draggable=false;
+    fitNoteViewer(img);
     const distance=()=>{const [a,b]=[...noteViewerState.pointers.values()];return Math.hypot(a.x-b.x,a.y-b.y);};
     const midpoint=()=>{const [a,b]=[...noteViewerState.pointers.values()];return {x:(a.x+b.x)/2-stage.clientWidth/2,y:(a.y+b.y)/2-stage.clientHeight/2};};
     img.addEventListener('pointerdown',e=>{
@@ -1495,7 +1512,8 @@
   const imageUploadMenu=$('#imageUploadOptions');
   $('#imageUploadTrigger').addEventListener('click',e=>{
     e.preventDefault();e.stopPropagation();
-    imageUploadMenu.hidden=!imageUploadMenu.hidden;
+    if(!imageUploadMenu.hidden){imageUploadMenu.hidden=true;return;}
+    positionPopover(imageUploadMenu,$('#imageUploadTrigger'));
   });
   $('#imageChoosePhotoBtn').addEventListener('click',()=>{
     imageUploadMenu.hidden=true;
@@ -1686,15 +1704,17 @@
   imageStage.addEventListener('gesturestart',e=>{
     e.preventDefault();
     const r=imageStage.getBoundingClientRect();
-    const cx=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
-    const cy=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
-    safariGesture={startScale:imageEditorState.scale,cx,cy,localX:(cx-imageEditorState.panX)/imageEditorState.scale,localY:(cy-imageEditorState.panY)/imageEditorState.scale};
+    const clientX=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
+    const clientY=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
+    const cx=clientX-r.left,cy=clientY-r.top;
+    safariGesture={startScale:imageEditorState.scale,localX:(cx-imageEditorState.panX)/imageEditorState.scale,localY:(cy-imageEditorState.panY)/imageEditorState.scale};
   },{passive:false});
   imageStage.addEventListener('gesturechange',e=>{
     e.preventDefault();if(!safariGesture)return;
     const r=imageStage.getBoundingClientRect();
-    const cx=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
-    const cy=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
+    const clientX=Number.isFinite(e.clientX)&&e.clientX?e.clientX:r.left+r.width/2;
+    const clientY=Number.isFinite(e.clientY)&&e.clientY?e.clientY:r.top+r.height/2;
+    const cx=clientX-r.left,cy=clientY-r.top;
     const next=Math.max(.12,Math.min(20,safariGesture.startScale*Math.pow(Math.max(.05,Number(e.scale)||1),.82)));
     imageEditorState.scale=next;
     imageEditorState.panX=cx-safariGesture.localX*next;
@@ -1705,20 +1725,19 @@
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){
     // El segundo dedo convierte inmediatamente el gesto en zoom y cancela cualquier trazo iniciado por el primero.
     if(imageEditorState.drawing){imageEditorState.drawing=false;imageEditorState.path=[];restoreImageSnapshot(imageEditorState.undo.at(-1));}
-    const [a,b]=[...imageEditorState.pointers.values()];
-    const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    const [a,b]=[...imageEditorState.pointers.values()],r=imageStage.getBoundingClientRect();
+    const cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top;
     imageEditorState.pinch={
       distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
-      cx,cy,
       scale:imageEditorState.scale,
-      // Punto de la hoja situado exactamente bajo el centro inicial del pellizco.
+      // Coordenadas locales del escenario: evita que iPhone desplace la imagen abajo/derecha.
       localX:(cx-imageEditorState.panX)/imageEditorState.scale,
       localY:(cy-imageEditorState.panY)/imageEditorState.scale
     };
     imageEditorState.panning=null;imageEditorState.textGesture=null;
   }else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
   imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){
-    const [a,b]=[...imageEditorState.pointers.values()],d=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    const [a,b]=[...imageEditorState.pointers.values()],d=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),r=imageStage.getBoundingClientRect(),cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top;
     const pinch=imageEditorState.pinch;
     // Escala absoluta desde el inicio del gesto: evita acumular errores y que la imagen derive abajo/derecha.
     const raw=d/pinch.distance;
