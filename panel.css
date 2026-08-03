@@ -766,3 +766,16 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 }
 .viewer-layered-image .viewer-layer-base{z-index:1;}
 .viewer-layered-image .viewer-layer-overlay{z-index:2;}
+
+/* Entrega 6.36.21: cajas de texto ancladas a la fotografía */
+.image-textbox-layer{position:absolute;inset:0;z-index:4;pointer-events:none;line-height:normal}
+.image-text-box{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:auto;border:1px dashed transparent;border-radius:6px;touch-action:none}
+.image-text-box.is-selected{border-color:rgba(208,0,0,.8);background:rgba(255,255,255,.08)}
+.image-text-box textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;overflow:hidden;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text}
+.image-text-box .text-box-delete,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:2;box-sizing:border-box}
+.image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:block}
+.text-box-delete{right:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:0;background:#b00020;color:#fff;font-size:22px;line-height:24px;padding:0;box-shadow:0 2px 7px rgba(0,0,0,.35)}
+.text-box-resize{right:-10px;bottom:-10px;width:20px;height:20px;border-radius:4px;background:#fff;border:2px solid #d00000;cursor:nwse-resize}
+.text-box-rotate{left:50%;top:-36px;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:#fff;border:2px solid #d00000;cursor:grab}
+.text-box-rotate:after{content:"";position:absolute;left:7px;top:18px;width:2px;height:16px;background:#d00000}
+@media (pointer:coarse){.text-box-delete{right:-18px;top:-18px;width:34px;height:34px;line-height:30px}.text-box-resize,.text-box-rotate{width:26px;height:26px}.text-box-resize{right:-13px;bottom:-13px}.text-box-rotate{top:-44px;margin-left:-13px}.text-box-rotate:after{left:10px;top:24px;height:18px}}
