@@ -26,7 +26,7 @@
     remoteInitPromise=(async()=>{
     if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc }] = await Promise.all([
+      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
       ]);
@@ -40,6 +40,7 @@
       remoteGetDoc=getDoc;
       remoteDoc=doc;
       remoteSetDoc=firebaseSetDoc;
+      window.__egmUpdateDoc=updateDoc;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
@@ -55,6 +56,22 @@
             renderSongs();
             renderSongbookList();
             saveStateLocalOnly();
+          }
+        }
+        if(data.imageEdits&&typeof data.imageEdits==='object'&&state.songs.length){
+          state.songs=state.songs.map(song=>{
+            let next=song;
+            for(const owner of ['elena','daniel']){
+              const edit=data.imageEdits[remoteImageKey(song.id,owner)];
+              if(edit&&typeof edit==='object') next={...next,[imageField(owner)]:{original:edit.originalSrc||edit.original||'',operations:Array.isArray(edit.operations)?edit.operations:[],textBoxes:Array.isArray(edit.textBoxes)?edit.textBoxes:[],updatedAt:edit.updatedAt||0,remote:true}};
+            }
+            return next;
+          });
+          renderSongs();
+          renderSongbookList();
+          if(activeViewerSongId&&(activeViewerType==='notes'||activeViewerType==='daniel-image')){
+            const current=state.songs.find(x=>x.id===activeViewerSongId);
+            if(current) openViewer(current,activeViewerType);
           }
         }
         if(state.config){
@@ -559,8 +576,11 @@
       const owner=type==='daniel-image'?'daniel':'elena',raw=song[imageField(owner)];
       let rendered=false;
       const renderFallback=()=>{if(rendered)return;const files=imageCandidates(song,owner);if(files.length){const img=new Image();img.alt=`Notas de ${song.titulo}`;let fileIndex=0;const tryNext=()=>{if(fileIndex>=files.length){content.classList.remove('is-note-viewer');content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La anotación existe, pero el archivo no pudo cargarse.</p></div>';return;}const src=files[fileIndex++];img.src=src.startsWith('data:')?src:encodeURI(src);};img.addEventListener('load',()=>installNoteGestures(img),{once:true});img.addEventListener('error',tryNext);content.append(img);tryNext();}else content.innerHTML='<div class="viewer-empty"><h3>Sin notas disponibles</h3><p>Esta canción todavía no tiene un JPEG asociado.</p></div>';};
-      Promise.resolve(showComposedViewerEdit(content,raw,song,owner)).then(ok=>{rendered=ok;if(!ok)renderFallback();}).catch(renderFallback);
-      loadRemoteImageEdit(song.id,owner).then(async remote=>{if(!remote)return;const ok=await showComposedViewerEdit(content,remote,song,owner);if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};}}).catch(err=>console.warn('No se pudo actualizar el visor remoto',err));
+      content.innerHTML='<div class="viewer-empty"><p>Cargando imagen…</p></div>';
+      loadRemoteImageEdit(song.id,owner).then(async remote=>{
+        if(remote){const ok=await showComposedViewerEdit(content,remote,song,owner);if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}}
+        const localOk=await showComposedViewerEdit(content,raw,song,owner);rendered=localOk;if(!localOk)renderFallback();
+      }).catch(async err=>{console.warn('No se pudo actualizar el visor remoto',err);const localOk=await showComposedViewerEdit(content,raw,song,owner);rendered=localOk;if(!localOk)renderFallback();});
     } else {
       const isDaniel=type==='daniel';
       const storedLyrics=state.lyrics[song.id]||{};
@@ -1229,7 +1249,7 @@
   function restoreImageSnapshot(snap){if(!snap)return;drawDataUrl(imageBaseCanvas(),snap.base);drawDataUrl(imageEditorCanvas(),snap.overlay);}
   function applyImageTransform(){imageEditorPaper().style.transform=`translate3d(${imageEditorState.panX}px,${imageEditorState.panY}px,0) scale(${imageEditorState.scale})`;}
   function resetImageViewport(){imageEditorState.scale=1;imageEditorState.panX=0;imageEditorState.panY=0;applyImageTransform();requestAnimationFrame(()=>{const stage=$('#imageEditorStage'),paper=imageEditorPaper();const sr=stage.getBoundingClientRect(),pr=paper.getBoundingClientRect();imageEditorState.panX=Math.max(12,(sr.width-pr.width)/2);imageEditorState.panY=Math.max(12,(sr.height-pr.height)/2);applyImageTransform();});}
-  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const next=Math.max(.08,Math.min(40,old*factor));if(next===old)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
+  function zoomImageAt(clientX,clientY,factor){const stage=$('#imageEditorStage'),r=stage.getBoundingClientRect();const x=clientX-r.left,y=clientY-r.top;const old=imageEditorState.scale;const safe=Math.max(.88,Math.min(1.12,Number(factor)||1));const next=Math.max(.12,Math.min(20,old*safe));if(Math.abs(next-old)<.0001)return;imageEditorState.panX=x-(x-imageEditorState.panX)*(next/old);imageEditorState.panY=y-(y-imageEditorState.panY)*(next/old);imageEditorState.scale=next;applyImageTransform();}
   function replayImageOperations(){
     const base=imageBaseCanvas(), overlay=imageEditorCanvas(), bw=base.width, bh=base.height;
     for(const op of imageEditorState.operations||[]){
@@ -1379,9 +1399,9 @@
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
   const imageStage=$('#imageEditorStage');
-  imageStage.addEventListener('wheel',e=>{e.preventDefault();zoomImageAt(e.clientX,e.clientY,Math.exp(-e.deltaY*.002));},{passive:false});
+  imageStage.addEventListener('wheel',e=>{e.preventDefault();const raw=Math.max(-80,Math.min(80,e.deltaY));const sensitivity=e.ctrlKey?0.00075:0.00115;zoomImageAt(e.clientX,e.clientY,Math.exp(-raw*sensitivity));},{passive:false});
   imageStage.addEventListener('pointerdown',e=>{imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2){const [a,b]=[...imageEditorState.pointers.values()];imageEditorState.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};imageEditorState.panning=null;imageEditorState.textGesture=null;}else if(imageEditorState.tool==='text'&&!e.target.closest('.image-text-box,.egm-editor-toolbar')){imageEditorState.textGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY,moved:false};}else if(e.target===imageStage){imageEditorState.panning={id:e.pointerId,x:e.clientX,y:e.clientY,panX:imageEditorState.panX,panY:imageEditorState.panY};imageStage.setPointerCapture?.(e.pointerId);}},true);
-  imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){const [a,b]=[...imageEditorState.pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;zoomImageAt(cx,cy,d/imageEditorState.pinch.distance);imageEditorState.panX+=cx-imageEditorState.pinch.cx;imageEditorState.panY+=cy-imageEditorState.pinch.cy;imageEditorState.pinch={distance:d,cx,cy};applyImageTransform();e.preventDefault();}else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
+  imageStage.addEventListener('pointermove',e=>{if(imageEditorState.pointers.has(e.pointerId))imageEditorState.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(imageEditorState.pointers.size===2&&imageEditorState.pinch){const [a,b]=[...imageEditorState.pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;zoomImageAt(cx,cy,Math.max(.94,Math.min(1.06,d/imageEditorState.pinch.distance)));imageEditorState.panX+=cx-imageEditorState.pinch.cx;imageEditorState.panY+=cy-imageEditorState.pinch.cy;imageEditorState.pinch={distance:d,cx,cy};applyImageTransform();e.preventDefault();}else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
     imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
@@ -1393,7 +1413,10 @@
     const key=remoteImageKey(activeImageSongId,activeImageOwner),stamp=Date.now();
     const metadata={songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v2'};
     const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
-    await Promise.race([remoteSetDoc(remoteStateRef,{imageEdits:{[key]:metadata}},{merge:true}),timeout]);
+    const writer=window.__egmUpdateDoc
+      ? window.__egmUpdateDoc(remoteStateRef,{[`imageEdits.${key}`]:metadata})
+      : remoteSetDoc(remoteStateRef,{imageEdits:{[key]:metadata}},{merge:true});
+    await Promise.race([writer,timeout]);
     const check=await Promise.race([remoteGetDoc(remoteStateRef),timeout]);
     const remote=check.exists()?check.data()?.imageEdits?.[key]:null;
     if(!remote||Number(remote.updatedAt)!==stamp)throw new Error('Firestore no confirmó la edición');
