@@ -650,7 +650,7 @@
           }
           ctx.restore();
         }
-        return c.toDataURL('image/png');
+        return c;
       }catch(err){console.warn('No se pudo componer la vista de imagen',err);return '';}
     };
     if(!src)return paintComposition(null);
@@ -666,10 +666,21 @@
     content.innerHTML='';content.classList.add('is-note-viewer');
     const img=new Image();img.alt=`Imagen de ${song.titulo}`;img.addEventListener('load',()=>installNoteGestures(img),{once:true});img.addEventListener('error',()=>{content.classList.remove('is-note-viewer');content.innerHTML='<div class="viewer-empty"><h3>No se pudo abrir la foto</h3><p>La imagen guardada no pudo cargarse.</p></div>';},{once:true});img.src=src;content.append(img);return true;
   }
+  function showViewerCanvas(content,canvas,song){
+    if(!(canvas instanceof HTMLCanvasElement))return false;
+    content.innerHTML='';content.classList.add('is-note-viewer');
+    canvas.classList.add('note-photo');
+    canvas.setAttribute('role','img');
+    canvas.setAttribute('aria-label',`Imagen de ${song.titulo}`);
+    content.append(canvas);
+    requestAnimationFrame(()=>installNoteGestures(canvas));
+    return true;
+  }
   async function showComposedViewerEdit(content,edit,song,owner){
     if(!edit||typeof edit!=='object')return false;
-    if((Array.isArray(edit.operations)&&edit.operations.length)||Array.isArray(edit.textBoxes)){
-      const src=await composeRemoteImageEdit(edit,song,owner);if(src)return showViewerImage(content,src,song);
+    if((Array.isArray(edit.operations)&&edit.operations.length)||Array.isArray(edit.textBoxes)||edit.originalSrc||edit.original){
+      const canvas=await composeRemoteImageEdit(edit,song,owner);
+      if(canvas)return showViewerCanvas(content,canvas,song);
     }
     if(edit.composite)return showViewerImage(content,edit.composite,song);
     return false;
@@ -686,8 +697,8 @@
       // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
       const renderBlankCanvas=async()=>{
         if(rendered)return;
-        const blankSrc=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner);
-        if(blankSrc){rendered=showViewerImage(content,blankSrc,song);return;}
+        const blankCanvas=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner);
+        if(blankCanvas){rendered=showViewerCanvas(content,blankCanvas,song);return;}
         content.classList.remove('is-note-viewer');
         content.innerHTML='<div class="viewer-empty viewer-blank-canvas" aria-label="Lienzo blanco editable"></div>';
         rendered=true;
