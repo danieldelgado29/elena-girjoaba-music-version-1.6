@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, activeUniversalEditorMode='image', returnToImageViewer=false, viewerRenderGeneration=0;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -1037,8 +1037,12 @@
   function redoEditor(){if(!editorRedoStack.length)return;const next=editorRedoStack.pop();editorUndoStack.push(next);restoreEditorState(next);}
 
   function openSongbookEditor(id){
-    // 6.36.62: Letra parte del editor de imagen estable.
-    return openImageEditor(id,activeSongbookOwner,'lyrics');
+    const song=state.songs.find(s=>s.id===id);if(!song)return;activeSongbookSongId=id;const field=songbookField(activeSongbookOwner);
+    $('#songbookEditorOwner').textContent=`CANCIONERO ${ownerLabel(activeSongbookOwner).toUpperCase()}`;$('#songbookEditorTitle').textContent=`${song.titulo} · ${song.artista||''}`;
+    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML=saved.includes('<')?saved:esc(saved).replace(/\n/g,'<br>');
+    currentTextColor='#d00000';currentFontSize='30';currentBold=true;currentItalic=false;$('#songbookFontSize').value='30';updateColorButton();updateFormatButtons();
+    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='true';
+    $('#songbookEditorDialog').showModal();requestAnimationFrame(()=>{resizeSongbookCanvas();loadSongbookDrawing(state.songbookDrawingData);rememberDialogState($('#songbookEditorDialog'));resetEditorHistory();});setTimeout(()=>{placeCaretAtEnd(editor);applyTypingFormat();saveEditorSelection();},80);
   }
   function placeCaretAtEnd(el){const range=document.createRange(),sel=window.getSelection();range.selectNodeContents(el);range.collapse(false);sel.removeAllRanges();sel.addRange(range);el.focus();}
   function selectionInsideEditor(){const sel=window.getSelection();return sel&&sel.rangeCount&&$('#songbookEditor').contains(sel.anchorNode);}
@@ -1496,27 +1500,11 @@
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
-  async function openImageEditor(songId,owner,mode='image'){
+  async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
-    activeUniversalEditorMode=mode;
     const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
-    returnToImageViewer=mode==='image'&&Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
-    activeImageSongId=songId;activeImageOwner=owner;
-    $('#imageEditorDialog .songbook-editor-header small').textContent=mode==='lyrics'?'EDITOR DE LETRA':'EDITOR DE IMAGEN';
-    $('#imageEditorTitle').textContent=`${mode==='lyrics'?'Letra':'Imagen'} ${ownerLabel(owner)} · ${song.titulo}`;
-    if(mode==='lyrics'){
-      const field=songbookField(owner);
-      const holder=document.createElement('div');holder.innerHTML=String(song[field]||'');
-      const rawText=(holder.innerText||holder.textContent||'').trim();
-      imageEditorState.sources=[];imageEditorState.original='';imageEditorState.overlay='';imageEditorState.operations=[];
-      imageEditorState.textBoxes=rawText?[{id:`lyrics-${songId}`,text:rawText,x:.06,y:.06,w:.88,h:.82,rotation:0,size:9,color:'#111111',bold:false,italic:false}]:[];
-      imageEditorState.activeTextBoxId=null;
-      Object.assign(imageEditorState,{tool:'text',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#111111',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});
-      imageInlineText.value='';imageInlineText.hidden=true;
-      $('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.add('is-active');syncImageSwatches();
-      $('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
-      return;
-    }
+    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
+    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
@@ -1875,15 +1863,6 @@
 
   async function persistImageEditorLayers(syncRemote=false){
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
-    if(activeUniversalEditorMode==='lyrics'){
-      commitImageText();
-      const field=songbookField(activeImageOwner);
-      const text=imageEditorState.textBoxes.map(box=>String(box.text||'').trim()).filter(Boolean).join('\n\n');
-      song[field]=text;
-      const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
-      saveStateLocalOnly();syncRemoteState(true);renderSongbookList();renderSongs();
-      return {lyrics:text,updatedAt:Date.now(),mode:'lyrics'};
-    }
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
@@ -1892,12 +1871,34 @@
     saveStateLocalOnly();renderSongbookList();renderSongs();
     return saved;
   }
+
+  // 6.36.54 · El visor que queda debajo se actualiza cuando el dialog del editor
+  // realmente terminó de cerrarse. Safari/iOS no siempre repinta un dialog inferior
+  // mientras el superior sigue en la pila modal.
+  $('#imageEditorDialog').addEventListener('close',()=>{
+    const pending=pendingViewerRefresh;
+    pendingViewerRefresh=null;
+    returnToImageViewer=false;
+    if(!pending)return;
+    requestAnimationFrame(()=>requestAnimationFrame(async()=>{
+      const song=state.songs.find(x=>x.id===pending.songId);
+      const expectedType=pending.owner==='daniel'?'daniel-image':'notes';
+      if(!song||!$('#viewerDialog')?.open||activeViewerSongId!==pending.songId||activeViewerType!==expectedType)return;
+      try{
+        // Invalida cualquier lectura remota antigua iniciada cuando se abrió el visor.
+        viewerRenderGeneration++;
+        await refreshOpenImageViewer(pending.edit,song,pending.owner);
+      }catch(err){
+        console.error('No se pudo redibujar el visor abierto después de cerrar el editor',err);
+      }
+    }));
+  });
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     const saveSongId=activeImageSongId;
     const saveOwner=activeImageOwner;
-    askConfirm(activeUniversalEditorMode==='lyrics'?'Guardar letra':'Guardar imagen',activeUniversalEditorMode==='lyrics'?`Se guardará la letra de ${ownerLabel(saveOwner)} para “${song.titulo}”.`:`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
+    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');
       btn.disabled=true;
       btn.textContent='Guardando…';
@@ -1907,41 +1908,27 @@
         // El editor solo se cierra después de que la copia local quede confirmada.
         const saved=await persistImageEditorLayers(true);
         if(!saved)throw new Error('No se pudo preparar la edición');
-        const editId=activeUniversalEditorMode==='lyrics'?null:remoteImageKey(saveSongId,saveOwner);
-        const local=editId?await offlineStoreGet('imageEdits',editId):null;
+        const editId=remoteImageKey(saveSongId,saveOwner);
+        const local=await offlineStoreGet('imageEdits',editId);
+        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
+        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
+        savedSong[imageField(saveOwner)]={
+          original:immediateEdit.originalSrc||immediateEdit.original||'',
+          operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+          textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+          updatedAt:immediateEdit.updatedAt||Date.now(),
+          remote:!immediateEdit.pendingSync
+        };
+        // 6.36.54: no refrescar mientras el editor todavía está por encima.
+        // Guardamos una orden pendiente y el evento real `close` del dialog redibuja
+        // exactamente el visor que queda visible debajo. Esto también cubre el caso
+        // en que el usuario pulsa la X después de haber guardado.
+        if(returnToImageViewer){
+          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner};
+        }
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
-        // Refrescar el visor DESPUÉS de cerrar el editor. Mientras el editor estaba
-        // encima, Safari/iOS podía conservar el canvas anterior hasta reabrir Imagen.
-        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
-        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        // 6.36.53: el visor Imagen ya está abierto debajo del editor.
-        // No se destruye ni se vuelve a abrir: se redibuja ese mismo visor con la
-        // edición recién guardada y luego queda visible al cerrar el editor.
-        if(activeUniversalEditorMode==='image'&&returnToImageViewer){
-          savedSong[imageField(saveOwner)]={
-            original:immediateEdit.originalSrc||immediateEdit.original||'',
-            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
-            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
-            updatedAt:immediateEdit.updatedAt||Date.now(),
-            remote:!immediateEdit.pendingSync
-          };
-          viewerRenderGeneration++;
-          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
-          returnToImageViewer=false;
-        }else{
-          // Si el editor se abrió sin un visor debajo, actualizar la fuente oficial
-          // de la canción para que el próximo clic en Imagen use la edición nueva.
-          savedSong[imageField(saveOwner)]={
-            original:immediateEdit.originalSrc||immediateEdit.original||'',
-            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
-            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
-            updatedAt:immediateEdit.updatedAt||Date.now(),
-            remote:!immediateEdit.pendingSync
-          };
-        }
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
