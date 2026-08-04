@@ -861,3 +861,23 @@ body{touch-action:pan-x pan-y;}
 @media(max-width:480px){.songbook-box-control{min-width:42px;height:36px}.songbook-box-delete,.songbook-box-align,.songbook-box-move{top:-42px}.songbook-box-rotate,.songbook-box-resize{bottom:-42px}}
 .live-songbook-page .songbook-saved-box{position:absolute;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.2;transform-origin:center center}
 .live-songbook-page{position:relative;min-height:900px}
+
+/* Entrega 6.36.56 · Letra completa, cajas bloqueables y apertura estable */
+#songbookEditorDialog .songbook-paper-wrap{overflow:auto!important;-webkit-overflow-scrolling:touch!important}
+#songbookEditorDialog .songbook-paper-stage{width:min(900px,100%)!important;min-width:0!important;margin:0 auto!important;overflow:visible!important}
+#songbookTextBoxesLayer{min-width:100%!important;min-height:100%!important;inset:0!important}
+.songbook-text-box{max-width:calc(100% - 16px)}
+.songbook-text-box.is-locked{border-color:#777;background:rgba(255,255,255,.04)}
+.songbook-text-box.is-locked .songbook-box-delete,
+.songbook-text-box.is-locked .songbook-box-move,
+.songbook-text-box.is-locked .songbook-box-rotate,
+.songbook-text-box.is-locked .songbook-box-resize{opacity:.38;pointer-events:none}
+.songbook-box-lock{left:calc(50% + 54px);top:-44px;transform:translateX(-50%)}
+.songbook-box-lock.is-active{background:#1d5f2c;color:#fff;border-color:#1d5f2c}
+.songbook-box-align{left:calc(50% - 54px)!important}
+@media(max-width:640px){
+  #songbookEditorDialog .songbook-paper-stage{width:100%!important;min-width:0!important;padding:0 8px!important;box-sizing:border-box!important}
+  .songbook-text-box{max-width:calc(100% - 8px)}
+  .songbook-box-align{left:calc(50% - 48px)!important}
+  .songbook-box-lock{left:calc(50% + 48px);top:-42px}
+}
