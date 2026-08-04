@@ -881,3 +881,111 @@ body{touch-action:pan-x pan-y;}
   .songbook-box-align{left:calc(50% - 48px)!important}
   .songbook-box-lock{left:calc(50% + 48px);top:-42px}
 }
+
+/* Entrega 6.36.57 · barra visual del editor Letra igual al editor Imagen */
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar{
+  position:relative!important;
+  inset:auto!important;
+  z-index:80!important;
+  display:grid!important;
+  grid-auto-flow:column!important;
+  grid-auto-columns:minmax(30px,42px)!important;
+  grid-template-columns:none!important;
+  justify-content:center!important;
+  align-items:center!important;
+  align-content:center!important;
+  flex-flow:initial!important;
+  gap:clamp(2px,.7vw,6px)!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  height:52px!important;
+  min-height:52px!important;
+  max-height:52px!important;
+  padding:5px max(4px,env(safe-area-inset-right)) 5px max(4px,env(safe-area-inset-left))!important;
+  margin:0!important;
+  overflow:visible!important;
+  white-space:nowrap!important;
+  background:#f5f5f5!important;
+  border-bottom:1px solid #d6d6d6!important;
+  transform:none!important;
+  transform-origin:center!important;
+  zoom:1!important;
+  box-sizing:border-box!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar::after{display:none!important}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar > *{
+  flex:initial!important;
+  min-width:0!important;
+  margin:0!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-tool-wrap{
+  position:relative!important;
+  display:grid!important;
+  place-items:center!important;
+  width:clamp(30px,8.8vw,42px)!important;
+  min-width:0!important;
+  height:42px!important;
+  min-height:42px!important;
+  max-height:42px!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-editor-tool{
+  position:relative!important;
+  display:grid!important;
+  place-items:center!important;
+  width:clamp(30px,8.8vw,42px)!important;
+  min-width:0!important;
+  max-width:42px!important;
+  height:42px!important;
+  min-height:42px!important;
+  max-height:42px!important;
+  padding:0!important;
+  border:1px solid #d2d2d2!important;
+  border-radius:8px!important;
+  background:#fff!important;
+  color:#111!important;
+  font-size:20px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  box-shadow:none!important;
+  box-sizing:border-box!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-editor-tool.is-active{
+  background:#d8d8d8!important;
+  color:#111!important;
+  border-color:#b8b8b8!important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.08)!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .tool-letter{
+  display:block!important;
+  position:relative!important;
+  z-index:2!important;
+  color:#111!important;
+  background:transparent!important;
+  font-size:20px!important;
+  line-height:1!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-tool-color{
+  position:absolute!important;
+  left:6px!important;
+  right:6px!important;
+  bottom:3px!important;
+  width:auto!important;
+  height:3px!important;
+  border:0!important;
+  border-radius:3px!important;
+  background:#d00000!important;
+  pointer-events:none!important;
+  z-index:3!important;
+}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar #songbookAlign[hidden]{display:none!important}
+#songbookEditorDialog .songbook-toolbar.egm-editor-toolbar #songbookColorBtn{display:none!important}
+@media(max-width:380px){
+  #songbookEditorDialog .songbook-toolbar.egm-editor-toolbar{
+    grid-auto-columns:minmax(29px,1fr)!important;
+    gap:2px!important;
+  }
+  #songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-editor-tool,
+  #songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-tool-wrap{width:100%!important}
+  #songbookEditorDialog .songbook-toolbar.egm-editor-toolbar .egm-editor-tool{font-size:18px!important}
+}
