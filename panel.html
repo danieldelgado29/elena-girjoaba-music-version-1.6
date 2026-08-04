@@ -449,7 +449,7 @@
 
   <dialog id="imageEditorDialog" class="songbook-editor-dialog image-editor-dialog">
     <div class="songbook-editor-shell image-editor-shell">
-      <header class="songbook-editor-header"><div><small>EDITOR DE IMAGEN</small><h3 id="imageEditorTitle">Imagen</h3></div><button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <header class="songbook-editor-header"><div><small id="imageEditorEyebrow">EDITOR DE IMAGEN</small><h3 id="imageEditorTitle">Imagen</h3></div><button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
       <div class="songbook-toolbar image-editor-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de imagen">
         <div class="toolbar-popover-wrap egm-tool-wrap">
           <button id="imageTextTool" class="egm-editor-tool" type="button" aria-label="Texto" title="Texto: mantener para elegir color"><span class="tool-letter">T</span><span id="imageTextSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
@@ -495,7 +495,7 @@
             <button type="button" data-image-eraser-size="8">S</button><button type="button" data-image-eraser-size="18">M</button><button type="button" data-image-eraser-size="36">L</button><button type="button" data-image-eraser-size="100">XL</button>
           </div>
         </div>
-        <div class="toolbar-popover-wrap egm-tool-wrap">
+        <div id="imageUploadToolWrap" class="toolbar-popover-wrap egm-tool-wrap">
           <button id="imageUploadTrigger" class="egm-editor-tool" type="button" aria-label="Imagen" title="Subir, reemplazar o eliminar imagen"><svg class="egm-toolbar-svg egm-upload-svg" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="6" width="22" height="20" rx="3"/><path d="m9 21 5-5 4 4 3-3 6 6M16 17V8m-4 4 4-4 4 4"/></svg></button>
           <div id="imageUploadOptions" class="compact-popover egm-upload-options" hidden>
             <button id="imageChoosePhotoBtn" type="button">Subir o reemplazar foto</button>
@@ -526,7 +526,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.60"></script>
+  <script type="module" src="panel.js?v=6.36.61"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>
