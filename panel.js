@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, activeUniversalEditorMode='image', returnToImageViewer=false, viewerRenderGeneration=0;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -1037,12 +1037,8 @@
   function redoEditor(){if(!editorRedoStack.length)return;const next=editorRedoStack.pop();editorUndoStack.push(next);restoreEditorState(next);}
 
   function openSongbookEditor(id){
-    const song=state.songs.find(s=>s.id===id);if(!song)return;activeSongbookSongId=id;const field=songbookField(activeSongbookOwner);
-    $('#songbookEditorOwner').textContent=`CANCIONERO ${ownerLabel(activeSongbookOwner).toUpperCase()}`;$('#songbookEditorTitle').textContent=`${song.titulo} · ${song.artista||''}`;
-    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML=saved.includes('<')?saved:esc(saved).replace(/\n/g,'<br>');
-    currentTextColor='#d00000';currentFontSize='30';currentBold=true;currentItalic=false;$('#songbookFontSize').value='30';updateColorButton();updateFormatButtons();
-    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='true';
-    $('#songbookEditorDialog').showModal();requestAnimationFrame(()=>{resizeSongbookCanvas();loadSongbookDrawing(state.songbookDrawingData);rememberDialogState($('#songbookEditorDialog'));resetEditorHistory();});setTimeout(()=>{placeCaretAtEnd(editor);applyTypingFormat();saveEditorSelection();},80);
+    // 6.36.62: Letra parte del editor de imagen estable.
+    return openImageEditor(id,activeSongbookOwner,'lyrics');
   }
   function placeCaretAtEnd(el){const range=document.createRange(),sel=window.getSelection();range.selectNodeContents(el);range.collapse(false);sel.removeAllRanges();sel.addRange(range);el.focus();}
   function selectionInsideEditor(){const sel=window.getSelection();return sel&&sel.rangeCount&&$('#songbookEditor').contains(sel.anchorNode);}
@@ -1500,11 +1496,27 @@
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
-  async function openImageEditor(songId,owner){
+  async function openImageEditor(songId,owner,mode='image'){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
+    activeUniversalEditorMode=mode;
     const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
-    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
-    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    returnToImageViewer=mode==='image'&&Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
+    activeImageSongId=songId;activeImageOwner=owner;
+    $('#imageEditorDialog .songbook-editor-header small').textContent=mode==='lyrics'?'EDITOR DE LETRA':'EDITOR DE IMAGEN';
+    $('#imageEditorTitle').textContent=`${mode==='lyrics'?'Letra':'Imagen'} ${ownerLabel(owner)} · ${song.titulo}`;
+    if(mode==='lyrics'){
+      const field=songbookField(owner);
+      const holder=document.createElement('div');holder.innerHTML=String(song[field]||'');
+      const rawText=(holder.innerText||holder.textContent||'').trim();
+      imageEditorState.sources=[];imageEditorState.original='';imageEditorState.overlay='';imageEditorState.operations=[];
+      imageEditorState.textBoxes=rawText?[{id:`lyrics-${songId}`,text:rawText,x:.06,y:.06,w:.88,h:.82,rotation:0,size:9,color:'#111111',bold:false,italic:false}]:[];
+      imageEditorState.activeTextBoxId=null;
+      Object.assign(imageEditorState,{tool:'text',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#111111',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});
+      imageInlineText.value='';imageInlineText.hidden=true;
+      $('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.add('is-active');syncImageSwatches();
+      $('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
+      return;
+    }
     const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
@@ -1863,6 +1875,15 @@
 
   async function persistImageEditorLayers(syncRemote=false){
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
+    if(activeUniversalEditorMode==='lyrics'){
+      commitImageText();
+      const field=songbookField(activeImageOwner);
+      const text=imageEditorState.textBoxes.map(box=>String(box.text||'').trim()).filter(Boolean).join('\n\n');
+      song[field]=text;
+      const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
+      saveStateLocalOnly();syncRemoteState(true);renderSongbookList();renderSongs();
+      return {lyrics:text,updatedAt:Date.now(),mode:'lyrics'};
+    }
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
@@ -1876,7 +1897,7 @@
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     const saveSongId=activeImageSongId;
     const saveOwner=activeImageOwner;
-    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
+    askConfirm(activeUniversalEditorMode==='lyrics'?'Guardar letra':'Guardar imagen',activeUniversalEditorMode==='lyrics'?`Se guardará la letra de ${ownerLabel(saveOwner)} para “${song.titulo}”.`:`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');
       btn.disabled=true;
       btn.textContent='Guardando…';
@@ -1886,8 +1907,8 @@
         // El editor solo se cierra después de que la copia local quede confirmada.
         const saved=await persistImageEditorLayers(true);
         if(!saved)throw new Error('No se pudo preparar la edición');
-        const editId=remoteImageKey(saveSongId,saveOwner);
-        const local=await offlineStoreGet('imageEdits',editId);
+        const editId=activeUniversalEditorMode==='lyrics'?null:remoteImageKey(saveSongId,saveOwner);
+        const local=editId?await offlineStoreGet('imageEdits',editId):null;
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
@@ -1899,7 +1920,7 @@
         // 6.36.53: el visor Imagen ya está abierto debajo del editor.
         // No se destruye ni se vuelve a abrir: se redibuja ese mismo visor con la
         // edición recién guardada y luego queda visible al cerrar el editor.
-        if(returnToImageViewer){
+        if(activeUniversalEditorMode==='image'&&returnToImageViewer){
           savedSong[imageField(saveOwner)]={
             original:immediateEdit.originalSrc||immediateEdit.original||'',
             operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
