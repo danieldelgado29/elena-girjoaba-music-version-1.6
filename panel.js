@@ -1896,26 +1896,19 @@
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        // 6.36.52: repetir exactamente la ruta que sí funciona al cerrar y abrir
-        // Imagen manualmente: destruir el visor, volver a LEER imageEdits y recién
-        // entonces crear el visor. No reutilizamos canvas ni estado en memoria.
+        // 6.36.53: el visor Imagen ya está abierto debajo del editor.
+        // No se destruye ni se vuelve a abrir: se redibuja ese mismo visor con la
+        // edición recién guardada y luego queda visible al cerrar el editor.
         if(returnToImageViewer){
-          const viewer=$('#viewerDialog');
-          viewerRenderGeneration++;
-          if(viewer?.open)viewer.close();
-          const content=$('#viewerContent');
-          if(content){content.innerHTML='';content.classList.remove('is-note-viewer');}
-          await new Promise(resolve=>setTimeout(resolve,120));
-          const confirmed=await loadRemoteImageEdit(saveSongId,saveOwner);
-          const fresh=confirmed||immediateEdit;
           savedSong[imageField(saveOwner)]={
-            original:fresh.originalSrc||fresh.original||'',
-            operations:Array.isArray(fresh.operations)?fresh.operations:[],
-            textBoxes:Array.isArray(fresh.textBoxes)?fresh.textBoxes:[],
-            updatedAt:fresh.updatedAt||Date.now(),
-            remote:Boolean(confirmed)
+            original:immediateEdit.originalSrc||immediateEdit.original||'',
+            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+            updatedAt:immediateEdit.updatedAt||Date.now(),
+            remote:!immediateEdit.pendingSync
           };
-          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes');
+          viewerRenderGeneration++;
+          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
           returnToImageViewer=false;
         }else{
           // Si el editor se abrió sin un visor debajo, actualizar la fuente oficial
