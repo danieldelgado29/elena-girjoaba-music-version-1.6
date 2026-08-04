@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -1871,6 +1871,28 @@
     saveStateLocalOnly();renderSongbookList();renderSongs();
     return saved;
   }
+
+  // 6.36.54 · El visor que queda debajo se actualiza cuando el dialog del editor
+  // realmente terminó de cerrarse. Safari/iOS no siempre repinta un dialog inferior
+  // mientras el superior sigue en la pila modal.
+  $('#imageEditorDialog').addEventListener('close',()=>{
+    const pending=pendingViewerRefresh;
+    pendingViewerRefresh=null;
+    returnToImageViewer=false;
+    if(!pending)return;
+    requestAnimationFrame(()=>requestAnimationFrame(async()=>{
+      const song=state.songs.find(x=>x.id===pending.songId);
+      const expectedType=pending.owner==='daniel'?'daniel-image':'notes';
+      if(!song||!$('#viewerDialog')?.open||activeViewerSongId!==pending.songId||activeViewerType!==expectedType)return;
+      try{
+        // Invalida cualquier lectura remota antigua iniciada cuando se abrió el visor.
+        viewerRenderGeneration++;
+        await refreshOpenImageViewer(pending.edit,song,pending.owner);
+      }catch(err){
+        console.error('No se pudo redibujar el visor abierto después de cerrar el editor',err);
+      }
+    }));
+  });
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
@@ -1888,39 +1910,25 @@
         if(!saved)throw new Error('No se pudo preparar la edición');
         const editId=remoteImageKey(saveSongId,saveOwner);
         const local=await offlineStoreGet('imageEdits',editId);
+        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
+        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
+        savedSong[imageField(saveOwner)]={
+          original:immediateEdit.originalSrc||immediateEdit.original||'',
+          operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+          textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+          updatedAt:immediateEdit.updatedAt||Date.now(),
+          remote:!immediateEdit.pendingSync
+        };
+        // 6.36.54: no refrescar mientras el editor todavía está por encima.
+        // Guardamos una orden pendiente y el evento real `close` del dialog redibuja
+        // exactamente el visor que queda visible debajo. Esto también cubre el caso
+        // en que el usuario pulsa la X después de haber guardado.
+        if(returnToImageViewer){
+          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner};
+        }
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
-        // Refrescar el visor DESPUÉS de cerrar el editor. Mientras el editor estaba
-        // encima, Safari/iOS podía conservar el canvas anterior hasta reabrir Imagen.
-        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
-        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        // 6.36.53: el visor Imagen ya está abierto debajo del editor.
-        // No se destruye ni se vuelve a abrir: se redibuja ese mismo visor con la
-        // edición recién guardada y luego queda visible al cerrar el editor.
-        if(returnToImageViewer){
-          savedSong[imageField(saveOwner)]={
-            original:immediateEdit.originalSrc||immediateEdit.original||'',
-            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
-            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
-            updatedAt:immediateEdit.updatedAt||Date.now(),
-            remote:!immediateEdit.pendingSync
-          };
-          viewerRenderGeneration++;
-          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
-          returnToImageViewer=false;
-        }else{
-          // Si el editor se abrió sin un visor debajo, actualizar la fuente oficial
-          // de la canción para que el próximo clic en Imagen use la edición nueva.
-          savedSong[imageField(saveOwner)]={
-            original:immediateEdit.originalSrc||immediateEdit.original||'',
-            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
-            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
-            updatedAt:immediateEdit.updatedAt||Date.now(),
-            remote:!immediateEdit.pendingSync
-          };
-        }
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
