@@ -1896,23 +1896,37 @@
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        // 6.36.50: reproducir automáticamente el único flujo que siempre mostró
-        // la edición nueva: cerrar y volver a abrir el visor. Esto destruye el
-        // canvas anterior y evita que Safari/iOS conserve una composición vieja.
+        // 6.36.52: repetir exactamente la ruta que sí funciona al cerrar y abrir
+        // Imagen manualmente: destruir el visor, volver a LEER imageEdits y recién
+        // entonces crear el visor. No reutilizamos canvas ni estado en memoria.
         if(returnToImageViewer){
           const viewer=$('#viewerDialog');
-          // Invalidar cualquier carga asíncrona del visor anterior antes de cerrarlo.
           viewerRenderGeneration++;
           if(viewer?.open)viewer.close();
           const content=$('#viewerContent');
           if(content){content.innerHTML='';content.classList.remove('is-note-viewer');}
-          await new Promise(resolve=>setTimeout(resolve,80));
-          // Abrir una instancia nueva usando directamente la edición recién guardada.
-          // La consulta remota posterior solo podrá reemplazarla si es igual o más nueva.
-          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes',immediateEdit);
+          await new Promise(resolve=>setTimeout(resolve,120));
+          const confirmed=await loadRemoteImageEdit(saveSongId,saveOwner);
+          const fresh=confirmed||immediateEdit;
+          savedSong[imageField(saveOwner)]={
+            original:fresh.originalSrc||fresh.original||'',
+            operations:Array.isArray(fresh.operations)?fresh.operations:[],
+            textBoxes:Array.isArray(fresh.textBoxes)?fresh.textBoxes:[],
+            updatedAt:fresh.updatedAt||Date.now(),
+            remote:Boolean(confirmed)
+          };
+          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes');
           returnToImageViewer=false;
         }else{
-          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
+          // Si el editor se abrió sin un visor debajo, actualizar la fuente oficial
+          // de la canción para que el próximo clic en Imagen use la edición nueva.
+          savedSong[imageField(saveOwner)]={
+            original:immediateEdit.originalSrc||immediateEdit.original||'',
+            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+            updatedAt:immediateEdit.updatedAt||Date.now(),
+            remote:!immediateEdit.pendingSync
+          };
         }
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
