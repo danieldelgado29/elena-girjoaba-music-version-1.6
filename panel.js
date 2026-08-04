@@ -1036,12 +1036,44 @@
   function undoEditor(){commitEditorHistory();if(editorUndoStack.length<=1)return;editorRedoStack.push(editorUndoStack.pop());restoreEditorState(editorUndoStack.at(-1));}
   function redoEditor(){if(!editorRedoStack.length)return;const next=editorRedoStack.pop();editorUndoStack.push(next);restoreEditorState(next);}
 
+
+  // Entrega 6.36.55 · Cajas de texto independientes para Letra
+  let songbookBoxes=[];
+  let activeSongbookBox=null;
+  let songbookTextPlacementMode=true;
+  function selectSongbookBox(box){
+    activeSongbookBox=box;
+    $$('.songbook-text-box').forEach(el=>el.classList.toggle('is-selected',el===box));
+    if(box){const ta=box.querySelector('textarea');currentTextColor=ta.style.color||'#d00000';currentFontSize=parseInt(ta.style.fontSize)||30;currentBold=(ta.style.fontWeight==='700'||ta.style.fontWeight==='bold');currentItalic=ta.style.fontStyle==='italic';updateColorButton();updateFormatButtons();}
+  }
+  function songbookBoxData(box){const ta=box.querySelector('textarea');return{x:parseFloat(box.style.left)||0,y:parseFloat(box.style.top)||0,w:parseFloat(box.style.width)||260,h:parseFloat(box.style.height)||120,rotation:parseFloat(box.dataset.rotation)||0,text:ta.value,color:ta.style.color||'#d00000',fontSize:parseFloat(ta.style.fontSize)||30,bold:ta.style.fontWeight==='700'||ta.style.fontWeight==='bold',italic:ta.style.fontStyle==='italic',align:ta.style.textAlign||'left'};}
+  function createSongbookBox(data={},focus=true){
+    const layer=$('#songbookTextBoxesLayer'),box=document.createElement('div');box.className='songbook-text-box';
+    box.style.left=`${data.x??70}px`;box.style.top=`${data.y??80}px`;box.style.width=`${data.w??300}px`;box.style.height=`${data.h??130}px`;box.dataset.rotation=String(data.rotation||0);box.style.transform=`rotate(${data.rotation||0}deg)`;
+    box.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="songbook-box-control songbook-box-delete"><b>×</b><small>Cerrar</small></button><button type="button" class="songbook-box-control songbook-box-align"><b>≡</b><small>Alinear</small></button><button type="button" class="songbook-box-control songbook-box-move"><b>↔</b><small>Mover</small></button><button type="button" class="songbook-box-control songbook-box-rotate"><b>↻</b><small>Girar</small></button><button type="button" class="songbook-box-control songbook-box-resize"><b>↘</b><small>Tamaño</small></button>';
+    const ta=box.querySelector('textarea');ta.value=data.text||'';ta.style.color=data.color||currentTextColor||'#d00000';ta.style.fontSize=`${data.fontSize||currentFontSize||30}px`;ta.style.fontWeight=data.bold?'700':'400';ta.style.fontStyle=data.italic?'italic':'normal';ta.style.textAlign=data.align||'left';
+    layer.append(box);songbookBoxes.push(box);selectSongbookBox(box);
+    box.addEventListener('pointerdown',e=>{if(!e.target.closest('button'))selectSongbookBox(box);});
+    ta.addEventListener('input',()=>{commitEditorHistory();});
+    box.querySelector('.songbook-box-delete').addEventListener('click',()=>{box.remove();songbookBoxes=songbookBoxes.filter(x=>x!==box);activeSongbookBox=null;commitEditorHistory();});
+    box.querySelector('.songbook-box-align').addEventListener('click',()=>{const order=['left','center','right'],i=order.indexOf(ta.style.textAlign||'left');ta.style.textAlign=order[(i+1)%3];box.querySelector('.songbook-box-align b').textContent=ta.style.textAlign==='left'?'≡':ta.style.textAlign==='center'?'≣':'☰';commitEditorHistory();});
+    const drag=(handle,type)=>{handle.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();selectSongbookBox(box);const sx=e.clientX,sy=e.clientY,start=songbookBoxData(box);handle.setPointerCapture(e.pointerId);const move=ev=>{const dx=ev.clientX-sx,dy=ev.clientY-sy;if(type==='move'){box.style.left=`${start.x+dx}px`;box.style.top=`${start.y+dy}px`;}else if(type==='resize'){box.style.width=`${Math.max(120,start.w+dx)}px`;box.style.height=`${Math.max(70,start.h+dy)}px`;}else{const r=box.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;const a=Math.atan2(ev.clientY-cy,ev.clientX-cx)*180/Math.PI+90;box.dataset.rotation=String(a);box.style.transform=`rotate(${a}deg)`;}};const up=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);commitEditorHistory();};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);});};
+    drag(box.querySelector('.songbook-box-move'),'move');drag(box.querySelector('.songbook-box-resize'),'resize');drag(box.querySelector('.songbook-box-rotate'),'rotate');
+    if(focus)setTimeout(()=>{ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)},0);return box;
+  }
+  function serializeSongbookBoxes(){return songbookBoxes.map(songbookBoxData).map(d=>`<div class="songbook-saved-box" data-songbook-box="1" data-x="${d.x}" data-y="${d.y}" data-w="${d.w}" data-h="${d.h}" data-rotation="${d.rotation}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;height:${d.h}px;transform:rotate(${d.rotation}deg);color:${d.color};font-size:${d.fontSize}px;font-weight:${d.bold?'700':'400'};font-style:${d.italic?'italic':'normal'};text-align:${d.align}">${esc(d.text).replace(/\n/g,'<br>')}</div>`).join('');}
+  function loadSongbookBoxes(html){
+    songbookBoxes=[];activeSongbookBox=null;$('#songbookTextBoxesLayer').innerHTML='';const tmp=document.createElement('div');tmp.innerHTML=html||'';const saved=[...tmp.querySelectorAll('[data-songbook-box]')];
+    if(saved.length){saved.forEach(el=>createSongbookBox({x:+el.dataset.x||0,y:+el.dataset.y||0,w:+el.dataset.w||300,h:+el.dataset.h||130,rotation:+el.dataset.rotation||0,text:el.innerText,color:el.style.color||'#d00000',fontSize:parseFloat(el.style.fontSize)||30,bold:el.style.fontWeight==='700'||el.style.fontWeight==='bold',italic:el.style.fontStyle==='italic',align:el.style.textAlign||'left'},false));}
+    else if(String(html||'').trim()){const clean=tmp.innerText||String(html).replace(/<[^>]+>/g,' ');createSongbookBox({x:70,y:80,w:560,h:500,text:clean,color:'#111111',fontSize:30},false);}
+  }
+
   function openSongbookEditor(id){
     const song=state.songs.find(s=>s.id===id);if(!song)return;activeSongbookSongId=id;const field=songbookField(activeSongbookOwner);
     $('#songbookEditorOwner').textContent=`CANCIONERO ${ownerLabel(activeSongbookOwner).toUpperCase()}`;$('#songbookEditorTitle').textContent=`${song.titulo} · ${song.artista||''}`;
-    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML=saved.includes('<')?saved:esc(saved).replace(/\n/g,'<br>');
+    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML='';loadSongbookBoxes(saved);songbookTextPlacementMode=true;
     currentTextColor='#d00000';currentFontSize='30';currentBold=true;currentItalic=false;$('#songbookFontSize').value='30';updateColorButton();updateFormatButtons();
-    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='true';
+    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='false';
     $('#songbookEditorDialog').showModal();requestAnimationFrame(()=>{resizeSongbookCanvas();loadSongbookDrawing(state.songbookDrawingData);rememberDialogState($('#songbookEditorDialog'));resetEditorHistory();});setTimeout(()=>{placeCaretAtEnd(editor);applyTypingFormat();saveEditorSelection();},80);
   }
   function placeCaretAtEnd(el){const range=document.createRange(),sel=window.getSelection();range.selectNodeContents(el);range.collapse(false);sel.removeAllRanges();sel.addRange(range);el.focus();}
@@ -1089,11 +1121,12 @@
   }
 
   $('#songbookColorBtn').addEventListener('click',e=>{e.stopPropagation();const pop=$('#songbookColorMenu');if(!pop.hidden){pop.hidden=true;return;}closeToolbarPopovers(pop);positionPopover(pop,e.currentTarget);});
-  $$('[data-text-color]').forEach(btn=>btn.addEventListener('click',()=>{currentTextColor=btn.dataset.textColor;updateColorButton();restoreEditorSelection();document.execCommand('styleWithCSS',false,true);document.execCommand('foreColor',false,currentTextColor);saveEditorSelection();commitEditorHistory();$('#songbookColorMenu').hidden=true;}));
+  $$('[data-text-color]').forEach(btn=>btn.addEventListener('click',()=>{currentTextColor=btn.dataset.textColor;updateColorButton();if(activeSongbookBox)activeSongbookBox.querySelector('textarea').style.color=currentTextColor;commitEditorHistory();$('#songbookColorMenu').hidden=true;}));
   $('.songbook-toolbar').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
-  $$('[data-editor-command]').forEach(btn=>btn.addEventListener('click',()=>{restoreEditorSelection();document.execCommand(btn.dataset.editorCommand,false,null);currentBold=document.queryCommandState('bold');currentItalic=document.queryCommandState('italic');updateFormatButtons();saveEditorSelection();commitEditorHistory();}));
+  $$('[data-editor-command]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.dataset.editorCommand==='bold')currentBold=!currentBold;if(btn.dataset.editorCommand==='italic')currentItalic=!currentItalic;updateFormatButtons();if(activeSongbookBox){const ta=activeSongbookBox.querySelector('textarea');ta.style.fontWeight=currentBold?'700':'400';ta.style.fontStyle=currentItalic?'italic':'normal';}commitEditorHistory();}));
   function applyFontSize(size){
     currentFontSize=String(size);
+    if(activeSongbookBox){activeSongbookBox.querySelector('textarea').style.fontSize=`${currentFontSize}px`;commitEditorHistory();return;}
     restoreEditorSelection();
     const editor=$('#songbookEditor'),sel=window.getSelection();
     if(!sel||!sel.rangeCount||!editor.contains(sel.anchorNode))return;
@@ -1114,6 +1147,7 @@
   $('#songbookFontSize').addEventListener('mousedown',saveEditorSelection);
   $('#songbookFontSize').addEventListener('change',e=>applyFontSize(e.target.value));
   $('#songbookUndo').addEventListener('click',undoEditor);$('#songbookRedo').addEventListener('click',redoEditor);
+  $('#songbookPaperStage').addEventListener('pointerdown',e=>{if(!$('#songbookEditorDialog').open||songbookDrawingEnabled||e.target.closest('.songbook-text-box'))return;if(!songbookTextPlacementMode)return;const r=$('#songbookTextBoxesLayer').getBoundingClientRect();createSongbookBox({x:e.clientX-r.left-30,y:e.clientY-r.top-20,w:300,h:130},true);songbookTextPlacementMode=false;commitEditorHistory();});
   $('#songbookTextTool').addEventListener('click',()=>{songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookEraserToggle').classList.remove('is-active');$('#songbookTextTool').classList.add('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');$('#songbookEditor').contentEditable='true';$('#songbookEditor').focus();});
 
   $('#songbookDrawToggle').addEventListener('pointerdown',e=>{e.preventDefault();drawHoldTriggered=false;drawHoldTimer=setTimeout(()=>{drawHoldTriggered=true;closeToolbarPopovers($('#songbookDrawOptions'));positionPopover($('#songbookDrawOptions'),$('#songbookDrawToggle'));},480);});
@@ -1144,7 +1178,7 @@
   $('#songbookEditor').addEventListener('input',()=>{saveEditorSelection();scheduleWordHistory();});
   $('#songbookEditor').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoEditor():undoEditor();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoEditor();}});
 
-  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
+  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=serializeSongbookBoxes();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
 
   let activeRepertoireId = null;
 

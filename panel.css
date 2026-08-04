@@ -842,3 +842,22 @@ body{touch-action:pan-x pan-y;}
 /* 6.36.46 · visor centrado real y pellizco táctil estable */
 .viewer-content.is-note-viewer{position:relative!important;display:block!important;overflow:hidden!important;}
 .viewer-content.is-note-viewer .note-photo{position:absolute!important;left:50%!important;top:50%!important;margin:0!important;max-width:none!important;max-height:none!important;transform-origin:center center!important;touch-action:none!important;}
+
+/* Entrega 6.36.55 · Editor Letra con cajas independientes */
+#songbookPaperStage{position:relative!important;min-height:100%!important}
+#songbookEditor{display:none!important}
+.songbook-text-boxes-layer{position:absolute;inset:0;z-index:4;pointer-events:none;min-width:680px;min-height:900px}
+.songbook-text-box{position:absolute;box-sizing:border-box;transform-origin:center center;border:1px dashed transparent;border-radius:7px;pointer-events:auto;touch-action:none}
+.songbook-text-box.is-selected{border-color:#d00000;background:rgba(255,255,255,.08)}
+.songbook-text-box textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;overflow:hidden;background:transparent;padding:8px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+.songbook-box-control{display:none;position:absolute;z-index:10;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:none;-webkit-touch-callout:none}
+.songbook-text-box.is-selected .songbook-box-control{display:flex}
+.songbook-box-control b{font-size:17px;line-height:15px}.songbook-box-control small{font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
+.songbook-box-delete{left:-8px;top:-44px;background:#b00020;color:#fff;border-color:#b00020}
+.songbook-box-align{left:50%;top:-44px;transform:translateX(-50%)}
+.songbook-box-move{right:-8px;top:-44px;cursor:move}
+.songbook-box-rotate{left:-8px;bottom:-44px;cursor:grab}
+.songbook-box-resize{right:-8px;bottom:-44px;cursor:nwse-resize}
+@media(max-width:480px){.songbook-box-control{min-width:42px;height:36px}.songbook-box-delete,.songbook-box-align,.songbook-box-move{top:-42px}.songbook-box-rotate,.songbook-box-resize{bottom:-42px}}
+.live-songbook-page .songbook-saved-box{position:absolute;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.2;transform-origin:center center}
+.live-songbook-page{position:relative;min-height:900px}

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.54">
+  <link rel="stylesheet" href="panel.css?v=6.36.55">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -362,7 +362,7 @@
         <button id="songbookBold" type="button" class="egm-editor-tool" data-editor-command="bold" aria-label="Negrita"><b>N</b></button>
         <button id="songbookItalic" type="button" class="egm-editor-tool" data-editor-command="italic" aria-label="Cursiva"><i>K</i></button>
         <div class="toolbar-popover-wrap egm-tool-wrap">
-          <button id="songbookAlign" type="button" class="egm-editor-tool" aria-label="Alineación" title="Alineación: mantener para opciones"><span aria-hidden="true">≡</span></button>
+          <button id="songbookAlign" type="button" class="egm-editor-tool" aria-label="Alineación por caja" title="La alineación se cambia en cada caja" hidden><span aria-hidden="true">≡</span></button>
           <div id="songbookAlignOptions" class="compact-popover egm-align-options" hidden><button type="button" data-align="left">Izq.</button><button type="button" data-align="center">Centro</button><button type="button" data-align="right">Der.</button></div>
         </div>
         <button id="songbookUndo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Deshacer"><svg class="egm-toolbar-svg egm-undo-svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M13 8 6 14l7 6"/><path d="M7 14h11c5 0 8 3 8 8"/></svg></button>
@@ -390,7 +390,8 @@
       </div>
       <main class="songbook-paper-wrap">
         <div id="songbookPaperStage" class="songbook-paper-stage">
-          <div id="songbookEditor" class="songbook-paper" contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Pega aquí el texto del cancionero"></div>
+          <div id="songbookEditor" class="songbook-paper" contenteditable="false" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Toca Texto y luego el lugar donde quieres escribir"></div>
+          <div id="songbookTextBoxesLayer" class="songbook-text-boxes-layer" aria-label="Cajas de texto"></div>
           <canvas id="songbookDrawingCanvas" class="songbook-drawing-canvas"></canvas>
         </div>
       </main>
@@ -525,7 +526,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.54"></script>
+  <script type="module" src="panel.js?v=6.36.55"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>
