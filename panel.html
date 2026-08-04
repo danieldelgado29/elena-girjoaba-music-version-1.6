@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.59">
+  <link rel="stylesheet" href="panel.css?v=6.36.56">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -344,7 +344,7 @@
         <div><small id="songbookEditorOwner"></small><h3 id="songbookEditorTitle">Canción</h3></div>
         <button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
       </header>
-      <div class="songbook-toolbar image-editor-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de texto">
+      <div class="songbook-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de texto">
         <div class="toolbar-popover-wrap egm-tool-wrap">
           <button id="songbookTextTool" type="button" class="egm-editor-tool is-active" aria-label="Texto" title="Texto: mantener para color y tamaño"><span class="tool-letter">T</span><span id="songbookColorSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
           <div id="songbookTextOptions" class="compact-popover egm-tool-popover" hidden>
@@ -526,7 +526,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.59"></script>
+  <script type="module" src="panel.js?v=6.36.60"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>

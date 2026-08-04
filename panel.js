@@ -1020,7 +1020,7 @@
   function renderSongbookList(){
     const q=norm($('#songbookSearch').value),field=songbookField(activeSongbookOwner),songs=state.songs.filter(song=>!q||norm(song.titulo).includes(q)||norm(song.artista).includes(q));
     $('#songbookCount').textContent=`${songs.length} canciones`;const list=$('#songbookSongsList');list.innerHTML='';
-    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner));list.append(row);});
+    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>openUniversalLyricsEditor(song.id,activeSongbookOwner));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner));list.append(row);});
     if(!songs.length)list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3></div>';
   }
   $('#songbookSearch').addEventListener('input',renderSongbookList);
@@ -1076,15 +1076,8 @@
     else if(String(html||'').trim()){const clean=tmp.innerText||String(html).replace(/<[^>]+>/g,' ');const stage=$('#songbookPaperStage'),w=Math.max(280,(stage.clientWidth||window.innerWidth)-32);createSongbookBox({x:16,y:60,w,h:160,text:clean,color:'#111111',fontSize:30,locked:true},false);}
   }
 
-  function openSongbookEditor(id){
-    const song=state.songs.find(s=>s.id===id);if(!song)return;activeSongbookSongId=id;const field=songbookField(activeSongbookOwner);
-    $('#songbookEditorOwner').textContent=`CANCIONERO ${ownerLabel(activeSongbookOwner).toUpperCase()}`;$('#songbookEditorTitle').textContent=`${song.titulo} · ${song.artista||''}`;
-    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML='';songbookTextPlacementMode=true;
-    currentTextColor='#d00000';currentFontSize='30';currentBold=true;currentItalic=false;$('#songbookFontSize').value='30';updateColorButton();updateFormatButtons();
-    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='false';
-    const dialog=$('#songbookEditorDialog');dialog.showModal();
-    requestAnimationFrame(()=>{const stage=$('#songbookPaperStage');stage.style.minHeight=`${Math.max(window.innerHeight-190,700)}px`;loadSongbookBoxes(saved);if(!songbookBoxes.length){const w=Math.max(280,(stage.clientWidth||window.innerWidth)-32);createSongbookBox({x:16,y:60,w,h:160,text:'',color:'#111111',fontSize:30,locked:true},false);}songbookBoxes.forEach(fitSongbookBoxToText);resizeSongbookCanvas();loadSongbookDrawing(state.songbookDrawingData);rememberDialogState(dialog);resetEditorHistory();});
-  }
+  function openSongbookEditor(id){return openUniversalLyricsEditor(id,activeSongbookOwner);}
+
   function placeCaretAtEnd(el){const range=document.createRange(),sel=window.getSelection();range.selectNodeContents(el);range.collapse(false);sel.removeAllRanges();sel.addRange(range);el.focus();}
   function selectionInsideEditor(){const sel=window.getSelection();return sel&&sel.rangeCount&&$('#songbookEditor').contains(sel.anchorNode);}
   function saveEditorSelection(){if(selectionInsideEditor())savedEditorRange=window.getSelection().getRangeAt(0).cloneRange();}
@@ -1481,6 +1474,26 @@
 
 
   const IMAGE_COLORS=['#d00000','#111111','#ffffff','#0057d9','#ffd400'];
+  // Entrega 6.36.60 · Editor universal: Imagen y Letra usan el mismo componente real.
+  let imageEditorMode='image';
+  let activeLyricsSongId=null;
+  let activeLyricsOwner='elena';
+  function lyricsUniversalField(owner){return owner==='elena'?'cancioneroElenaUniversal':'cancioneroDanielUniversal';}
+  function htmlToPlainText(value){const tmp=document.createElement('div');tmp.innerHTML=String(value||'');return (tmp.innerText||tmp.textContent||'').replace(/\r/g,'').trim();}
+  function lyricsBoxesToHtml(boxes){return (boxes||[]).map(box=>`<div style="color:${esc(box.color||'#111111')};font-size:${Math.max(16,(Number(box.size)||9)*3)}px;font-weight:${box.bold?'700':'400'};font-style:${box.italic?'italic':'normal'};text-align:${box.align||'left'}">${esc(box.text||'').replace(/\n/g,'<br>')}</div>`).join('');}
+  function configureUniversalToolbar(mode){imageEditorMode=mode;const upload=$('#imageUploadTrigger')?.closest('.egm-tool-wrap')||$('#imageUploadTrigger');if(upload)upload.hidden=mode==='lyrics';const photoTarget=$('[data-image-eraser-target="photo"]');if(photoTarget)photoTarget.hidden=mode==='lyrics';$('#imageEditorDialog')?.classList.toggle('lyrics-editor-mode',mode==='lyrics');}
+  async function openUniversalLyricsEditor(songId,owner){
+    const song=state.songs.find(x=>x.id===songId);if(!song)return;
+    activeLyricsSongId=songId;activeLyricsOwner=owner;activeImageSongId=songId;activeImageOwner=owner;configureUniversalToolbar('lyrics');
+    $('#imageEditorTitle').textContent=`Cancionero ${ownerLabel(owner)} · ${song.titulo}`;
+    const field=songbookField(owner),saved=song[lyricsUniversalField(owner)],savedBoxes=Array.isArray(saved?.textBoxes)?saved.textBoxes.map(x=>({...x})):[];
+    imageEditorState.sources=[];imageEditorState.original='';imageEditorState.overlay='';imageEditorState.operations=Array.isArray(saved?.operations)?saved.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];
+    imageEditorState.textBoxes=savedBoxes.length?savedBoxes:[{id:`lyrics-${songId}`,x:.04,y:.04,w:.92,h:.88,rotation:0,text:htmlToPlainText(song[field]),color:'#111111',size:9,bold:false,italic:false,align:'left',locked:true}];
+    imageEditorState.activeTextBoxId=imageEditorState.textBoxes[0]?.id||null;Object.assign(imageEditorState,{tool:'text',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#111111',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,scale:1,panX:0,panY:0,textGesture:null});
+    imageInlineText.value='';imageInlineText.hidden=true;$('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.add('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();
+    requestAnimationFrame(()=>{renderImageEditor();imageEditorPaper().classList.add('text-mode');renderTextBoxes(false);rememberDialogState($('#imageEditorDialog'));});
+  }
+
   const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
   const imageInlineText=$('#imageInlineText');
   function imageEditorCanvas(){return $('#imageEditorCanvas');}
@@ -1545,6 +1558,7 @@
   }
   async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
+    configureUniversalToolbar('image');
     const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
     returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
     activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
@@ -1647,18 +1661,22 @@
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
   function applyTextBoxStyle(el,box){
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
-    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';
+    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';area.style.textAlign=box.align||'left';area.readOnly=Boolean(box.locked);el.classList.toggle('is-locked',Boolean(box.locked));
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Alinear texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-lock" aria-label="Bloquear caja"><b>🔒</b><small>Bloquear</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
       const area=el.querySelector('textarea');
       area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
-      area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
-      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
+      area.addEventListener('input',()=>{box.text=area.value;if(imageEditorMode==='image')persistImageEditorLayers(false);});
+      el.querySelector('.text-box-align').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();const order=['left','center','right'];box.align=order[(order.indexOf(box.align||'left')+1)%3];applyTextBoxStyle(el,box);});
+      const lockBtn=el.querySelector('.text-box-lock');let lockTap=0;const toggleLock=()=>{box.locked=!box.locked;applyTextBoxStyle(el,box);lockBtn.querySelector('b').textContent=box.locked?'🔒':'🔓';};
+      lockBtn.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();toggleLock();});
+      lockBtn.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const now=Date.now();if(now-lockTap<420){lockTap=0;toggleLock();}else lockTap=now;});
+      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
@@ -1667,12 +1685,12 @@
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
-    handle.addEventListener('pointerdown',e=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('pointerdown',e=>{if(box.locked)return;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
     handle.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(-1.5,Math.min(2.5,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(-1.5,Math.min(2.5,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
     const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
   }
-  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
-  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function syncInlineTextStyle(){
     const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
     $('#imageBold').classList.toggle('is-active',imageEditorState.textBold);$('#imageItalic').classList.toggle('is-active',imageEditorState.textItalic);syncImageSwatches();
@@ -1904,7 +1922,7 @@
     return ok;
   }
 
-  async function persistImageEditorLayers(syncRemote=false){
+  async function persistImageEditorLayers(syncRemote=false){if(imageEditorMode==='lyrics')return null;
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
@@ -1939,6 +1957,12 @@
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
+    if(imageEditorMode==='lyrics'){
+      askConfirm('Guardar letra',`Se actualizará el cancionero de ${ownerLabel(activeLyricsOwner)} para “${song.titulo}”.`,()=>{
+        const boxes=imageEditorState.textBoxes.map(x=>({...x}));song[lyricsUniversalField(activeLyricsOwner)]={textBoxes:boxes,operations:(imageEditorState.operations||[]).map(x=>({...x})),updatedAt:Date.now()};song[songbookField(activeLyricsOwner)]=lyricsBoxesToHtml(boxes);
+        const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#imageEditorDialog'));$('#imageEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');
+      },'Guardar');return;
+    }
     const saveSongId=activeImageSongId;
     const saveOwner=activeImageOwner;
     askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
