@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -1036,48 +1036,46 @@
   function undoEditor(){commitEditorHistory();if(editorUndoStack.length<=1)return;editorRedoStack.push(editorUndoStack.pop());restoreEditorState(editorUndoStack.at(-1));}
   function redoEditor(){if(!editorRedoStack.length)return;const next=editorRedoStack.pop();editorUndoStack.push(next);restoreEditorState(next);}
 
-
-  // Entrega 6.36.55 · Cajas de texto independientes para Letra
-  let songbookBoxes=[];
-  let activeSongbookBox=null;
-  let songbookTextPlacementMode=true;
-  function selectSongbookBox(box){
-    activeSongbookBox=box;
-    $$('.songbook-text-box').forEach(el=>el.classList.toggle('is-selected',el===box));
-    if(box){const ta=box.querySelector('textarea');currentTextColor=ta.style.color||'#d00000';currentFontSize=parseInt(ta.style.fontSize)||30;currentBold=(ta.style.fontWeight==='700'||ta.style.fontWeight==='bold');currentItalic=ta.style.fontStyle==='italic';updateColorButton();updateFormatButtons();}
+  function openSongbookEditor(id){
+    const song=state.songs.find(s=>s.id===id);if(!song)return;activeSongbookSongId=id;const field=songbookField(activeSongbookOwner);
+    $('#songbookEditorOwner').textContent=`CANCIONERO ${ownerLabel(activeSongbookOwner).toUpperCase()}`;$('#songbookEditorTitle').textContent=`${song.titulo} · ${song.artista||''}`;
+    const editor=$('#songbookEditor'),saved=String(song[field]||'');editor.innerHTML=saved.includes('<')?saved:esc(saved).replace(/\n/g,'<br>');
+    currentTextColor='#d00000';currentFontSize='30';currentBold=true;currentItalic=false;$('#songbookFontSize').value='30';updateColorButton();updateFormatButtons();
+    state.songbookDrawingData=String(song[songbookDrawingField(activeSongbookOwner)]||'');songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');editor.contentEditable='true';
+    $('#songbookEditorDialog').showModal();requestAnimationFrame(()=>{resizeSongbookCanvas();loadSongbookDrawing(state.songbookDrawingData);rememberDialogState($('#songbookEditorDialog'));resetEditorHistory();});setTimeout(()=>{placeCaretAtEnd(editor);applyTypingFormat();saveEditorSelection();},80);
   }
-  function songbookBoxData(box){const ta=box.querySelector('textarea');return{x:parseFloat(box.style.left)||0,y:parseFloat(box.style.top)||0,w:parseFloat(box.style.width)||260,h:parseFloat(box.style.height)||120,rotation:parseFloat(box.dataset.rotation)||0,text:ta.value,color:ta.style.color||'#d00000',fontSize:parseFloat(ta.style.fontSize)||30,bold:ta.style.fontWeight==='700'||ta.style.fontWeight==='bold',italic:ta.style.fontStyle==='italic',align:ta.style.textAlign||'left',locked:box.dataset.locked==='true'};}
-  function applySongbookBoxLocked(box,locked){box.dataset.locked=String(Boolean(locked));box.classList.toggle('is-locked',Boolean(locked));const btn=box.querySelector('.songbook-box-lock');if(btn){btn.classList.toggle('is-active',Boolean(locked));btn.querySelector('b').textContent=locked?'🔒':'🔓';btn.querySelector('small').textContent=locked?'Bloqueado':'Libre';btn.setAttribute('aria-pressed',String(Boolean(locked)));}const ta=box.querySelector('textarea');if(ta)ta.readOnly=false;}
-  function fitSongbookBoxToText(box){const ta=box.querySelector('textarea');if(!ta)return;requestAnimationFrame(()=>{ta.style.height='1px';const needed=Math.max(120,ta.scrollHeight+18);ta.style.height='100%';box.style.height=`${needed}px`;const stage=$('#songbookPaperStage'),bottom=(parseFloat(box.style.top)||0)+needed+90;stage.style.minHeight=`${Math.max(stage.clientHeight||0,bottom)}px`;});}
-  function createSongbookBox(data={},focus=true){
-    const layer=$('#songbookTextBoxesLayer'),box=document.createElement('div');box.className='songbook-text-box';
-    box.style.left=`${data.x??70}px`;box.style.top=`${data.y??80}px`;box.style.width=`${data.w??300}px`;box.style.height=`${data.h??130}px`;box.dataset.rotation=String(data.rotation||0);box.style.transform=`rotate(${data.rotation||0}deg)`;
-    box.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="songbook-box-control songbook-box-delete"><b>×</b><small>Cerrar</small></button><button type="button" class="songbook-box-control songbook-box-align"><b>≡</b><small>Alinear</small></button><button type="button" class="songbook-box-control songbook-box-lock" aria-pressed="false"><b>🔒</b><small>Bloqueado</small></button><button type="button" class="songbook-box-control songbook-box-move"><b>↔</b><small>Mover</small></button><button type="button" class="songbook-box-control songbook-box-rotate"><b>↻</b><small>Girar</small></button><button type="button" class="songbook-box-control songbook-box-resize"><b>↘</b><small>Tamaño</small></button>';
-    const ta=box.querySelector('textarea');ta.value=data.text||'';ta.style.color=data.color||currentTextColor||'#d00000';ta.style.fontSize=`${data.fontSize||currentFontSize||30}px`;ta.style.fontWeight=data.bold?'700':'400';ta.style.fontStyle=data.italic?'italic':'normal';ta.style.textAlign=data.align||'left';
-    layer.append(box);songbookBoxes.push(box);applySongbookBoxLocked(box,data.locked!==false);selectSongbookBox(box);fitSongbookBoxToText(box);
-    box.addEventListener('pointerdown',e=>{if(!e.target.closest('button'))selectSongbookBox(box);});
-    ta.addEventListener('input',()=>{fitSongbookBoxToText(box);commitEditorHistory();});
-    box.querySelector('.songbook-box-delete').addEventListener('click',()=>{if(box.dataset.locked==='true')return;box.remove();songbookBoxes=songbookBoxes.filter(x=>x!==box);activeSongbookBox=null;commitEditorHistory();});
-    box.querySelector('.songbook-box-align').addEventListener('click',()=>{const order=['left','center','right'],i=order.indexOf(ta.style.textAlign||'left');ta.style.textAlign=order[(i+1)%3];box.querySelector('.songbook-box-align b').textContent=ta.style.textAlign==='left'?'≡':ta.style.textAlign==='center'?'≣':'☰';commitEditorHistory();});
-    const lockBtn=box.querySelector('.songbook-box-lock');
-    let lastLockTap=0;
-    const toggleLock=()=>{applySongbookBoxLocked(box,box.dataset.locked!=='true');commitEditorHistory();};
-    lockBtn.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();toggleLock();});
-    lockBtn.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const now=Date.now();if(now-lastLockTap<420){lastLockTap=0;toggleLock();}else lastLockTap=now;});
+  function placeCaretAtEnd(el){const range=document.createRange(),sel=window.getSelection();range.selectNodeContents(el);range.collapse(false);sel.removeAllRanges();sel.addRange(range);el.focus();}
+  function selectionInsideEditor(){const sel=window.getSelection();return sel&&sel.rangeCount&&$('#songbookEditor').contains(sel.anchorNode);}
+  function saveEditorSelection(){if(selectionInsideEditor())savedEditorRange=window.getSelection().getRangeAt(0).cloneRange();}
+  function restoreEditorSelection(){const editor=$('#songbookEditor');editor.focus();if(savedEditorRange){const sel=window.getSelection();sel.removeAllRanges();sel.addRange(savedEditorRange);}}
+  document.addEventListener('selectionchange',()=>{if($('#songbookEditorDialog').open&&selectionInsideEditor()){saveEditorSelection();updateFormatButtonsFromSelection();}});
+  function applyTypingFormat(){restoreEditorSelection();document.execCommand('styleWithCSS',false,true);document.execCommand('foreColor',false,currentTextColor);const bold=document.queryCommandState('bold');if(bold!==currentBold)document.execCommand('bold');const italic=document.queryCommandState('italic');if(italic!==currentItalic)document.execCommand('italic');saveEditorSelection();applyFontSize(currentFontSize);}
+  function updateColorButton(){$('#songbookColorSwatch').style.background=currentTextColor;$$('[data-text-color]').forEach(b=>b.classList.toggle('is-active',b.dataset.textColor===currentTextColor));}
+  function updateFormatButtons(){$('#songbookBold').classList.toggle('is-active',currentBold);$('#songbookItalic').classList.toggle('is-active',currentItalic);}
+  function updateFormatButtonsFromSelection(){currentBold=document.queryCommandState('bold');currentItalic=document.queryCommandState('italic');updateFormatButtons();}
+  function positionPopover(pop,anchor){const r=anchor.getBoundingClientRect();pop.hidden=false;const w=pop.offsetWidth;let left=Math.min(Math.max(6,r.left),window.innerWidth-w-6);let top=r.bottom+5;if(top+pop.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-pop.offsetHeight-5);pop.style.left=`${left}px`;pop.style.top=`${top}px`;}
+  function closeToolbarPopovers(except){[$('#songbookColorMenu'),$('#songbookDrawOptions'),$('#songbookEraserOptions')].forEach(p=>{if(p!==except)p.hidden=true;});}
 
-    const drag=(handle,type)=>{handle.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(box.dataset.locked==='true')return;selectSongbookBox(box);const sx=e.clientX,sy=e.clientY,start=songbookBoxData(box);handle.setPointerCapture(e.pointerId);const move=ev=>{const dx=ev.clientX-sx,dy=ev.clientY-sy;if(type==='move'){box.style.left=`${start.x+dx}px`;box.style.top=`${start.y+dy}px`;}else if(type==='resize'){box.style.width=`${Math.max(120,start.w+dx)}px`;box.style.height=`${Math.max(70,start.h+dy)}px`;}else{const r=box.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;const a=Math.atan2(ev.clientY-cy,ev.clientX-cx)*180/Math.PI+90;box.dataset.rotation=String(a);box.style.transform=`rotate(${a}deg)`;}};const up=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);commitEditorHistory();};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);});};
-    drag(box.querySelector('.songbook-box-move'),'move');drag(box.querySelector('.songbook-box-resize'),'resize');drag(box.querySelector('.songbook-box-rotate'),'rotate');
-    if(focus)setTimeout(()=>{ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)},0);return box;
+  function resizeSongbookCanvas(){const canvas=$('#songbookDrawingCanvas'),stage=$('#songbookPaperStage');if(!canvas||!stage)return;const ratio=Math.max(1,window.devicePixelRatio||1),w=Math.max(1,stage.scrollWidth),h=Math.max(1,stage.scrollHeight),old=state.songbookDrawingData;canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);canvas.style.width=`${w}px`;canvas.style.height=`${h}px`;drawingCtx=canvas.getContext('2d');drawingCtx.setTransform(ratio,0,0,ratio,0,0);drawingCtx.lineCap='round';drawingCtx.lineJoin='round';if(old)loadSongbookDrawing(old);}
+  function loadSongbookDrawing(data){const canvas=$('#songbookDrawingCanvas');if(!drawingCtx||!canvas)return;drawingCtx.clearRect(0,0,parseFloat(canvas.style.width)||canvas.width,parseFloat(canvas.style.height)||canvas.height);if(!data)return;const img=new Image();img.onload=()=>drawingCtx.drawImage(img,0,0,parseFloat(canvas.style.width),parseFloat(canvas.style.height));img.src=data;}
+  function saveDrawingData(){state.songbookDrawingData=$('#songbookDrawingCanvas').toDataURL('image/png');}
+  function canvasPoint(e){const r=$('#songbookDrawingCanvas').getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  function drawArrowHead(ctx,from,to){
+    const dx=to.x-from.x,dy=to.y-from.y,distance=Math.hypot(dx,dy);
+    if(distance<0.5)return;
+    const ux=dx/distance,uy=dy/distance,width=Number($('#songbookDrawWidth').value||5);
+    const headLength=14+width,headHalfWidth=Math.max(6,headLength*.48);
+    // La punta se prolonga fuera del último punto, en la dirección real del trazo.
+    const tip={x:to.x+ux*headLength*.55,y:to.y+uy*headLength*.55};
+    const base={x:tip.x-ux*headLength,y:tip.y-uy*headLength};
+    const px=-uy,py=ux;
+    ctx.beginPath();
+    ctx.moveTo(base.x+px*headHalfWidth,base.y+py*headHalfWidth);
+    ctx.lineTo(tip.x,tip.y);
+    ctx.lineTo(base.x-px*headHalfWidth,base.y-py*headHalfWidth);
+    ctx.stroke();
   }
-  function serializeSongbookBoxes(){return songbookBoxes.map(songbookBoxData).map(d=>`<div class="songbook-saved-box" data-songbook-box="1" data-x="${d.x}" data-y="${d.y}" data-w="${d.w}" data-h="${d.h}" data-rotation="${d.rotation}" data-locked="${d.locked?'true':'false'}" style="left:${d.x}px;top:${d.y}px;width:${d.w}px;height:${d.h}px;transform:rotate(${d.rotation}deg);color:${d.color};font-size:${d.fontSize}px;font-weight:${d.bold?'700':'400'};font-style:${d.italic?'italic':'normal'};text-align:${d.align}">${esc(d.text).replace(/\n/g,'<br>')}</div>`).join('');}
-  function loadSongbookBoxes(html){
-    songbookBoxes=[];activeSongbookBox=null;$('#songbookTextBoxesLayer').innerHTML='';const tmp=document.createElement('div');tmp.innerHTML=html||'';const saved=[...tmp.querySelectorAll('[data-songbook-box]')];
-    if(saved.length){saved.forEach(el=>createSongbookBox({x:+el.dataset.x||0,y:+el.dataset.y||0,w:+el.dataset.w||300,h:+el.dataset.h||130,rotation:+el.dataset.rotation||0,text:el.innerText,color:el.style.color||'#d00000',fontSize:parseFloat(el.style.fontSize)||30,bold:el.style.fontWeight==='700'||el.style.fontWeight==='bold',italic:el.style.fontStyle==='italic',align:el.style.textAlign||'left',locked:el.dataset.locked!=='false'},false));}
-    else if(String(html||'').trim()){const clean=tmp.innerText||String(html).replace(/<[^>]+>/g,' ');const stage=$('#songbookPaperStage'),w=Math.max(280,(stage.clientWidth||window.innerWidth)-32);createSongbookBox({x:16,y:60,w,h:160,text:clean,color:'#111111',fontSize:30,locked:true},false);}
-  }
-
-  function openSongbookEditor(id){ return openImageEditor(id,activeSongbookOwner,'songbook'); }
-
+  function drawPath(points,mode){if(points.length<2)return;drawingCtx.beginPath();drawingCtx.moveTo(points[0].x,points[0].y);for(let i=1;i<points.length;i++)drawingCtx.lineTo(points[i].x,points[i].y);drawingCtx.stroke();if(mode==='arrow'||mode==='double-arrow')drawArrowHead(drawingCtx,points.at(-2),points.at(-1));if(mode==='double-arrow')drawArrowHead(drawingCtx,points[1],points[0]);}
   function toggleDrawing(force){songbookDrawingEnabled=force??!songbookDrawingEnabled;$('#songbookDrawToggle').classList.toggle('is-active',songbookDrawingEnabled&&$('#songbookDrawMode').value!=='eraser');if($('#songbookDrawMode').value!=='eraser')$('#songbookEraserToggle')?.classList.remove('is-active');$('#songbookDrawingCanvas').classList.toggle('is-active',songbookDrawingEnabled);$('#songbookEditor').contentEditable=String(!songbookDrawingEnabled);if(songbookDrawingEnabled)resizeSongbookCanvas();}
   function updateDrawColorUI(){
     const input=$('#songbookDrawColor');
@@ -1091,12 +1089,11 @@
   }
 
   $('#songbookColorBtn').addEventListener('click',e=>{e.stopPropagation();const pop=$('#songbookColorMenu');if(!pop.hidden){pop.hidden=true;return;}closeToolbarPopovers(pop);positionPopover(pop,e.currentTarget);});
-  $$('[data-text-color]').forEach(btn=>btn.addEventListener('click',()=>{currentTextColor=btn.dataset.textColor;updateColorButton();if(activeSongbookBox)activeSongbookBox.querySelector('textarea').style.color=currentTextColor;commitEditorHistory();$('#songbookColorMenu').hidden=true;}));
+  $$('[data-text-color]').forEach(btn=>btn.addEventListener('click',()=>{currentTextColor=btn.dataset.textColor;updateColorButton();restoreEditorSelection();document.execCommand('styleWithCSS',false,true);document.execCommand('foreColor',false,currentTextColor);saveEditorSelection();commitEditorHistory();$('#songbookColorMenu').hidden=true;}));
   $('.songbook-toolbar').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
-  $$('[data-editor-command]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.dataset.editorCommand==='bold')currentBold=!currentBold;if(btn.dataset.editorCommand==='italic')currentItalic=!currentItalic;updateFormatButtons();if(activeSongbookBox){const ta=activeSongbookBox.querySelector('textarea');ta.style.fontWeight=currentBold?'700':'400';ta.style.fontStyle=currentItalic?'italic':'normal';}commitEditorHistory();}));
+  $$('[data-editor-command]').forEach(btn=>btn.addEventListener('click',()=>{restoreEditorSelection();document.execCommand(btn.dataset.editorCommand,false,null);currentBold=document.queryCommandState('bold');currentItalic=document.queryCommandState('italic');updateFormatButtons();saveEditorSelection();commitEditorHistory();}));
   function applyFontSize(size){
     currentFontSize=String(size);
-    if(activeSongbookBox){activeSongbookBox.querySelector('textarea').style.fontSize=`${currentFontSize}px`;commitEditorHistory();return;}
     restoreEditorSelection();
     const editor=$('#songbookEditor'),sel=window.getSelection();
     if(!sel||!sel.rangeCount||!editor.contains(sel.anchorNode))return;
@@ -1117,7 +1114,6 @@
   $('#songbookFontSize').addEventListener('mousedown',saveEditorSelection);
   $('#songbookFontSize').addEventListener('change',e=>applyFontSize(e.target.value));
   $('#songbookUndo').addEventListener('click',undoEditor);$('#songbookRedo').addEventListener('click',redoEditor);
-  $('#songbookPaperStage').addEventListener('pointerdown',e=>{if(!$('#songbookEditorDialog').open||songbookDrawingEnabled||e.target.closest('.songbook-text-box'))return;if(!songbookTextPlacementMode)return;const r=$('#songbookTextBoxesLayer').getBoundingClientRect();createSongbookBox({x:e.clientX-r.left-30,y:e.clientY-r.top-20,w:300,h:130,locked:false},true);songbookTextPlacementMode=false;commitEditorHistory();});
   $('#songbookTextTool').addEventListener('click',()=>{songbookDrawingEnabled=false;$('#songbookDrawToggle').classList.remove('is-active');$('#songbookEraserToggle').classList.remove('is-active');$('#songbookTextTool').classList.add('is-active');$('#songbookDrawingCanvas').classList.remove('is-active');$('#songbookEditor').contentEditable='true';$('#songbookEditor').focus();});
 
   $('#songbookDrawToggle').addEventListener('pointerdown',e=>{e.preventDefault();drawHoldTriggered=false;drawHoldTimer=setTimeout(()=>{drawHoldTriggered=true;closeToolbarPopovers($('#songbookDrawOptions'));positionPopover($('#songbookDrawOptions'),$('#songbookDrawToggle'));},480);});
@@ -1148,7 +1144,7 @@
   $('#songbookEditor').addEventListener('input',()=>{saveEditorSelection();scheduleWordHistory();});
   $('#songbookEditor').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoEditor():undoEditor();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoEditor();}});
 
-  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=serializeSongbookBoxes();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
+  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
 
   let activeRepertoireId = null;
 
@@ -1442,7 +1438,6 @@
 
 
   const IMAGE_COLORS=['#d00000','#111111','#ffffff','#0057d9','#ffd400'];
-  let imageEditorMode='image';
   const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
   const imageInlineText=$('#imageInlineText');
   function imageEditorCanvas(){return $('#imageEditorCanvas');}
@@ -1505,32 +1500,11 @@
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
-  function songbookHtmlToUniversalBoxes(html){
-    const tmp=document.createElement('div');tmp.innerHTML=String(html||'');
-    const saved=[...tmp.querySelectorAll('[data-songbook-box]')];
-    if(saved.length)return saved.map((el,i)=>({id:`txt-songbook-${i}-${Date.now()}`,x:(+el.dataset.x||16)/1000,y:(+el.dataset.y||60)/1300,w:(+el.dataset.w||900)/1000,h:(+el.dataset.h||300)/1300,rotation:+el.dataset.rotation||0,text:el.innerText||'',color:el.style.color||'#111111',size:Math.max(6,(parseFloat(el.style.fontSize)||30)/3),bold:el.style.fontWeight==='700'||el.style.fontWeight==='bold',italic:el.style.fontStyle==='italic',align:el.style.textAlign||'left',locked:el.dataset.locked!=='false'}));
-    const clean=(tmp.innerText||String(html||'').replace(/<[^>]+>/g,' ')).trim();
-    return clean?[{id:`txt-songbook-main-${Date.now()}`,x:.035,y:.04,w:.93,h:.88,rotation:0,text:clean,color:'#111111',size:9,bold:false,italic:false,align:'left',locked:true}]:[];
-  }
-  function universalBoxesToSongbookHtml(boxes){return (boxes||[]).map(d=>`<div class="songbook-saved-box" data-songbook-box="1" data-x="${Math.round((d.x||0)*1000)}" data-y="${Math.round((d.y||0)*1300)}" data-w="${Math.round((d.w||.3)*1000)}" data-h="${Math.round((d.h||.1)*1300)}" data-rotation="${d.rotation||0}" data-locked="${d.locked?'true':'false'}" style="left:${Math.round((d.x||0)*1000)}px;top:${Math.round((d.y||0)*1300)}px;width:${Math.round((d.w||.3)*1000)}px;height:${Math.round((d.h||.1)*1300)}px;transform:rotate(${d.rotation||0}deg);color:${d.color||'#111'};font-size:${Math.max(16,(d.size||9)*3)}px;font-weight:${d.bold?'700':'400'};font-style:${d.italic?'italic':'normal'};text-align:${d.align||'left'}">${esc(d.text||'').replace(/\n/g,'<br>')}</div>`).join('');}
-  function loadSongbookUniversalDrawing(song,owner){try{const raw=String(song[songbookDrawingField(owner)]||'');if(!raw.startsWith('VECTOR:'))return [];const parsed=JSON.parse(raw.slice(7));return Array.isArray(parsed)?parsed:[];}catch{return [];}}
-
-  async function openImageEditor(songId,owner,mode='image'){
-
+  async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
-    imageEditorMode=mode;const songbookMode=mode==='songbook';
     const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
-    returnToImageViewer=!songbookMode&&Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
-    activeImageSongId=songId;activeImageOwner=owner;
-    $('#imageEditorEyebrow').textContent=songbookMode?`CANCIONERO ${ownerLabel(owner).toUpperCase()}`:'EDITOR DE IMAGEN';
-    $('#imageEditorTitle').textContent=songbookMode?`${song.titulo} · ${song.artista||''}`:`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
-    $('#imageUploadToolWrap').hidden=songbookMode;
-    const photoTarget=$('[data-image-eraser-target="photo"]');if(photoTarget)photoTarget.hidden=songbookMode;
-    if(songbookMode){
-      imageEditorState.sources=[];imageEditorState.original='';imageEditorState.overlay='';imageEditorState.operations=loadSongbookUniversalDrawing(song,owner).map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]}));imageEditorState.textBoxes=songbookHtmlToUniversalBoxes(song[songbookField(owner)]);imageEditorState.activeTextBoxId=null;
-      Object.assign(imageEditorState,{tool:'text',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#111111',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
-      $('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.add('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});return;
-    }
+    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
+    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
@@ -1624,26 +1598,24 @@
     return layer;
   }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic,align:'left',locked:false};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
   function applyTextBoxStyle(el,box){
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
-    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';area.style.textAlign=box.align||'left';area.readOnly=Boolean(box.locked);el.classList.toggle('is-locked',Boolean(box.locked));
+    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Alinear texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-lock" aria-label="Bloquear caja"><b>🔓</b><small>Libre</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
       const area=el.querySelector('textarea');
       area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
       area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
-      const alignBtn=el.querySelector('.text-box-align');alignBtn.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();const order=['left','center','right'];box.align=order[(order.indexOf(box.align||'left')+1)%3];applyTextBoxStyle(el,box);persistImageEditorLayers(false);});
-      const lockBtn=el.querySelector('.text-box-lock');const syncLock=()=>{lockBtn.querySelector('b').textContent=box.locked?'🔒':'🔓';lockBtn.querySelector('small').textContent=box.locked?'Bloqueado':'Libre';applyTextBoxStyle(el,box);};syncLock();let lastLockTap=0;const toggleLock=()=>{box.locked=!box.locked;syncLock();persistImageEditorLayers(false);};lockBtn.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();toggleLock();});lockBtn.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const now=Date.now();if(now-lastLockTap<420){lastLockTap=0;toggleLock();}else lastLockTap=now;});
-      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
+      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
@@ -1652,12 +1624,12 @@
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
-    handle.addEventListener('pointerdown',e=>{if(box.locked)return;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('pointerdown',e=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
     handle.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(-1.5,Math.min(2.5,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(-1.5,Math.min(2.5,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
     const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
   }
-  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
-  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function syncInlineTextStyle(){
     const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
     $('#imageBold').classList.toggle('is-active',imageEditorState.textBold);$('#imageItalic').classList.toggle('is-active',imageEditorState.textItalic);syncImageSwatches();
@@ -1891,11 +1863,6 @@
 
   async function persistImageEditorLayers(syncRemote=false){
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
-    if(imageEditorMode==='songbook'){
-      song[songbookField(activeImageOwner)]=universalBoxesToSongbookHtml(imageEditorState.textBoxes);
-      song[songbookDrawingField(activeImageOwner)]='VECTOR:'+JSON.stringify(imageEditorState.operations||[]);
-      const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();if(syncRemote)await syncRemoteState(true);renderSongbookList();renderSongs();return {songbook:true,textBoxes:imageEditorState.textBoxes.map(x=>({...x})),operations:(imageEditorState.operations||[]).map(x=>({...x})),updatedAt:Date.now()};
-    }
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
@@ -1904,66 +1871,56 @@
     saveStateLocalOnly();renderSongbookList();renderSongs();
     return saved;
   }
-
-  // 6.36.54 · El visor que queda debajo se actualiza cuando el dialog del editor
-  // realmente terminó de cerrarse. Safari/iOS no siempre repinta un dialog inferior
-  // mientras el superior sigue en la pila modal.
-  $('#imageEditorDialog').addEventListener('close',()=>{
-    const pending=pendingViewerRefresh;
-    pendingViewerRefresh=null;
-    returnToImageViewer=false;
-    if(!pending)return;
-    requestAnimationFrame(()=>requestAnimationFrame(async()=>{
-      const song=state.songs.find(x=>x.id===pending.songId);
-      const expectedType=pending.owner==='daniel'?'daniel-image':'notes';
-      if(!song||!$('#viewerDialog')?.open||activeViewerSongId!==pending.songId||activeViewerType!==expectedType)return;
-      try{
-        // Invalida cualquier lectura remota antigua iniciada cuando se abrió el visor.
-        viewerRenderGeneration++;
-        await refreshOpenImageViewer(pending.edit,song,pending.owner);
-      }catch(err){
-        console.error('No se pudo redibujar el visor abierto después de cerrar el editor',err);
-      }
-    }));
-  });
   $('#saveImageEditorBtn').addEventListener('click',()=>{
     commitImageText();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return;
     const saveSongId=activeImageSongId;
     const saveOwner=activeImageOwner;
-    const isSongbook=imageEditorMode==='songbook';
-    askConfirm(isSongbook?'Guardar cancionero':'Guardar imagen',isSongbook?`Se guardará la letra y sus cajas para “${song.titulo}”.`:`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
+    askConfirm('Guardar imagen',`Se guardarán las capas de ${ownerLabel(saveOwner)} para “${song.titulo}”.`,async()=>{
       const btn=$('#saveImageEditorBtn');
       btn.disabled=true;
       btn.textContent='Guardando…';
       toast('Guardando…');
       try{
-        if(isSongbook){const saved=await persistImageEditorLayers(true);if(!saved)throw new Error('No se pudo guardar el cancionero');rememberDialogState($('#imageEditorDialog'));dialogBaselines.delete($('#imageEditorDialog'));$('#imageEditorDialog').close();toast('Guardado exitosamente');return;}
         // Guardar primero la edición completa en IndexedDB y Firestore.
         // El editor solo se cierra después de que la copia local quede confirmada.
         const saved=await persistImageEditorLayers(true);
         if(!saved)throw new Error('No se pudo preparar la edición');
         const editId=remoteImageKey(saveSongId,saveOwner);
         const local=await offlineStoreGet('imageEdits',editId);
-        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
-        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        savedSong[imageField(saveOwner)]={
-          original:immediateEdit.originalSrc||immediateEdit.original||'',
-          operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
-          textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
-          updatedAt:immediateEdit.updatedAt||Date.now(),
-          remote:!immediateEdit.pendingSync
-        };
-        // 6.36.54: no refrescar mientras el editor todavía está por encima.
-        // Guardamos una orden pendiente y el evento real `close` del dialog redibuja
-        // exactamente el visor que queda visible debajo. Esto también cubre el caso
-        // en que el usuario pulsa la X después de haber guardado.
-        if(returnToImageViewer){
-          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner};
-        }
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
         $('#imageEditorDialog').close();
+        // Refrescar el visor DESPUÉS de cerrar el editor. Mientras el editor estaba
+        // encima, Safari/iOS podía conservar el canvas anterior hasta reabrir Imagen.
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
+        const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
+        // 6.36.53: el visor Imagen ya está abierto debajo del editor.
+        // No se destruye ni se vuelve a abrir: se redibuja ese mismo visor con la
+        // edición recién guardada y luego queda visible al cerrar el editor.
+        if(returnToImageViewer){
+          savedSong[imageField(saveOwner)]={
+            original:immediateEdit.originalSrc||immediateEdit.original||'',
+            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+            updatedAt:immediateEdit.updatedAt||Date.now(),
+            remote:!immediateEdit.pendingSync
+          };
+          viewerRenderGeneration++;
+          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
+          returnToImageViewer=false;
+        }else{
+          // Si el editor se abrió sin un visor debajo, actualizar la fuente oficial
+          // de la canción para que el próximo clic en Imagen use la edición nueva.
+          savedSong[imageField(saveOwner)]={
+            original:immediateEdit.originalSrc||immediateEdit.original||'',
+            operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
+            textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
+            updatedAt:immediateEdit.updatedAt||Date.now(),
+            remote:!immediateEdit.pendingSync
+          };
+        }
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
