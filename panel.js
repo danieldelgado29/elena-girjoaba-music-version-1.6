@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -1498,7 +1498,10 @@
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
   async function openImageEditor(songId,owner){
-    const song=state.songs.find(x=>x.id===songId);if(!song)return;activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    const song=state.songs.find(x=>x.id===songId);if(!song)return;
+    const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
+    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
+    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
@@ -1890,7 +1893,18 @@
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
+        // 6.36.50: reproducir automáticamente el único flujo que siempre mostró
+        // la edición nueva: cerrar y volver a abrir el visor. Esto destruye el
+        // canvas anterior y evita que Safari/iOS conserve una composición vieja.
+        if(returnToImageViewer){
+          const viewer=$('#viewerDialog');
+          if(viewer?.open)viewer.close();
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes');
+          returnToImageViewer=false;
+        }else{
+          await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
+        }
         toast(local?.pendingSync
           ? 'Guardado en el dispositivo · pendiente de sincronización'
           : `Guardado y sincronizado · imageEdits/${editId}`);
