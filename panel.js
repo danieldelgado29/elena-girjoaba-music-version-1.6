@@ -2174,3 +2174,16 @@
   paint('songbookPencilSwatch',byId('songbookDrawColor')?.value||'#d00000');
   paint('imagePencilSwatch',imageColor?.value||'#d00000');
 })();
+
+/* Entrega 6.36.58 · barra Letra basada en el componente del editor Imagen */
+(() => {
+  const sizeSelect=document.getElementById('songbookFontSize');
+  document.querySelectorAll('[data-songbook-text-size]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const size=btn.dataset.songbookTextSize;
+      if(sizeSelect){sizeSelect.value=size;sizeSelect.dispatchEvent(new Event('change',{bubbles:true}));}
+      document.querySelectorAll('[data-songbook-text-size]').forEach(b=>b.classList.toggle('is-active',b===btn));
+      const pop=document.getElementById('songbookTextOptions');if(pop)pop.hidden=true;
+    });
+  });
+})();

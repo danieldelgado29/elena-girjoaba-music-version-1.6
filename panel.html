@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.56">
+  <link rel="stylesheet" href="panel.css?v=6.36.58">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -344,48 +344,52 @@
         <div><small id="songbookEditorOwner"></small><h3 id="songbookEditorTitle">Canción</h3></div>
         <button class="modal-x songbook-editor-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
       </header>
-      <div class="songbook-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de texto">
+      <div class="songbook-toolbar image-editor-toolbar egm-editor-toolbar" role="toolbar" aria-label="Herramientas del editor de letra">
         <div class="toolbar-popover-wrap egm-tool-wrap">
-          <button id="songbookTextTool" type="button" class="egm-editor-tool is-active" aria-label="Texto" title="Texto: mantener para color y tamaño"><span class="tool-letter">T</span><span id="songbookColorSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
+          <button id="songbookTextTool" class="egm-editor-tool is-active" type="button" aria-label="Texto" title="Texto: mantener para elegir color y tamaño"><span class="tool-letter">T</span><span id="songbookColorSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
           <div id="songbookTextOptions" class="compact-popover egm-tool-popover" hidden>
-            <div id="songbookColorMenu" class="color-menu egm-color-grid">
-              <button type="button" data-text-color="#d00000" aria-label="Rojo" style="--swatch:#d00000"></button>
-              <button type="button" data-text-color="#111111" aria-label="Negro" style="--swatch:#111111"></button>
-              <button type="button" data-text-color="#1565c0" aria-label="Azul" style="--swatch:#1565c0"></button>
-              <button type="button" data-text-color="#16833b" aria-label="Verde" style="--swatch:#16833b"></button>
-              <button type="button" data-text-color="#e87500" aria-label="Naranja" style="--swatch:#e87500"></button>
+            <div id="songbookColorMenu" class="egm-color-grid" role="group" aria-label="Color del texto">
+              <button type="button" data-text-color="#d00000" style="background:#d00000" aria-label="Rojo"></button>
+              <button type="button" data-text-color="#111111" style="background:#111111" aria-label="Negro"></button>
+              <button type="button" data-text-color="#ffffff" style="background:#ffffff" aria-label="Blanco"></button>
+              <button type="button" data-text-color="#0057d9" style="background:#0057d9" aria-label="Azul"></button>
+              <button type="button" data-text-color="#ffd400" style="background:#ffd400" aria-label="Amarillo"></button>
             </div>
-            <select id="songbookFontSize" aria-label="Tamaño de texto"><option value="18">18</option><option value="22">22</option><option value="26">26</option><option value="30" selected>30</option><option value="36">36</option></select>
+            <div class="egm-text-size-grid" role="group" aria-label="Tamaño del texto">
+              <button type="button" data-songbook-text-size="18">S</button>
+              <button type="button" data-songbook-text-size="24">M</button>
+              <button type="button" data-songbook-text-size="30" class="is-active">L</button>
+              <button type="button" data-songbook-text-size="38">XL</button>
+            </div>
+            <select id="songbookFontSize" aria-label="Tamaño de texto" hidden><option value="18">18</option><option value="24">24</option><option value="30" selected>30</option><option value="38">38</option></select>
           </div>
           <button id="songbookColorBtn" type="button" hidden tabindex="-1" aria-hidden="true"></button>
         </div>
-        <button id="songbookBold" type="button" class="egm-editor-tool" data-editor-command="bold" aria-label="Negrita"><b>N</b></button>
-        <button id="songbookItalic" type="button" class="egm-editor-tool" data-editor-command="italic" aria-label="Cursiva"><i>K</i></button>
-        <div class="toolbar-popover-wrap egm-tool-wrap">
-          <button id="songbookAlign" type="button" class="egm-editor-tool" aria-label="Alineación por caja" title="La alineación se cambia en cada caja" hidden><span aria-hidden="true">≡</span></button>
-          <div id="songbookAlignOptions" class="compact-popover egm-align-options" hidden><button type="button" data-align="left">Izq.</button><button type="button" data-align="center">Centro</button><button type="button" data-align="right">Der.</button></div>
-        </div>
+        <button id="songbookBold" class="egm-editor-tool" type="button" data-editor-command="bold" aria-label="Negrita"><b>N</b></button>
+        <button id="songbookItalic" class="egm-editor-tool" type="button" data-editor-command="italic" aria-label="Cursiva"><i>K</i></button>
         <button id="songbookUndo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Deshacer"><svg class="egm-toolbar-svg egm-undo-svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M13 8 6 14l7 6"/><path d="M7 14h11c5 0 8 3 8 8"/></svg></button>
         <button id="songbookRedo" class="egm-editor-tool egm-history-tool" type="button" aria-label="Rehacer"><svg class="egm-toolbar-svg egm-redo-svg" viewBox="0 0 32 32" aria-hidden="true"><path d="m19 8 7 6-7 6"/><path d="M25 14H14c-5 0-8 3-8 8"/></svg></button>
         <div class="toolbar-popover-wrap egm-tool-wrap">
-          <button id="songbookDrawToggle" class="egm-editor-tool" type="button" aria-label="Lápiz" title="Lápiz: mantener para color, grosor y tipo"><span class="egm-pencil-icon" aria-hidden="true">✎</span><span id="songbookPencilSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
+          <button id="songbookDrawToggle" class="egm-editor-tool" type="button" aria-label="Lápiz" title="Lápiz: mantener para opciones"><span class="egm-pencil-icon" aria-hidden="true">✎</span><span id="songbookPencilSwatch" class="egm-tool-color" aria-hidden="true"></span></button>
           <div id="songbookDrawOptions" class="compact-popover egm-draw-options" hidden>
-            <div id="songbookDrawColorMenu" class="draw-color-menu egm-color-grid" role="group" aria-label="Color del trazo">
-              <button type="button" data-draw-color="#d00000" aria-label="Rojo" style="--draw-swatch:#d00000" class="is-active"></button>
-              <button type="button" data-draw-color="#111111" aria-label="Negro" style="--draw-swatch:#111111"></button>
-              <button type="button" data-draw-color="#1565c0" aria-label="Azul" style="--draw-swatch:#1565c0"></button>
-              <button type="button" data-draw-color="#16833b" aria-label="Verde" style="--draw-swatch:#16833b"></button>
-              <button type="button" data-draw-color="#e87500" aria-label="Naranja" style="--draw-swatch:#e87500"></button>
+            <div id="songbookDrawColorMenu" class="egm-color-grid" role="group" aria-label="Color del lápiz">
+              <button type="button" data-draw-color="#d00000" style="background:#d00000" aria-label="Rojo" class="is-active"></button>
+              <button type="button" data-draw-color="#111111" style="background:#111111" aria-label="Negro"></button>
+              <button type="button" data-draw-color="#ffffff" style="background:#ffffff" aria-label="Blanco"></button>
+              <button type="button" data-draw-color="#0057d9" style="background:#0057d9" aria-label="Azul"></button>
+              <button type="button" data-draw-color="#ffd400" style="background:#ffd400" aria-label="Amarillo"></button>
               <input id="songbookDrawColor" type="hidden" value="#d00000">
             </div>
-            <select id="songbookDrawWidth" aria-label="Grosor"><option value="2">Fino</option><option value="5" selected>Medio</option><option value="9">Grueso</option></select>
+            <select id="songbookDrawWidth" aria-label="Grosor"><option value="2">Fino</option><option value="5" selected>Medio</option><option value="9">Grande</option><option value="16">Extra grande</option></select>
             <select id="songbookDrawMode" aria-label="Tipo de trazo"><option value="free">Línea</option><option value="arrow">Flecha final</option><option value="double-arrow">Flecha doble</option><option value="eraser">Borrador</option></select>
             <button id="songbookClearDrawing" type="button" title="Borrar dibujo">Limpiar</button>
           </div>
         </div>
         <div class="toolbar-popover-wrap egm-tool-wrap">
           <button id="songbookEraserToggle" class="egm-editor-tool" type="button" aria-label="Borrador" title="Borrador: mantener para tamaños"><svg class="egm-toolbar-svg egm-eraser-svg" viewBox="0 0 32 32" aria-hidden="true"><path d="m11 23-5-5a3 3 0 0 1 0-4L16 4a3 3 0 0 1 4 0l6 6a3 3 0 0 1 0 4L17 23H11Z"/><path d="m13 9 10 10M10 24h16"/></svg></button>
-          <div id="songbookEraserOptions" class="compact-popover egm-eraser-options" hidden><button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button></div>
+          <div id="songbookEraserOptions" class="compact-popover egm-eraser-options" hidden>
+            <button type="button" data-eraser-size="8">S</button><button type="button" data-eraser-size="18">M</button><button type="button" data-eraser-size="36">L</button><button type="button" data-eraser-size="60">XL</button>
+          </div>
         </div>
       </div>
       <main class="songbook-paper-wrap">
@@ -526,7 +530,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.56"></script>
+  <script type="module" src="panel.js?v=6.36.58"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>
