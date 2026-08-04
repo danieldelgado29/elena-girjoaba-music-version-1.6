@@ -41,7 +41,7 @@
   let pendingRemoteLibrary = null;
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -707,13 +707,14 @@
     if(edit.composite)return showViewerImage(content,edit.composite,song);
     return false;
   }
-  function openViewer(song,type){
+  function openViewer(song,type,preferredEdit=null){
+    const renderGeneration=++viewerRenderGeneration;
     activeViewerSongId=song.id;activeViewerType=type;
     const label=type==='notes'?'Imagen':type==='daniel-image'?'Imagen Daniel':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'||type==='daniel-image'){
-      const owner=type==='daniel-image'?'daniel':'elena',raw=song[imageField(owner)];
+      const owner=type==='daniel-image'?'daniel':'elena',raw=preferredEdit||song[imageField(owner)];
       let rendered=false;
       // 6.36.34 · Si no existe una foto, el visor muestra un lienzo blanco editable.
       // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
@@ -745,18 +746,20 @@
       // mostrando la versión anterior después de guardar.
       if(raw&&typeof raw==='object'){
         const immediate={...raw,originalSrc:raw.originalSrc||raw.original||'',operations:Array.isArray(raw.operations)?raw.operations:[],textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[]};
-        void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(ok)rendered=true;});
+        void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
       }
       loadRemoteImageEdit(song.id,owner).then(async remote=>{
+        if(renderGeneration!==viewerRenderGeneration)return;
         const localUpdated=Number((raw&&typeof raw==='object'&&raw.updatedAt)||0);
         const remoteUpdated=Number(remote?.updatedAt||0);
         // No reemplazar una edición recién guardada por una respuesta remota vieja.
         if(remote&&remoteUpdated>=localUpdated){
           const ok=await showComposedViewerEdit(content,remote,song,owner);
+          if(renderGeneration!==viewerRenderGeneration)return;
           if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
         }
-        if(!rendered)renderFallback();
-      }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(!rendered)renderFallback();});
+        if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();
+      }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();});
     } else {
       const isDaniel=type==='daniel';
       const storedLyrics=state.lyrics[song.id]||{};
@@ -1898,9 +1901,15 @@
         // canvas anterior y evita que Safari/iOS conserve una composición vieja.
         if(returnToImageViewer){
           const viewer=$('#viewerDialog');
+          // Invalidar cualquier carga asíncrona del visor anterior antes de cerrarlo.
+          viewerRenderGeneration++;
           if(viewer?.open)viewer.close();
-          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes');
+          const content=$('#viewerContent');
+          if(content){content.innerHTML='';content.classList.remove('is-note-viewer');}
+          await new Promise(resolve=>setTimeout(resolve,80));
+          // Abrir una instancia nueva usando directamente la edición recién guardada.
+          // La consulta remota posterior solo podrá reemplazarla si es igual o más nueva.
+          openViewer(savedSong,saveOwner==='daniel'?'daniel-image':'notes',immediateEdit);
           returnToImageViewer=false;
         }else{
           await refreshOpenImageViewer(immediateEdit,savedSong,saveOwner);
