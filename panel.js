@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.70.1 · guardado real de cajas de texto");
-document.documentElement.dataset.egmVersion="6.36.70.1";
+console.info("Elena Girjoaba Music · 6.36.70.3 · render estable de cajas de texto");
+document.documentElement.dataset.egmVersion="6.36.70.3";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -947,6 +947,51 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
   }
 
 
+  function wrapCanvasTextLines(ctx,text,maxWidth){
+    const width=Math.max(1,Number(maxWidth)||1);
+    const lines=[];
+    const splitLongToken=token=>{
+      const chunks=[];
+      let current='';
+      for(const char of Array.from(String(token||''))){
+        const test=current+char;
+        if(current&&ctx.measureText(test).width>width){chunks.push(current);current=char;}
+        else current=test;
+      }
+      if(current||!chunks.length)chunks.push(current);
+      return chunks;
+    };
+    for(const paragraph of String(text??'').split(/\n/)){
+      if(paragraph===''){lines.push('');continue;}
+      const words=paragraph.trim().split(/\s+/).filter(Boolean);
+      if(!words.length){lines.push('');continue;}
+      let line='';
+      for(const word of words){
+        const candidate=line?`${line} ${word}`:word;
+        if(ctx.measureText(candidate).width<=width){line=candidate;continue;}
+        if(line){lines.push(line);line='';}
+        if(ctx.measureText(word).width<=width){line=word;continue;}
+        const chunks=splitLongToken(word);
+        chunks.forEach((chunk,index)=>{
+          if(index<chunks.length-1)lines.push(chunk);
+          else line=chunk;
+        });
+      }
+      if(line)lines.push(line);
+    }
+    return lines;
+  }
+
+  function drawWrappedCanvasText(ctx,text,{x=0,y=0,maxWidth=1,maxHeight=Infinity,lineHeight=20}={}){
+    let yy=y;
+    for(const line of wrapCanvasTextLines(ctx,text,maxWidth)){
+      if(yy+lineHeight>y+maxHeight+0.5)break;
+      ctx.fillText(line,x,yy);
+      yy+=lineHeight;
+    }
+    return yy;
+  }
+
   async function composeRemoteImageEdit(remote,song,owner){
     const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'';
     const paintComposition=(img=null)=>{
@@ -978,12 +1023,8 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
           ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
           const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*c.width:Math.max(16,(Number(box.size)||9)*3)*(c.width/1200);
           ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;
-          const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
-          for(const paragraph of String(box.text||'').split(/\n/)){
-            const words=paragraph.split(/\s+/);let line='';
-            for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}
-            if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;
-          }
+          const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);
+          drawWrappedCanvasText(ctx,box.text||'',{x:textX,y:0,maxWidth,maxHeight:bh,lineHeight});
           ctx.restore();
         }
         return c;
@@ -2189,7 +2230,7 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
   }else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
-    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*w:Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
+    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*w:Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);drawWrappedCanvasText(ctx,box.text||'',{x:textX,y:0,maxWidth,maxHeight:bh,lineHeight});ctx.restore();});
   }
   function serializeImageTextBox(box){
     // Firestore solo recibe datos simples. Rangos de selección, nodos DOM y

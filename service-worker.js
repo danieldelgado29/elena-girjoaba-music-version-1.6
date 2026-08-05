@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.70.2-textbox-save";
+const VERSION = "egm-v6.36.70.3-text-wrap";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
