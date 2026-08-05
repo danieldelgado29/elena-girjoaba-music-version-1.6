@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.70.3 · render estable de cajas de texto");
-document.documentElement.dataset.egmVersion="6.36.70.3";
+console.info("Elena Girjoaba Music · 6.36.70.4 · teclado móvil y bloqueo de cajas");
+document.documentElement.dataset.egmVersion="6.36.70.4";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -1965,7 +1965,7 @@ document.documentElement.dataset.egmVersion="6.36.70.3";
     box.bold=false;box.italic=false;
   }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false,align:'left'};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false,align:'left',locked:false};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
@@ -1975,6 +1975,10 @@ document.documentElement.dataset.egmVersion="6.36.70.3";
     const area=el.querySelector('.text-box-editor');
     if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
     if(area){
+      box.locked=Boolean(box.locked);
+      el.classList.toggle('is-locked',box.locked);
+      area.contentEditable=box.locked?'false':'true';
+      area.setAttribute('aria-readonly',box.locked?'true':'false');
       const paperWidth=Math.max(1,imageEditorPaper().offsetWidth||1);
       const fontPx=Number(box.fontRatio)>0?Number(box.fontRatio)*paperWidth:Math.max(16,(box.size||9)*3);
       area.style.color=box.color||'#d00000';area.style.fontSize=`${fontPx}px`;area.style.fontWeight='400';area.style.fontStyle='normal';area.style.textAlign=['left','center','right'].includes(box.align)?box.align:'left';
@@ -1984,19 +1988,26 @@ document.documentElement.dataset.egmVersion="6.36.70.3";
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Cambiar alineación del texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Cambiar alineación del texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-lock" aria-label="Bloquear caja con doble toque"><b>🔓</b><small>Bloquear</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
       const area=el.querySelector('.text-box-editor');
       const rememberSelection=()=>{const sel=getSelection();if(!sel||!sel.rangeCount)return;const range=sel.getRangeAt(0);if(area.contains(range.commonAncestorContainer))box._selection=range.cloneRange();};
-      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();updateImageTextFormatButtons(area);});
+      area.addEventListener('focus',()=>{if(box.locked){area.blur();return;}imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();updateImageTextFormatButtons(area);setTimeout(keepFocusedTextBoxVisible,60);});
       area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
-      area.addEventListener('input',()=>{box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);});
-      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
+      area.addEventListener('input',()=>{if(box.locked)return;box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);setTimeout(keepFocusedTextBoxVisible,0);});
+      el.addEventListener('pointerdown',e=>{if(box.locked&&!e.target.closest('button')){imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();e.preventDefault();e.stopPropagation();}});
+      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{if(box.locked)return;e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       const alignButton=el.querySelector('.text-box-align');
       const syncAlignButton=()=>{const align=['left','center','right'].includes(box.align)?box.align:'left';alignButton.dataset.align=align;alignButton.querySelector('b').textContent=align==='left'?'≡':align==='center'?'☰':'≣';alignButton.setAttribute('aria-label',`Alineación ${align}. Pulsar para cambiar`);};
       syncAlignButton();
       alignButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
-      alignButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();imageEditorState.activeTextBoxId=box.id;const order=['left','center','right'];const current=order.includes(box.align)?box.align:'left';box.align=order[(order.indexOf(current)+1)%order.length];area.style.textAlign=box.align;syncAlignButton();renderTextBoxSelection();persistImageEditorLayers(false);});
+      alignButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;imageEditorState.activeTextBoxId=box.id;const order=['left','center','right'];const current=order.includes(box.align)?box.align:'left';box.align=order[(order.indexOf(current)+1)%order.length];area.style.textAlign=box.align;syncAlignButton();renderTextBoxSelection();persistImageEditorLayers(false);});
+      const lockButton=el.querySelector('.text-box-lock');
+      const syncLockButton=()=>{lockButton.querySelector('b').textContent=box.locked?'🔒':'🔓';lockButton.querySelector('small').textContent=box.locked?'Bloqueada':'Bloquear';lockButton.setAttribute('aria-label',box.locked?'Caja bloqueada. Doble toque para desbloquear':'Caja desbloqueada. Doble toque para bloquear');};
+      syncLockButton();
+      let lastLockTap=0,lastLockPointer='';
+      lockButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
+      lockButton.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const now=Date.now(),kind=e.pointerType||'mouse';if(kind===lastLockPointer&&now-lastLockTap<430){lastLockTap=0;lastLockPointer='';box.locked=!box.locked;imageEditorState.activeTextBoxId=box.id;syncImageTextBoxesFromDom();renderTextBoxes();persistImageEditorLayers(false);}else{lastLockTap=now;lastLockPointer=kind;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();}});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
@@ -2005,12 +2016,12 @@ document.documentElement.dataset.egmVersion="6.36.70.3";
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
-    handle.addEventListener('pointerdown',e=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('pointerdown',e=>{if(box.locked)return;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
     handle.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(-1.5,Math.min(2.5,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(-1.5,Math.min(2.5,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
     const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
   }
-  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
-  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function activeTextEditor(){const box=activeTextBox();return box?textBoxLayer().querySelector(`[data-id="${box.id}"] .text-box-editor`):null;}
   function restoreImageTextSelection(area,box){
     if(!area||!box)return false;
@@ -2121,6 +2132,28 @@ document.documentElement.dataset.egmVersion="6.36.70.3";
   imageEditorCanvas().addEventListener('pointermove',e=>{syncImageEraserCursor(e);if(imageEditorState.pointers.size>=2)return;if(!imageEditorState.drawing)return;e.preventDefault();const p=imagePoint(e),target=imageEditorState.tool==='eraser'&&imageEditorState.eraserTarget==='photo'?imageBaseCanvas():imageEditorCanvas(),ctx=target.getContext('2d');ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=imageEditorState.tool==='eraser'?imageEditorState.eraserSize:imageEditorState.pencilSize;ctx.strokeStyle=imageEditorState.pencilColor;ctx.globalCompositeOperation=imageEditorState.tool==='eraser'?'destination-out':'source-over';ctx.beginPath();ctx.moveTo(imageEditorState.last.x,imageEditorState.last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();imageEditorState.last=p;imageEditorState.path.push(p);});
   const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
+  let imageKeyboardRestorePanY=null;
+  function restoreImageViewportAfterKeyboard(){
+    if(imageKeyboardRestorePanY===null)return;
+    imageEditorState.panY=imageKeyboardRestorePanY;imageKeyboardRestorePanY=null;applyImageTransform();
+  }
+  function keepFocusedTextBoxVisible(){
+    const dialog=$('#imageEditorDialog'),vv=window.visualViewport,area=document.activeElement?.closest?.('.text-box-editor');
+    if(!dialog?.open||!vv||!area||area.contentEditable==='false')return;
+    const viewportBottom=vv.offsetTop+vv.height,viewportTop=vv.offsetTop,margin=18,toolbarGap=62;
+    const rect=area.getBoundingClientRect();
+    if(vv.height>=window.innerHeight*.82){restoreImageViewportAfterKeyboard();return;}
+    if(imageKeyboardRestorePanY===null)imageKeyboardRestorePanY=imageEditorState.panY;
+    let shift=0;
+    if(rect.bottom>viewportBottom-margin)shift=rect.bottom-(viewportBottom-margin);
+    else if(rect.top<viewportTop+toolbarGap)shift=rect.top-(viewportTop+toolbarGap);
+    if(Math.abs(shift)>1){imageEditorState.panY-=shift;applyImageTransform();}
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',()=>requestAnimationFrame(keepFocusedTextBoxVisible));
+    window.visualViewport.addEventListener('scroll',()=>requestAnimationFrame(keepFocusedTextBoxVisible));
+  }
+  document.addEventListener('focusout',e=>{if(e.target?.classList?.contains('text-box-editor'))setTimeout(()=>{if(!document.activeElement?.classList?.contains('text-box-editor'))restoreImageViewportAfterKeyboard();},180);},true);
   const imageStage=$('#imageEditorStage');
   let nativeTouchPinch=null;
   const touchCenterAndDistance=touches=>{
