@@ -42,6 +42,8 @@
   let remoteWriteTimer = 0;
   let remoteInitPromise = null;
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
+  let applyingRemoteShowState=false;
+  let latestRemoteState=null;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -124,6 +126,10 @@
         const data=snap.data()||{};
         if(Array.isArray(data.cola)) state.queue=[...data.cola];
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+
+        latestRemoteState=data;
+        applyRemotePanelState(data);
+
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
           pendingRemoteLibrary=b;
@@ -176,8 +182,12 @@
         mostrar_cola:cfg.publicQueue!==false,
         lugar:cfg.venue||'',
         perfil_clientes:cfg.profile||'medio',
+        repertorio_nombre:cfg.repertoireName||'',
         show_activo:Boolean(state.config),
         inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
+        cronometro_elapsed_ms:typeof showTimerTotalMs==='function'?(showTimer.running?showTimer.elapsedMs:showTimerTotalMs()):0,
+        cronometro_running:typeof showTimer!=='undefined'&&showTimer.running===true,
+        cronometro_started_at:typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
         cola:[...state.queue],
         tocadas:[...state.played],
         biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
@@ -226,6 +236,7 @@
       saveStateLocalOnly();
     }
     buildRepertoires();
+    if(latestRemoteState)applyRemotePanelState(latestRemoteState);
   }
 
   function hydrateSavedState(){
@@ -289,22 +300,74 @@
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
   }
 
+  function applyRemotePanelState(data){
+    if(!data||typeof data!=='object')return;
+    applyingRemoteShowState=true;
+    try{
+      if(Array.isArray(data.cola)) state.queue=[...data.cola];
+      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+      if(data.show_activo===true){
+        const repertoire=data.lista_activa||data.listaActiva||'todas';
+        const select=$('#repertoireSelect');
+        const option=select?[...select.options].find(o=>o.value===repertoire):null;
+        state.config={
+          venue:data.lugar||'',
+          repertoire,
+          repertoireName:data.repertorio_nombre||option?.dataset?.name||option?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire),
+          profile:data.perfil_clientes||'medio',
+          whatsapp:data.pedidos_whatsapp!==false,
+          publicQueue:data.mostrar_cola!==false,
+          startedAt:new Date(Number(data.inicio_show)||Date.now()).toISOString()
+        };
+        $('#venueInput').value=state.config.venue;
+        $('#profileSelect').value=state.config.profile;
+        $('#whatsappToggle').checked=state.config.whatsapp;
+        $('#publicQueueToggle').checked=state.config.publicQueue;
+        if(select&&select.querySelector(`option[value="${CSS.escape(repertoire)}"]`))select.value=repertoire;
+        setStatus(true);
+        applyRemoteShowTimer({
+          elapsedMs:Number(data.cronometro_elapsed_ms)||0,
+          running:data.cronometro_running===true,
+          startedAt:Number(data.cronometro_started_at)||0
+        });
+        saveStateLocalOnly();
+        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showLive();
+      }else if(data.show_activo===false){
+        state.config=null;
+        state.queue=[];
+        state.played.clear();
+        setStatus(false);
+        applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
+        saveStateLocalOnly();
+        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showConfig();
+      }
+      renderQueue();
+      if(document.body.classList.contains('live-mode'))renderSongs();
+    }finally{
+      applyingRemoteShowState=false;
+    }
+  }
+
   $('#showForm').addEventListener('submit',e=>{
     e.preventDefault();
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
-    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',async()=>{
+    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
+      // Entrada inmediata: no esperar una lectura de verificación para mostrar Control en vivo.
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
-      try{
-        await saveState(true);
-        startNewShowTimer();
-        setStatus(true);showLive();toast(`Configuración guardada correctamente. Repertorio activo: ${config.repertoireName}.`);
-      }catch(err){
-        console.error('No se pudo publicar el repertorio activo:',err);
-        toast('No se pudo actualizar la interfaz cliente. Revisa la conexión y vuelve a guardar.');
-        showConfig();
-      }
+      startNewShowTimer();
+      saveStateLocalOnly();
+      setStatus(true);showLive();
+      toast(`Show iniciado. Repertorio activo: ${config.repertoireName}.`);
+
+      // Publicación en segundo plano. Los demás dispositivos reciben el show por onSnapshot.
+      syncRemoteState(true).then(()=>{
+        toast('Configuración sincronizada en todos los dispositivos.');
+      }).catch(err=>{
+        console.error('No se pudo publicar el show activo:',err);
+        toast('Show iniciado localmente. Se sincronizará cuando vuelva la conexión.');
+      });
     },'Comenzar');
   });
 
@@ -361,6 +424,20 @@
     };
     tick();
   }
+  function applyRemoteShowTimer(remote){
+    if(!remote||applyingRemoteShowState===false&&remote===showTimer)return;
+    const next={
+      elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
+      running:remote.running===true,
+      startedAt:Number(remote.startedAt)||0
+    };
+    if(next.running&&!next.startedAt)next.startedAt=Date.now();
+    const same=showTimer.elapsedMs===next.elapsedMs&&showTimer.running===next.running&&showTimer.startedAt===next.startedAt;
+    if(same)return;
+    showTimer=next;
+    saveShowTimer();
+    showTimerLoop();
+  }
   function toggleShowTimer(){
     if(showTimer.running){
       showTimer.elapsedMs=showTimerTotalMs();
@@ -372,11 +449,13 @@
     }
     saveShowTimer();
     showTimerLoop();
+    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el cronómetro',err));
   }
   function resetShowTimer(){
     showTimer={elapsedMs:0,running:false,startedAt:0};
     saveShowTimer();
     showTimerLoop();
+    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
   }
   function startNewShowTimer(){
     showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
@@ -433,7 +512,10 @@
   });
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{resetShowTimer();state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{
+    state.config=null;state.queue=[];state.played.clear();resetShowTimer();saveStateLocalOnly();setStatus(false);showConfig();toast('Show finalizado');
+    syncRemoteState(true).catch(err=>console.warn('El cierre del show quedó pendiente de sincronización',err));
+  },'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 
@@ -2126,8 +2208,20 @@
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
   login.hidden=!trusted ? false : true;
   loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
-  Promise.all([loadData(),initRemoteSync()]).then(()=>{
-    if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
+  loadData().then(async()=>{
+    if(trusted&&state.config)showLive(); else if(trusted)showConfig();
+    try{
+      await initRemoteSync();
+      if(remoteGetDoc&&remoteStateRef){
+        const snap=await remoteGetDoc(remoteStateRef);
+        if(snap.exists()){
+          latestRemoteState=snap.data()||{};
+          applyRemotePanelState(latestRemoteState);
+        }
+      }
+    }catch(err){
+      console.warn('Panel iniciado con la última copia local; la sincronización se reintentará al recuperar conexión.',err);
+    }
   });
 })();
 
