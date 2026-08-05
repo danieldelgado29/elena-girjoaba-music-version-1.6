@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · reparación 6.36.69.1");
-document.documentElement.dataset.egmVersion="6.36.69.1";
+console.info("Elena Girjoaba Music · reparación 6.36.69.4 · estado único del show");
+document.documentElement.dataset.egmVersion="6.36.69.4";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -51,6 +51,10 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
   let applyingRemoteShowState=false;
   let latestRemoteState=null;
+  let remoteShowGeneration=0;
+  let lastAppliedRemoteRevision=0;
+  const DEVICE_ID=sessionStorage.getItem('egm-device-id')||(`dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  sessionStorage.setItem('egm-device-id',DEVICE_ID);
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -192,30 +196,29 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
       cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
       cola:active?[...state.queue]:[],
       tocadas:active?[...state.played]:[],
-      updated_at:Date.now()
+      updated_at:Date.now(),
+      show_revision:Date.now(),
+      show_writer:DEVICE_ID
     };
   }
 
-  async function performRemoteShowWrite(){
+  async function performRemoteShowWrite(expectedGeneration=remoteShowGeneration){
     if(!remoteStateRef) await initRemoteSync();
     if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+    // Siempre construir el payload justo antes de escribir. Así una tarea antigua
+    // nunca puede reactivar un show que ya fue finalizado.
     const payload=buildRemoteShowPayload();
+    if(expectedGeneration!==remoteShowGeneration) return payload;
     await window.__egmSetDoc(remoteStateRef,payload,{merge:true});
-    if(remoteGetDoc){
-      const verified=await remoteGetDoc(remoteStateRef);
-      const data=verified.exists()?verified.data():{};
-      if(Boolean(data.show_activo)!==Boolean(payload.show_activo)){
-        throw new Error('Firebase no confirmó el estado del show');
-      }
-    }
     remoteReady=true;
     return payload;
   }
 
   async function syncRemoteState(immediate=false){
     clearTimeout(remoteShowWriteTimer);
+    const generation=remoteShowGeneration;
     const enqueue=()=>{
-      const task=()=>performRemoteShowWrite();
+      const task=()=>performRemoteShowWrite(generation);
       remoteShowWriteChain=remoteShowWriteChain.then(task,task);
       return remoteShowWriteChain;
     };
@@ -223,6 +226,14 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     return new Promise((resolve,reject)=>{
       remoteShowWriteTimer=setTimeout(()=>enqueue().then(resolve,reject),80);
     });
+  }
+
+  async function publishShowPatch(patch){
+    if(!remoteStateRef) await initRemoteSync();
+    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+    const revision=Date.now();
+    await window.__egmSetDoc(remoteStateRef,{...patch,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision},{merge:true});
+    return revision;
   }
 
   async function performRemoteLibraryWrite(){
@@ -345,33 +356,58 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     const o=document.createElement('option');o.value=value;$('#venueHistory').append(o);
   }
   $('#venueInput').addEventListener('input',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
-  $('#repertoireSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
+  $('#repertoireSelect').addEventListener('change',()=>{
+    sessionStorage.setItem('egm-venue-draft',$('#venueInput').value);
+    // Si el show ya está activo, el cambio de repertorio se publica sin reiniciar
+    // cola, cronómetro ni canciones tocadas.
+    if(!state.config||applyingRemoteShowState)return;
+    const select=$('#repertoireSelect');
+    const repertoire=select.value;
+    const repertoireName=select.selectedOptions[0]?.dataset?.name||select.selectedOptions[0]?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire);
+    state.config={...state.config,repertoire,repertoireName};
+    invalidateRepertoireCache();
+    saveStateLocalOnly();
+    $('#liveRepertoireName').textContent=repertoireName;
+    filterSongs();
+    const ids=(repertoire==='todas'?state.songs:state.songs.filter(song=>(song.listas||[]).includes(repertoire))).map(song=>song.id);
+    publishShowPatch({lista_activa:repertoire,listaActiva:repertoire,repertorio_nombre:repertoireName,repertorio_activo_ids:ids,repertorioActivoIds:ids,show_activo:true})
+      .then(()=>toast('Repertorio sincronizado en todos los dispositivos.'))
+      .catch(err=>{console.error('No se sincronizó el repertorio',err);toast('Cambio guardado localmente; sincronización pendiente.');});
+  });
   $('#profileSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
   const venueDraft=sessionStorage.getItem('egm-venue-draft'); if(venueDraft&&!$('#venueInput').value) $('#venueInput').value=venueDraft;
   function setStatus(active){
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
   }
 
+  function panelAuthValid(){return $('#panelLogin')?.hidden===true;}
+
+  function closeDialogsForRemoteShowEnd(){
+    document.querySelectorAll('dialog[open]').forEach(dialog=>{
+      if(dialog.id==='confirmDialog')return;
+      try{dialog.close();}catch(_){dialog.removeAttribute('open');}
+    });
+  }
+
   function applyRemotePanelState(data){
     if(!data||typeof data!=='object')return;
+    const revision=Number(data.show_revision||data.updated_at||0);
+    if(revision&&revision<lastAppliedRemoteRevision)return;
+    if(revision)lastAppliedRemoteRevision=revision;
     applyingRemoteShowState=true;
     try{
       if(Array.isArray(data.cola)) state.queue=[...data.cola];
       if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
       const remoteActive=data.show_activo===true;
-      if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive){
-        return;
-      }
-      if(data.show_activo===true){
+      if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
+      if(remoteActive){
         const repertoire=data.lista_activa||data.listaActiva||'todas';
         const select=$('#repertoireSelect');
         const option=select?[...select.options].find(o=>o.value===repertoire):null;
         state.config={
-          venue:data.lugar||'',
-          repertoire,
+          venue:data.lugar||'', repertoire,
           repertoireName:data.repertorio_nombre||option?.dataset?.name||option?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire),
-          profile:data.perfil_clientes||'medio',
-          whatsapp:data.pedidos_whatsapp!==false,
+          profile:data.perfil_clientes||'medio', whatsapp:data.pedidos_whatsapp!==false,
           publicQueue:data.mostrar_cola!==false,
           startedAt:new Date(Number(data.inicio_show)||Date.now()).toISOString()
         };
@@ -380,28 +416,24 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
         $('#whatsappToggle').checked=state.config.whatsapp;
         $('#publicQueueToggle').checked=state.config.publicQueue;
         if(select&&select.querySelector(`option[value="${CSS.escape(repertoire)}"]`))select.value=repertoire;
+        $('#liveRepertoireName').textContent=state.config.repertoireName;
+        invalidateRepertoireCache();
         setStatus(true);
-        applyRemoteShowTimer({
-          elapsedMs:Number(data.cronometro_elapsed_ms)||0,
-          running:data.cronometro_running===true,
-          startedAt:Number(data.cronometro_started_at)||0
-        });
+        applyRemoteShowTimer({elapsedMs:Number(data.cronometro_elapsed_ms)||0,running:data.cronometro_running===true,startedAt:Number(data.cronometro_started_at)||0});
         saveStateLocalOnly();
-        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showLive();
+        // Tras autenticar, un show remoto activo lleva directamente a Control en vivo.
+        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('#imageEditorDialog[open],#songbookEditorDialog[open]'))showLive();
       }else if(data.show_activo===false){
-        state.config=null;
-        state.queue=[];
-        state.played.clear();
+        state.config=null;state.queue=[];state.played.clear();
         setStatus(false);
         applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
         saveStateLocalOnly();
-        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showConfig();
+        // El cierre remoto es global: ningún modal puede impedir volver a Configuración.
+        if(panelAuthValid()&&$('#panelLogin').hidden){closeDialogsForRemoteShowEnd();showConfig();toast('El show fue finalizado desde otro dispositivo.');}
       }
       renderQueue();
-      if(document.body.classList.contains('live-mode'))renderSongs();
-    }finally{
-      applyingRemoteShowState=false;
-    }
+      if(document.body.classList.contains('live-mode')){invalidateRepertoireCache();filterSongs();}
+    }finally{applyingRemoteShowState=false;}
   }
 
   $('#showForm').addEventListener('submit',e=>{
@@ -411,7 +443,7 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
     askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
       // Entrada inmediata: no esperar una lectura de verificación para mostrar Control en vivo.
-      localDesiredShowActive=true;localShowTransitionUntil=Date.now()+10000;
+      remoteShowGeneration++;localDesiredShowActive=true;localShowTransitionUntil=Date.now()+10000;
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
       startNewShowTimer();
       saveStateLocalOnly();
@@ -508,13 +540,13 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     }
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:showTimerTotalMs(),cronometro_running:showTimer.running,cronometro_started_at:showTimer.running?showTimer.startedAt:0}).catch(err=>console.warn('No se sincronizó el cronómetro',err));
   }
   function resetShowTimer(){
     showTimer={elapsedMs:0,running:false,startedAt:0};
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0}).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
   }
   function startNewShowTimer(){
     showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
@@ -572,52 +604,33 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
 
-  // Entrega 6.36.69.3 · cierre global y definitivo del show.
-  // Espera cualquier escritura anterior y publica show_activo:false como la última escritura,
-  // evitando que una actualización atrasada vuelva a activar el show en otro dispositivo.
+  // 6.36.69.4 · cierre global directo, independiente de colas antiguas.
   async function publishFinishedShow(){
     clearTimeout(remoteShowWriteTimer);
-    if(!remoteStateRef) await initRemoteSync();
-    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-
-    const finishPayload={
-      show_activo:false,
-      cola:[],
-      tocadas:[],
-      cronometro_elapsed_ms:0,
-      cronometro_running:false,
-      cronometro_started_at:0,
-      inicio_show:0,
-      updated_at:Date.now()
-    };
-
-    const writeFinish=()=>window.__egmSetDoc(remoteStateRef,finishPayload,{merge:true});
-    // Toda escritura ya encolada termina antes del cierre definitivo.
-    remoteShowWriteChain=remoteShowWriteChain.then(writeFinish,writeFinish);
-    await remoteShowWriteChain;
+    remoteShowGeneration++;
+    remoteShowWriteChain=Promise.resolve();
+    const finishPayload={show_activo:false,cola:[],tocadas:[],cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0,inicio_show:0};
+    await publishShowPatch(finishPayload);
+    // Segunda publicación corta para ganar ante una pestaña con una escritura vieja en vuelo.
+    await new Promise(resolve=>setTimeout(resolve,180));
+    await publishShowPatch(finishPayload);
     return finishPayload;
   }
 
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola en todos los dispositivos.',()=>{
-    localDesiredShowActive=false;
-    localShowTransitionUntil=Date.now()+15000;
-    state.config=null;
-    state.queue=[];
-    state.played.clear();
-    resetShowTimer();
-    saveStateLocalOnly();
-    setStatus(false);
-    showConfig();
-    toast('Finalizando show en todos los dispositivos…');
-
-    publishFinishedShow().then(()=>{
-      localDesiredShowActive=null;
-      localShowTransitionUntil=0;
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola en todos los dispositivos.',async()=>{
+    localDesiredShowActive=false;localShowTransitionUntil=Date.now()+15000;
+    state.config=null;state.queue=[];state.played.clear();
+    showTimer={elapsedMs:0,running:false,startedAt:0};saveShowTimer();showTimerLoop();
+    saveStateLocalOnly();setStatus(false);showConfig();toast('Finalizando show en todos los dispositivos…');
+    try{
+      await publishFinishedShow();
+      localDesiredShowActive=null;localShowTransitionUntil=0;
       toast('Show finalizado en todos los dispositivos.');
-    }).catch(err=>{
+    }catch(err){
       console.error('No se pudo finalizar el show remotamente:',err);
-      toast('Show cerrado en este dispositivo. El cierre remoto quedó pendiente.');
-    });
+      localDesiredShowActive=null;localShowTransitionUntil=0;
+      toast('No se pudo confirmar el cierre remoto. Revisa la conexión.');
+    }
   },'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
@@ -1796,7 +1809,7 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
       if(!ref)throw new Error('No se pudo crear la referencia imageEdits');
       const snap=await remoteGetDoc(ref);
       const remote=snap.exists()?(snap.data()||null):null;
-      const latest=remote&&Number(remote.updatedAt||0)>=Number(local?.updatedAt||0)?remote:local;
+      const latest=remote||local;
       if(latest){await offlineStorePut('imageEdits',{...latest,editId});cacheEditorImage(latest.originalSrc||latest.original||'');}
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
@@ -2333,7 +2346,7 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
   const trusted=params.get('trusted')==='1';
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
   login.hidden=trusted;
-  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(latestRemoteState)applyRemotePanelState(latestRemoteState);else if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   loadData().then(async()=>{
     if(trusted&&state.config)showLive(); else if(trusted)showConfig();
     try{
