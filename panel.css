@@ -957,3 +957,14 @@ body.live-mode #queueCount{justify-self:end;text-align:right}
   .image-text-box .text-box-delete{left:-46px;top:-44px}
   .image-text-box .text-box-move{right:-46px;top:-44px}
 }
+
+
+/* Entrega 6.36.72 · caja bloqueada recuperable e historial total */
+.image-text-box.is-locked .text-box-center-tools{display:flex!important;left:50%;transform:translateX(-50%)}
+.image-text-box.is-locked .text-box-align{display:none!important}
+.image-text-box.is-locked .text-box-lock{display:flex!important;min-width:34px;width:34px;height:30px;padding:0;border-radius:15px;opacity:.78}
+.image-text-box.is-locked .text-box-lock small{display:none!important}
+.image-text-box.is-locked .text-box-lock b{font-size:15px;line-height:1}
+.image-text-box.is-locked:not(.is-selected){border-color:transparent!important;background:transparent!important}
+.image-text-box.is-locked:not(.is-selected) .text-box-center-tools{top:-34px}
+.image-text-box.is-locked .text-box-editor{pointer-events:none}

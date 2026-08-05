@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.71";
+const VERSION = "egm-v6.36.72";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
