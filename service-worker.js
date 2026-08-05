@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.69.2-auth-responsive";
+const VERSION = "egm-v6.36.69.3-finalizar-global";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [

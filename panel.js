@@ -571,12 +571,53 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
   });
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{
-    localDesiredShowActive=false;localShowTransitionUntil=Date.now()+10000;
-    state.config=null;state.queue=[];state.played.clear();resetShowTimer();saveStateLocalOnly();setStatus(false);showConfig();toast('Show finalizado');
-    syncRemoteState(true).then(()=>{
-      localDesiredShowActive=null;localShowTransitionUntil=0;
-    }).catch(err=>console.warn('El cierre del show quedó pendiente de sincronización',err));
+
+  // Entrega 6.36.69.3 · cierre global y definitivo del show.
+  // Espera cualquier escritura anterior y publica show_activo:false como la última escritura,
+  // evitando que una actualización atrasada vuelva a activar el show en otro dispositivo.
+  async function publishFinishedShow(){
+    clearTimeout(remoteShowWriteTimer);
+    if(!remoteStateRef) await initRemoteSync();
+    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+
+    const finishPayload={
+      show_activo:false,
+      cola:[],
+      tocadas:[],
+      cronometro_elapsed_ms:0,
+      cronometro_running:false,
+      cronometro_started_at:0,
+      inicio_show:0,
+      updated_at:Date.now()
+    };
+
+    const writeFinish=()=>window.__egmSetDoc(remoteStateRef,finishPayload,{merge:true});
+    // Toda escritura ya encolada termina antes del cierre definitivo.
+    remoteShowWriteChain=remoteShowWriteChain.then(writeFinish,writeFinish);
+    await remoteShowWriteChain;
+    return finishPayload;
+  }
+
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola en todos los dispositivos.',()=>{
+    localDesiredShowActive=false;
+    localShowTransitionUntil=Date.now()+15000;
+    state.config=null;
+    state.queue=[];
+    state.played.clear();
+    resetShowTimer();
+    saveStateLocalOnly();
+    setStatus(false);
+    showConfig();
+    toast('Finalizando show en todos los dispositivos…');
+
+    publishFinishedShow().then(()=>{
+      localDesiredShowActive=null;
+      localShowTransitionUntil=0;
+      toast('Show finalizado en todos los dispositivos.');
+    }).catch(err=>{
+      console.error('No se pudo finalizar el show remotamente:',err);
+      toast('Show cerrado en este dispositivo. El cierre remoto quedó pendiente.');
+    });
   },'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
