@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · reparación 6.36.69.4 · estado único del show");
-document.documentElement.dataset.egmVersion="6.36.69.4";
+console.info("Elena Girjoaba Music · 6.36.70.1 · guardado real de cajas de texto");
+document.documentElement.dataset.egmVersion="6.36.70.1";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -976,7 +976,7 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
           ctx.save();
           const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
           ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
-          const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
+          const fontSize=Math.max(16,(Number(box.size)||9)*3)*(c.width/1200);
           ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;
           const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
           for(const paragraph of String(box.text||'').split(/\n/)){
@@ -1991,7 +1991,26 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
   }
   function placeImageTextAt(clientX,clientY){const paper=imageEditorPaper(),r=paper.getBoundingClientRect();const x=(clientX-r.left)/Math.max(1,r.width),y=(clientY-r.top)/Math.max(1,r.height);newTextBox(x,y);}
   function activateImageText(){imageEditorState.tool='text';imageEditorPaper().classList.add('text-mode');$('#imageTextTool').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');syncInlineTextStyle();}
-  function commitImageText(){renderTextBoxes();persistImageEditorLayers(false);}
+  function syncImageTextBoxesFromDom(){
+    const layer=document.querySelector('#imageTextBoxLayer');
+    if(!layer)return;
+    layer.querySelectorAll('.image-text-box[data-id]').forEach(el=>{
+      const box=imageEditorState.textBoxes.find(item=>item.id===el.dataset.id);
+      const area=el.querySelector('.text-box-editor');
+      if(!box||!area)return;
+      box.html=area.innerHTML;
+      box.text=area.innerText.replace(/\n$/,'');
+      const align=area.style.textAlign||getComputedStyle(area).textAlign;
+      if(['left','center','right'].includes(align))box.align=align;
+    });
+  }
+  function commitImageText(){
+    // Copiar primero el contenido visible del DOM. Renderizar antes destruía las
+    // cajas editables y podía guardar una versión anterior, especialmente en iOS.
+    syncImageTextBoxesFromDom();
+    renderTextBoxes();
+    persistImageEditorLayers(false);
+  }
   let suppressTextClick=false,textHold=0;const imageTextButton=$('#imageTextTool'),imageTextMenu=$('#imageTextOptions');imageTextButton.addEventListener('contextmenu',e=>e.preventDefault());imageTextButton.addEventListener('click',()=>{if(suppressTextClick){suppressTextClick=false;return;}if(!imageTextMenu.hidden){imageTextMenu.hidden=true;return;}activateImageText();});imageTextButton.addEventListener('pointerdown',()=>{clearTimeout(textHold);suppressTextClick=false;textHold=setTimeout(()=>{suppressTextClick=true;activateImageText();positionPopover(imageTextMenu,imageTextButton);},520);});['pointerup','pointercancel'].forEach(n=>imageTextButton.addEventListener(n,()=>clearTimeout(textHold)));
   $$('[data-image-text-color]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textColor=b.dataset.imageTextColor;$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
@@ -2163,6 +2182,7 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
     imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
   }
   async function saveImageEditorVectorsRemote(){
+    syncImageTextBoxesFromDom();
     const stamp=Date.now();
     const editId=remoteImageKey(activeImageSongId,activeImageOwner);
     const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
@@ -2219,6 +2239,7 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
   }
 
   async function persistImageEditorLayers(syncRemote=false){
+    syncImageTextBoxesFromDom();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
     let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
