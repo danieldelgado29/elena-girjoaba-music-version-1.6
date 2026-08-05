@@ -317,7 +317,7 @@
   }
   function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({top:0,behavior:'smooth'}); }
 
-  // Entrega 6.36.64 · cronómetro inicia al comenzar el show.
+  // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
   let showTimer={elapsedMs:0,running:false,startedAt:0};
   let showTimerFrame=0;
@@ -385,14 +385,42 @@
   }
   function bindDoubleActivation(button,handler){
     if(!button)return;
-    let lastPointerUp=0;
-    button.addEventListener('dblclick',event=>{event.preventDefault();lastPointerUp=0;handler();});
+    let lastTouchUp=0;
+    let lastActivation=0;
+    let touchResetTimer=0;
+
+    const activate=(event)=>{
+      const now=Date.now();
+      // Safari/Chrome can emit both click(detail=2) and dblclick for the same gesture.
+      // This guard guarantees a single pause/play change per double activation.
+      if(now-lastActivation<320)return;
+      lastActivation=now;
+      if(event){event.preventDefault();event.stopPropagation();}
+      handler();
+    };
+
+    // Mouse and trackpad: click.detail is the most consistent signal across browsers.
+    button.addEventListener('click',event=>{
+      if(event.detail>=2)activate(event);
+    });
+    // Fallback for browsers that only emit dblclick.
+    button.addEventListener('dblclick',event=>activate(event));
+
+    // iPhone, Android and installed PWA: detect two pointer releases.
     button.addEventListener('pointerup',event=>{
       if(event.pointerType==='mouse')return;
       event.preventDefault();
+      event.stopPropagation();
       const now=Date.now();
-      if(now-lastPointerUp<=420){lastPointerUp=0;handler();}
-      else lastPointerUp=now;
+      if(now-lastTouchUp<=480){
+        lastTouchUp=0;
+        clearTimeout(touchResetTimer);
+        activate(event);
+      }else{
+        lastTouchUp=now;
+        clearTimeout(touchResetTimer);
+        touchResetTimer=setTimeout(()=>{lastTouchUp=0;},520);
+      }
     });
     button.addEventListener('contextmenu',event=>event.preventDefault());
   }
