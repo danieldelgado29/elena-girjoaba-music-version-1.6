@@ -434,9 +434,10 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     document.body.classList.add('live-mode');
     $('#configView').classList.remove('is-active');$('#liveView').classList.add('is-active');
     $('#liveRepertoireName').textContent=state.config.repertoireName || 'Repertorio';
+    window.scrollTo({left:0,top:0,behavior:'auto'});
     $('#songSearch').value='';filterSongs();renderQueue();window.scrollTo({top:0,behavior:'smooth'});
   }
-  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({top:0,behavior:'smooth'}); }
+  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({left:0,top:0,behavior:'smooth'}); }
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
@@ -2265,25 +2266,10 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});
 
-  // 6.36.36 — Sesión persistente y bloqueo de pull-to-refresh dentro del panel.
-  const PANEL_AUTH_KEY='egm-panel-auth-v2';
-  const PANEL_AUTH_TTL=12*60*60*1000;
-  function panelAuthValid(){
-    try{
-      if(sessionStorage.getItem('egm-panel-auth')==='1')return true;
-      const saved=JSON.parse(localStorage.getItem(PANEL_AUTH_KEY)||'null');
-      if(saved&&Number(saved.expiresAt)>Date.now()){
-        sessionStorage.setItem('egm-panel-auth','1');
-        return true;
-      }
-      localStorage.removeItem(PANEL_AUTH_KEY);
-    }catch(_){}
-    return false;
-  }
-  function rememberPanelAuth(){
-    sessionStorage.setItem('egm-panel-auth','1');
-    try{localStorage.setItem(PANEL_AUTH_KEY,JSON.stringify({expiresAt:Date.now()+PANEL_AUTH_TTL}));}catch(_){}
-  }
+  // 6.36.69.2 — La contraseña se solicita en cada apertura del panel.
+  // No se conserva autorización en localStorage/sessionStorage, para que otro dispositivo
+  // nunca entre directamente aunque ya exista un show activo.
+  function rememberPanelAuth(){}
 
   // Impide el gesto de recarga al jalar hacia abajo, sin bloquear el scroll normal de listas/modales.
   let pullStartY=null;
@@ -2303,10 +2289,10 @@ document.documentElement.dataset.egmVersion="6.36.69.1";
 
   const login=$('#panelLogin'),loginForm=$('#panelLoginForm'),loginPassword=$('#panelLoginPassword'),loginError=$('#panelLoginError');
   const params=new URLSearchParams(location.search);
-  const trusted=params.get('trusted')==='1'||panelAuthValid();
+  const trusted=params.get('trusted')==='1';
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
-  login.hidden=!trusted ? false : true;
-  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
+  login.hidden=trusted;
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   loadData().then(async()=>{
     if(trusted&&state.config)showLive(); else if(trusted)showConfig();
     try{

@@ -904,3 +904,38 @@ body.live-mode #queueCount{justify-self:end;text-align:right}
   body.live-mode .show-timer-display{font-size:11px;min-width:53px;letter-spacing:0}
   body.live-mode .show-timer-toggle{width:22px;height:22px;min-width:22px;font-size:10px}
 }
+
+
+/* Entrega 6.36.69.2 · recuperación responsive iPhone/Android */
+html,body{max-width:100%;overflow-x:hidden!important}
+body.live-mode,.app-shell,body.live-mode .app-shell,body.live-mode main,body.live-mode #liveView,
+body.live-mode .live-toolbar,body.live-mode .live-sticky-tools,body.live-mode .queue-panel,
+body.live-mode .search-wrap,body.live-mode .song-table-head,body.live-mode .song-list{
+  width:100%!important;max-width:100%!important;min-width:0!important;
+}
+body.live-mode .app-shell{padding-left:12px!important;padding-right:12px!important;margin:0 auto!important}
+body.live-mode .song-list{overflow:visible!important}
+body.live-mode .song-card{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}
+body.live-mode .song-info,body.live-mode .song-title-row{width:100%!important;max-width:100%!important;min-width:0!important}
+body.live-mode .song-actions{width:100%!important;max-width:100%!important;min-width:0!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:6px!important;flex:0 1 auto!important}
+body.live-mode .song-action{width:100%!important;min-width:0!important;max-width:100%!important;padding:10px 3px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+body.live-mode .song-action.notes,body.live-mode .song-action.lyrics,body.live-mode .song-action.daniel{width:100%!important;min-width:0!important;padding-left:3px!important;padding-right:3px!important}
+body.live-mode .live-toolbar{overflow:hidden!important}
+body.live-mode .live-toolbar-right{min-width:0!important;max-width:100%!important}
+body.live-mode #finishShowBtn{white-space:nowrap!important}
+@media(max-width:520px){
+  body.live-mode .app-shell{padding-left:8px!important;padding-right:8px!important}
+  body.live-mode .live-toolbar{grid-template-columns:auto minmax(0,1fr) auto!important;gap:4px!important}
+  body.live-mode .live-toolbar-right{gap:3px!important}
+  body.live-mode #backConfigBtn{width:34px!important;min-width:34px!important;padding:0!important;font-size:0!important}
+  body.live-mode #backConfigBtn::first-letter{font-size:18px!important}
+  body.live-mode #finishShowBtn{min-height:38px!important;padding:0 9px!important;font-size:12px!important}
+  body.live-mode #closePanelBtn{width:38px!important;min-width:38px!important;height:38px!important;padding:0!important}
+  body.live-mode .song-card{padding:10px 9px!important}
+  body.live-mode .song-actions{gap:4px!important}
+  body.live-mode .song-action{font-size:10px!important;padding:9px 1px!important}
+}
+@media(max-width:360px){
+  body.live-mode .song-action{font-size:9px!important;letter-spacing:-.01em!important}
+  body.live-mode #finishShowBtn{padding:0 6px!important;font-size:11px!important}
+}
