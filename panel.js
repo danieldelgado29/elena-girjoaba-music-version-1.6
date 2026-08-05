@@ -976,7 +976,7 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
           ctx.save();
           const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
           ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
-          const fontSize=Math.max(16,(Number(box.size)||9)*3)*(c.width/1200);
+          const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*c.width:Math.max(16,(Number(box.size)||9)*3)*(c.width/1200);
           ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;
           const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
           for(const paragraph of String(box.text||'').split(/\n/)){
@@ -1809,7 +1809,10 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
       if(!ref)throw new Error('No se pudo crear la referencia imageEdits');
       const snap=await remoteGetDoc(ref);
       const remote=snap.exists()?(snap.data()||null):null;
-      const latest=remote||local;
+      // Una edición local pendiente nunca debe ser reemplazada por una copia
+      // remota anterior. Cuando no hay cambios pendientes, Firestore vuelve a
+      // ser la fuente compartida entre dispositivos.
+      const latest=(local&&local.pendingSync)?local:(remote||local);
       if(latest){await offlineStorePut('imageEdits',{...latest,editId});cacheEditorImage(latest.originalSrc||latest.original||'');}
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
@@ -1930,7 +1933,11 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
     const area=el.querySelector('.text-box-editor');
     if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
-    if(area){area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight='400';area.style.fontStyle='normal';area.style.textAlign=['left','center','right'].includes(box.align)?box.align:'left';}
+    if(area){
+      const paperWidth=Math.max(1,imageEditorPaper().offsetWidth||1);
+      const fontPx=Number(box.fontRatio)>0?Number(box.fontRatio)*paperWidth:Math.max(16,(box.size||9)*3);
+      area.style.color=box.color||'#d00000';area.style.fontSize=`${fontPx}px`;area.style.fontWeight='400';area.style.fontStyle='normal';area.style.textAlign=['left','center','right'].includes(box.align)?box.align:'left';
+    }
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
@@ -2000,6 +2007,9 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
       if(!box||!area)return;
       box.html=area.innerHTML;
       box.text=area.innerText.replace(/\n$/,'');
+      const paperWidth=Math.max(1,imageEditorPaper().offsetWidth||1);
+      const fontPx=parseFloat(area.style.fontSize||getComputedStyle(area).fontSize)||Math.max(16,(box.size||9)*3);
+      box.fontRatio=fontPx/paperWidth;
       const align=area.style.textAlign||getComputedStyle(area).textAlign;
       if(['left','center','right'].includes(align))box.align=align;
     });
@@ -2179,13 +2189,27 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
   }else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
-    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
+    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*w:Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
+  }
+  function serializeImageTextBox(box){
+    // Firestore solo recibe datos simples. Rangos de selección, nodos DOM y
+    // otras propiedades temporales del editor nunca deben salir del navegador.
+    const clean={};
+    for(const [key,value] of Object.entries(box||{})){
+      if(key.startsWith('_'))continue;
+      if(value===undefined||typeof value==='function')continue;
+      if(value===null||['string','number','boolean'].includes(typeof value))clean[key]=value;
+      else if(Array.isArray(value))clean[key]=value.map(item=>item&&typeof item==='object'?JSON.parse(JSON.stringify(item)):item);
+      else if(value&&value.constructor===Object)clean[key]=JSON.parse(JSON.stringify(value));
+    }
+    clean.align=['left','center','right'].includes(clean.align)?clean.align:'left';
+    return clean;
   }
   async function saveImageEditorVectorsRemote(){
     syncImageTextBoxesFromDom();
     const stamp=Date.now();
     const editId=remoteImageKey(activeImageSongId,activeImageOwner);
-    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
     // El guardado local siempre ocurre primero y nunca depende de internet.
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
@@ -2242,7 +2266,7 @@ document.documentElement.dataset.egmVersion="6.36.70.1";
     syncImageTextBoxesFromDom();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
-    let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
+    let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
     song[imageField(activeImageOwner)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
