@@ -1830,7 +1830,32 @@
       area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
       area.addEventListener('input',()=>{if(box.locked)return;box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);});
       el.querySelector('.text-box-align').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;const order=['left','center','right'];box.align=order[(order.indexOf(box.align||'left')+1)%order.length];applyTextBoxStyle(el,box);persistImageEditorLayers(false);});
-      const lockButton=el.querySelector('.text-box-lock');let lastTouch=0,lastX=0,lastY=0;const toggleLock=()=>{box.locked=!box.locked;if(box.locked&&document.activeElement===area)area.blur();applyTextBoxStyle(el,box);persistImageEditorLayers(false);};lockButton.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();toggleLock();});lockButton.addEventListener('pointerup',e=>{if(e.pointerType==='mouse')return;e.preventDefault();e.stopPropagation();const now=Date.now(),near=Math.hypot(e.clientX-lastX,e.clientY-lastY)<24;if(now-lastTouch<430&&near){lastTouch=0;toggleLock();}else{lastTouch=now;lastX=e.clientX;lastY=e.clientY;}});
+      const lockButton=el.querySelector('.text-box-lock');
+      let lastLockActivation={time:0,x:0,y:0};
+      let lockToggleGuard=0;
+      const toggleLock=()=>{
+        const now=Date.now();
+        if(now-lockToggleGuard<280)return;
+        lockToggleGuard=now;
+        box.locked=!box.locked;
+        if(box.locked&&document.activeElement===area)area.blur();
+        applyTextBoxStyle(el,box);
+        persistImageEditorLayers(false);
+      };
+      lockButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
+      lockButton.addEventListener('pointerup',e=>{
+        e.preventDefault();e.stopPropagation();
+        const now=Date.now();
+        const near=Math.hypot(e.clientX-lastLockActivation.x,e.clientY-lastLockActivation.y)<34;
+        if(lastLockActivation.time&&now-lastLockActivation.time<=520&&near){
+          lastLockActivation={time:0,x:0,y:0};
+          toggleLock();
+          return;
+        }
+        lastLockActivation={time:now,x:e.clientX,y:e.clientY};
+      });
+      lockButton.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();toggleLock();});
+      lockButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
       el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
