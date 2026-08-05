@@ -916,6 +916,9 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   }
 
   function imageField(owner){ return owner==='daniel'?'notasDaniel':'notasElena'; }
+  function songbookVisualField(owner){ return owner==='daniel'?'cancioneroDanielVisual':'cancioneroElenaVisual'; }
+  function visualField(owner,mode='image'){ return mode==='songbook'?songbookVisualField(owner):imageField(owner); }
+  function imageEditScope(owner,mode='image'){ return mode==='songbook'?`${owner}-songbook`:owner; }
   function imagePayload(song,owner){
     const value=song[imageField(owner)];
     let candidate='';
@@ -962,8 +965,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     if(!song?.id)return null;
     const text=String(song.cancioneroElena||'').replace(/\r\n?/g,'\n').trim();
     const previous=String(previousText||'').replace(/\r\n?/g,'\n').trim();
-    const editId=remoteImageKey(song.id,'elena');
-    const existing=await loadRemoteImageEdit(song.id,'elena')||await offlineStoreGet('imageEdits',editId)||null;
+    const editId=remoteImageKey(song.id,'elena','songbook');
+    const existing=await loadRemoteImageEdit(song.id,'elena','songbook')||await offlineStoreGet('imageEdits',editId)||null;
     const boxes=Array.isArray(existing?.textBoxes)?existing.textBoxes.map(box=>({...box})):[];
     const boxId=importedElenaBoxId(song.id);
     const index=boxes.findIndex(box=>box.id===boxId||box.importSource==='cancioneroElena');
@@ -1007,7 +1010,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       editId,
       songId:song.id,
       owner:'elena',
-      originalSrc:existing?.originalSrc||existing?.original||initialImageSourceForSong(song,'elena')||'',
+      mode:'songbook',
+      originalSrc:'',
       operations:Array.isArray(existing?.operations)?existing.operations:[],
       textBoxes:boxes.map(serializeImageTextBox),
       updatedAt:stamp,
@@ -1017,18 +1021,18 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     };
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
-    song.notasElena={original:metadata.originalSrc,operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
+    song.cancioneroElenaVisual={original:'',operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
 
     if(navigator.onLine){
       try{
         await initRemoteSync();
-        const ref=remoteImageRef(song.id,'elena');
+        const ref=remoteImageRef(song.id,'elena','songbook');
         if(ref&&remoteSetDoc){
           const remotePayload={...metadata,pendingSync:false,syncedAt:Date.now()};
           await remoteSetDoc(ref,remotePayload,{merge:false});
           await offlineStorePut('imageEdits',remotePayload);
           await offlineStoreDelete('pendingSync',editId);
-          song.notasElena={original:remotePayload.originalSrc,operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
+          song.cancioneroElenaVisual={original:'',operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
           return remotePayload;
         }
       }catch(err){console.warn('Texto Elena guardado localmente; sincronización pendiente',err);}
@@ -1178,10 +1182,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
     if(type==='notes'||type==='daniel-image'||type==='lyrics'){
-      // 6.36.71.1 · Elena deja de usar el visor antiguo de texto. El botón
+      // 6.36.71.2 · Elena deja de usar el visor antiguo de texto. El botón
       // Letra abre el mismo visor vectorial que Imagen, sobre lienzo blanco
       // cuando no existe fotografía ni capas guardadas.
-      const owner=type==='daniel-image'?'daniel':'elena',raw=preferredEdit||song[imageField(owner)];
+      const owner=type==='daniel-image'?'daniel':'elena',viewerMode=type==='lyrics'?'songbook':'image',raw=preferredEdit||song[visualField(owner,viewerMode)];
       let rendered=false;
       // 6.36.34 · Si no existe una foto, el visor muestra un lienzo blanco editable.
       // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
@@ -1195,7 +1199,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       };
       const renderFallback=()=>{
         if(rendered)return;
-        const files=imageCandidates(song,owner);
+        const files=viewerMode==='songbook'?[]:imageCandidates(song,owner);
         if(!files.length){void renderBlankCanvas();return;}
         content.innerHTML='';content.classList.add('is-note-viewer');
         const img=new Image();img.alt=`Notas de ${song.titulo}`;let fileIndex=0;
@@ -1215,7 +1219,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         const immediate={...raw,originalSrc:raw.originalSrc||raw.original||'',operations:Array.isArray(raw.operations)?raw.operations:[],textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[]};
         void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
       }
-      loadRemoteImageEdit(song.id,owner).then(async remote=>{
+      loadRemoteImageEdit(song.id,owner,viewerMode).then(async remote=>{
         if(renderGeneration!==viewerRenderGeneration)return;
         const localUpdated=Number((raw&&typeof raw==='object'&&raw.updatedAt)||0);
         const remoteUpdated=Number(remote?.updatedAt||0);
@@ -1223,7 +1227,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         if(remote&&remoteUpdated>=localUpdated){
           const ok=await showComposedViewerEdit(content,remote,song,owner);
           if(renderGeneration!==viewerRenderGeneration)return;
-          if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
+          if(ok){rendered=true;song[visualField(owner,viewerMode)]={original:viewerMode==='songbook'?'':(remote.originalSrc||remote.original||''),operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
         }
         if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();
       }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();});
@@ -1963,19 +1967,19 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const loadNext=()=>{const base=sources.shift();if(!base){blank();return;}const img=new Image();img.onload=()=>{imageEditorState.original=base;const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.clearRect(0,0,w,h);b.drawImage(img,0,0,w,h);o.clearRect(0,0,w,h);replayImageOperations();if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{o.drawImage(ov,0,0,w,h);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.onerror=()=>{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();}};img.onerror=loadNext;img.src=encodeURI(base);};loadNext();
   }
   function syncImageSwatches(){$('#imageTextSwatch').style.background=imageEditorState.textColor;$('#imagePencilSwatch').style.background=imageEditorState.pencilColor;}
-  function remoteImageKey(songId,owner){return `${owner}-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
-  function remoteImageRef(songId,owner){
+  function remoteImageKey(songId,owner,mode='image'){return `${imageEditScope(owner,mode)}-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
+  function remoteImageRef(songId,owner,mode='image'){
     if(!remoteDb||!remoteDoc)return null;
-    return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner));
+    return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner,mode));
   }
-  async function loadRemoteImageEdit(songId,owner){
-    const editId=remoteImageKey(songId,owner);
+  async function loadRemoteImageEdit(songId,owner,mode='image'){
+    const editId=remoteImageKey(songId,owner,mode);
     const local=await offlineStoreGet('imageEdits',editId);
     if(!navigator.onLine)return local;
     try{
       await initRemoteSync();
       if(!remoteGetDoc)throw new Error('Firestore todavía no está listo');
-      const ref=remoteImageRef(songId,owner);
+      const ref=remoteImageRef(songId,owner,mode);
       if(!ref)throw new Error('No se pudo crear la referencia imageEdits');
       const snap=await remoteGetDoc(ref);
       const remote=snap.exists()?(snap.data()||null):null;
@@ -1999,10 +2003,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       ? `Cancionero ${ownerLabel(owner)} · ${song.titulo}`
       : `Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const uploadTrigger=$('#imageUploadTrigger');
-    if(uploadTrigger)uploadTrigger.hidden=activeImageMode==='songbook';
+    if(uploadTrigger){const hideUpload=activeImageMode==='songbook';uploadTrigger.hidden=hideUpload;uploadTrigger.style.display=hideUpload?'none':'';uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');}
     if(imageUploadMenu)imageUploadMenu.hidden=true;
-    const localRaw=song[imageField(owner)];
-    const remote=await loadRemoteImageEdit(songId,owner);
+    const localRaw=song[visualField(owner,activeImageMode)];
+    const remote=await loadRemoteImageEdit(songId,owner,activeImageMode);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
     // imageEdits, sus capas siempre prevalecen sobre copias antiguas del objeto canción.
     const raw=remote ? {
@@ -2011,19 +2015,21 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],
       updatedAt:remote.updatedAt||Date.now(),remote:true
     } : (localRaw&&typeof localRaw==='object'?localRaw:{});
-    if(remote) song[imageField(owner)]={...raw};
+    if(remote) song[visualField(owner,activeImageMode)]={...raw};
     const baseSources=[];
     const addBase=value=>{if(!value)return;const v=String(value);if(!baseSources.includes(v))baseSources.push(v);};
-    addBase(raw.original);
-    // Evitar usar una previsualización compuesta como foto base: el editor debe
-    // reconstruir siempre foto + operaciones + cajas editables.
-    const fieldValue=localRaw&&typeof localRaw==='object'?(localRaw.original||localRaw.src||localRaw.dataUrl||''):localRaw;
-    addBase(fieldValue);
-    if(owner==='elena'){
-      const fallback=state.notes[slug(song.titulo)];
-      (Array.isArray(fallback)?fallback:[fallback]).forEach(value=>{
-        if(!value)return;const v=String(value);addBase(v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`);
-      });
+    if(activeImageMode==='image'){
+      addBase(raw.original);
+      // Evitar usar una previsualización compuesta como foto base: el editor debe
+      // reconstruir siempre foto + operaciones + cajas editables.
+      const fieldValue=localRaw&&typeof localRaw==='object'?(localRaw.original||localRaw.src||localRaw.dataUrl||''):localRaw;
+      addBase(fieldValue);
+      if(owner==='elena'){
+        const fallback=state.notes[slug(song.titulo)];
+        (Array.isArray(fallback)?fallback:[fallback]).forEach(value=>{
+          if(!value)return;const v=String(value);addBase(v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`);
+        });
+      }
     }
     imageEditorState.sources=baseSources;imageEditorState.original=baseSources[0]||'';imageEditorState.overlay=raw.drawingOverlay||raw.overlay||'';imageEditorState.operations=Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
@@ -2032,6 +2038,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   const imageUploadMenu=$('#imageUploadOptions');
   $('#imageUploadTrigger').addEventListener('click',e=>{
     e.preventDefault();e.stopPropagation();
+    if(activeImageMode==='songbook')return;
     if(!imageUploadMenu.hidden){imageUploadMenu.hidden=true;return;}
     positionPopover(imageUploadMenu,$('#imageUploadTrigger'));
   });
@@ -2041,6 +2048,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   });
   $('#imageDeletePhotoBtn').addEventListener('click',()=>{
     imageUploadMenu.hidden=true;
+    if(activeImageMode==='songbook')return;
     if(!imageEditorState.original){toast('No hay una foto para eliminar');return;}
     askConfirm('Eliminar fotografía','Se eliminará únicamente la fotografía. Los dibujos y cajas de texto se conservarán sobre un lienzo blanco.',async()=>{
       imageEditorState.original='';
@@ -2420,8 +2428,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   async function saveImageEditorVectorsRemote(){
     syncImageTextBoxesFromDom();
     const stamp=Date.now();
-    const editId=remoteImageKey(activeImageSongId,activeImageOwner);
-    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
+    const editId=remoteImageKey(activeImageSongId,activeImageOwner,activeImageMode);
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,mode:activeImageMode,originalSrc:activeImageMode==='songbook'?'':(imageEditorState.original||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
     // El guardado local siempre ocurre primero y nunca depende de internet.
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
@@ -2435,7 +2443,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       const originalSrc=String(metadata.originalSrc||'');
       if(originalSrc.startsWith('data:')&&originalSrc.length>780000)throw new Error('La foto supera el tamaño seguro para Firestore');
       const remotePayload={...metadata,originalSrc,pendingSync:false,syncedAt:Date.now()};
-      const ref=remoteImageRef(activeImageSongId,activeImageOwner);
+      const ref=remoteImageRef(activeImageSongId,activeImageOwner,activeImageMode);
       if(!ref)throw new Error('No se pudo crear el documento remoto de la edición');
       const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
       await Promise.race([remoteSetDoc(ref,remotePayload,{merge:false}),timeout]);
@@ -2452,16 +2460,16 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       return metadata;
     }
   }
-  async function refreshOpenImageViewer(edit,song,owner){
+  async function refreshOpenImageViewer(edit,song,owner,mode='image'){
     const viewer=$('#viewerDialog');
-    const expectedType=owner==='daniel'?'daniel-image':'notes';
+    const expectedType=mode==='songbook'?(owner==='daniel'?'daniel':'lyrics'):(owner==='daniel'?'daniel-image':'notes');
     if(!viewer?.open)return false;
     // El editor puede cerrarse antes de que Safari actualice la pila de dialogs.
     // Forzamos el visor activo a la canción recién guardada y pintamos la copia
     // en memoria, sin esperar otra lectura de Firestore.
     activeViewerSongId=song.id;
     activeViewerType=expectedType;
-    $('#viewerTitle').textContent=`${expectedType==='daniel-image'?'Imagen Daniel':'Imagen'} · ${song.titulo}`;
+    $('#viewerTitle').textContent=`${expectedType==='daniel-image'?'Imagen Daniel':expectedType==='lyrics'?'Letra':expectedType==='daniel'?'Daniel':'Imagen'} · ${song.titulo}`;
     const normalized={...edit,originalSrc:edit?.originalSrc||edit?.original||'',operations:Array.isArray(edit?.operations)?edit.operations:[],textBoxes:Array.isArray(edit?.textBoxes)?edit.textBoxes:[]};
     const content=$('#viewerContent');
     content.innerHTML='';
@@ -2478,9 +2486,9 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     syncImageTextBoxesFromDom();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
-    let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
+    let saved={original:activeImageMode==='songbook'?'':(imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
-    song[imageField(activeImageOwner)]=saved;
+    song[visualField(activeImageOwner,activeImageMode)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
     return saved;
@@ -2497,12 +2505,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     if(!pending)return;
     requestAnimationFrame(()=>requestAnimationFrame(async()=>{
       const song=state.songs.find(x=>x.id===pending.songId);
-      const expectedType=pending.owner==='daniel'?'daniel-image':'notes';
+      const expectedType=pending.mode==='songbook'?(pending.owner==='daniel'?'daniel':'lyrics'):(pending.owner==='daniel'?'daniel-image':'notes');
       if(!song||!$('#viewerDialog')?.open||activeViewerSongId!==pending.songId||activeViewerType!==expectedType)return;
       try{
         // Invalida cualquier lectura remota antigua iniciada cuando se abrió el visor.
         viewerRenderGeneration++;
-        await refreshOpenImageViewer(pending.edit,song,pending.owner);
+        await refreshOpenImageViewer(pending.edit,song,pending.owner,pending.mode||'image');
       }catch(err){
         console.error('No se pudo redibujar el visor abierto después de cerrar el editor',err);
       }
@@ -2525,11 +2533,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         const saved=await persistImageEditorLayers(true);
         if(!saved)throw new Error('No se pudo preparar la edición');
         markImageEditorSaved();
-        const editId=remoteImageKey(saveSongId,saveOwner);
+        const editId=remoteImageKey(saveSongId,saveOwner,activeImageMode);
         const local=await offlineStoreGet('imageEdits',editId);
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        savedSong[imageField(saveOwner)]={
+        savedSong[visualField(saveOwner,activeImageMode)]={
           original:immediateEdit.originalSrc||immediateEdit.original||'',
           operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
           textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
@@ -2541,7 +2549,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         // exactamente el visor que queda visible debajo. Esto también cubre el caso
         // en que el usuario pulsa la X después de haber guardado.
         if(returnToImageViewer){
-          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner};
+          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner,mode:activeImageMode};
         }
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));

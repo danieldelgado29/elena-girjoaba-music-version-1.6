@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.71.1-elena-visual-navigation";
+const VERSION = "egm-v6.36.71.2-elena-songbook-independent";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
