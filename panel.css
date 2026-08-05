@@ -958,3 +958,11 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
 .image-text-box.is-locked .text-box-editor{cursor:default;overflow:hidden;-webkit-user-select:none;user-select:none}
 .image-text-box.is-locked .text-box-delete,.image-text-box.is-locked .text-box-align,.image-text-box.is-locked .text-box-move,.image-text-box.is-locked .text-box-rotate,.image-text-box.is-locked .text-box-resize{display:none!important}
 @media(max-width:480px){.image-text-box .text-box-lock{min-width:42px;height:36px;top:-42px}}
+
+/* 6.36.70.5 · controles de caja separados para no tapar el texto */
+.image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-68px!important;right:auto!important}
+.image-text-box.is-selected:not(.is-locked) .text-box-move{right:-68px!important}
+@media(max-width:480px){
+  .image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-58px!important}
+  .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
+}
