@@ -1795,30 +1795,44 @@
     if(!layer){layer=document.createElement('div');layer.id='imageTextBoxLayer';layer.className='image-textbox-layer';imageEditorPaper().append(layer);}
     return layer;
   }
+  function escapeTextHtml(value){return String(value||'').replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch])).replace(/\n/g,'<br>');}
+  function normalizeTextBoxRichContent(box){
+    if(typeof box.html==='string')return;
+    let html=escapeTextHtml(box.text||'');
+    if(box.bold)html=`<b>${html}</b>`;
+    if(box.italic)html=`<i>${html}</i>`;
+    box.html=html;
+    box.bold=false;box.italic=false;
+  }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
   function applyTextBoxStyle(el,box){
+    normalizeTextBoxRichContent(box);
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
-    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';
+    const area=el.querySelector('.text-box-editor');
+    if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
+    if(area){area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight='400';area.style.fontStyle='normal';}
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
-      const area=el.querySelector('textarea');
-      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
-      area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
+      const area=el.querySelector('.text-box-editor');
+      const rememberSelection=()=>{const sel=getSelection();if(!sel||!sel.rangeCount)return;const range=sel.getRangeAt(0);if(area.contains(range.commonAncestorContainer))box._selection=range.cloneRange();};
+      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();updateImageTextFormatButtons(area);});
+      area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
+      area.addEventListener('input',()=>{box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);});
       el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
     });
-    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] textarea`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}area.setSelectionRange?.(area.value.length,area.value.length);}}
+    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] .text-box-editor`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}const range=document.createRange(),sel=getSelection();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);activeTextBox()._selection=range.cloneRange();}}
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
@@ -1828,9 +1842,31 @@
   }
   function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function activeTextEditor(){const box=activeTextBox();return box?textBoxLayer().querySelector(`[data-id="${box.id}"] .text-box-editor`):null;}
+  function restoreImageTextSelection(area,box){
+    if(!area||!box)return false;
+    try{area.focus({preventScroll:true});}catch(_){area.focus();}
+    const sel=getSelection();
+    if(box._selection&&area.contains(box._selection.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(box._selection);return true;}
+    const range=document.createRange();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);box._selection=range.cloneRange();return true;
+  }
+  function updateImageTextFormatButtons(area=activeTextEditor()){
+    if(area&&document.activeElement===area){imageEditorState.textBold=document.queryCommandState('bold');imageEditorState.textItalic=document.queryCommandState('italic');}
+    $('#imageBold').classList.toggle('is-active',Boolean(imageEditorState.textBold));$('#imageItalic').classList.toggle('is-active',Boolean(imageEditorState.textItalic));
+  }
+  function applyImageTextCommand(command){
+    const box=activeTextBox(),area=activeTextEditor();
+    if(!box||!area){imageEditorState[command==='bold'?'textBold':'textItalic']=!imageEditorState[command==='bold'?'textBold':'textItalic'];updateImageTextFormatButtons();return;}
+    restoreImageTextSelection(area,box);
+    document.execCommand('styleWithCSS',false,false);
+    document.execCommand(command,false,null);
+    box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');
+    const sel=getSelection();if(sel?.rangeCount&&area.contains(sel.getRangeAt(0).commonAncestorContainer))box._selection=sel.getRangeAt(0).cloneRange();
+    updateImageTextFormatButtons(area);persistImageEditorLayers(false);
+  }
   function syncInlineTextStyle(){
-    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
-    $('#imageBold').classList.toggle('is-active',imageEditorState.textBold);$('#imageItalic').classList.toggle('is-active',imageEditorState.textItalic);syncImageSwatches();
+    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
+    updateImageTextFormatButtons();syncImageSwatches();
   }
   function placeImageTextAt(clientX,clientY){const paper=imageEditorPaper(),r=paper.getBoundingClientRect();const x=(clientX-r.left)/Math.max(1,r.width),y=(clientY-r.top)/Math.max(1,r.height);newTextBox(x,y);}
   function activateImageText(){imageEditorState.tool='text';imageEditorPaper().classList.add('text-mode');$('#imageTextTool').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');syncInlineTextStyle();}
@@ -1838,8 +1874,10 @@
   let suppressTextClick=false,textHold=0;const imageTextButton=$('#imageTextTool'),imageTextMenu=$('#imageTextOptions');imageTextButton.addEventListener('contextmenu',e=>e.preventDefault());imageTextButton.addEventListener('click',()=>{if(suppressTextClick){suppressTextClick=false;return;}if(!imageTextMenu.hidden){imageTextMenu.hidden=true;return;}activateImageText();});imageTextButton.addEventListener('pointerdown',()=>{clearTimeout(textHold);suppressTextClick=false;textHold=setTimeout(()=>{suppressTextClick=true;activateImageText();positionPopover(imageTextMenu,imageTextButton);},520);});['pointerup','pointercancel'].forEach(n=>imageTextButton.addEventListener(n,()=>clearTimeout(textHold)));
   $$('[data-image-text-color]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textColor=b.dataset.imageTextColor;$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
-  $('#imageBold').addEventListener('click',()=>{imageEditorState.textBold=!imageEditorState.textBold;syncInlineTextStyle();});
-  $('#imageItalic').addEventListener('click',()=>{imageEditorState.textItalic=!imageEditorState.textItalic;syncInlineTextStyle();});
+  $('#imageBold').addEventListener('pointerdown',e=>e.preventDefault());
+  $('#imageItalic').addEventListener('pointerdown',e=>e.preventDefault());
+  $('#imageBold').addEventListener('click',()=>applyImageTextCommand('bold'));
+  $('#imageItalic').addEventListener('click',()=>applyImageTextCommand('italic'));
   function activateImagePencil(){
     commitImageText();
     imageEditorState.tool='pencil';
