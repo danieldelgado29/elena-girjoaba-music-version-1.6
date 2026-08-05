@@ -48,7 +48,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   let localShowTransitionUntil = 0;
   let localDesiredShowActive = null;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, activeImageMode='image', returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
   let applyingRemoteShowState=false;
   let latestRemoteState=null;
   let remoteShowGeneration=0;
@@ -703,7 +703,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       const noteFile=state.notes[slug(song.titulo)];
       const storedLyrics=state.lyrics[song.id]||{};
       const hasNotes=Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||song.notasElena);
-      const hasElena=hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
+      const elenaVisual=song.notasElena&&typeof song.notasElena==='object'&&Array.isArray(song.notasElena.textBoxes)&&song.notasElena.textBoxes.some(box=>box.importSource==='cancioneroElena'||String(box.id||'').startsWith('import-elena-'));
+      const hasElena=elenaVisual||hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
       const hasDaniel=hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)||hasMeaningfulContent(song.notasDaniel);
       const card=document.createElement('article');card.dataset.songId=song.id;card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
       card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
@@ -1176,7 +1177,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const label=type==='notes'?'Imagen':type==='daniel-image'?'Imagen Daniel':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
-    if(type==='notes'||type==='daniel-image'){
+    if(type==='notes'||type==='daniel-image'||type==='lyrics'){
+      // 6.36.71.1 · Elena deja de usar el visor antiguo de texto. El botón
+      // Letra abre el mismo visor vectorial que Imagen, sobre lienzo blanco
+      // cuando no existe fotografía ni capas guardadas.
       const owner=type==='daniel-image'?'daniel':'elena',raw=preferredEdit||song[imageField(owner)];
       let rendered=false;
       // 6.36.34 · Si no existe una foto, el visor muestra un lienzo blanco editable.
@@ -1489,7 +1493,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   function renderSongbookList(){
     const q=norm($('#songbookSearch').value),field=songbookField(activeSongbookOwner),songs=state.songs.filter(song=>!q||norm(song.titulo).includes(q)||norm(song.artista).includes(q));
     $('#songbookCount').textContent=`${songs.length} canciones`;const list=$('#songbookSongsList');list.innerHTML='';
-    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner));list.append(row);});
+    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>activeSongbookOwner==='elena'?openImageEditor(song.id,'elena','songbook'):openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner,'image'));list.append(row);});
     if(!songs.length)list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3></div>';
   }
   $('#songbookSearch').addEventListener('input',renderSongbookList);
@@ -1983,11 +1987,20 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
-  async function openImageEditor(songId,owner){
+  async function openImageEditor(songId,owner,mode='image'){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
-    const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
-    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
-    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    activeImageMode=mode==='songbook'?'songbook':'image';
+    const viewerMatchesOwner=owner==='daniel'
+      ? activeViewerType==='daniel-image'
+      : (activeViewerType==='notes'||activeViewerType==='lyrics');
+    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&viewerMatchesOwner);
+    activeImageSongId=songId;activeImageOwner=owner;
+    $('#imageEditorTitle').textContent=activeImageMode==='songbook'
+      ? `Cancionero ${ownerLabel(owner)} · ${song.titulo}`
+      : `Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    const uploadTrigger=$('#imageUploadTrigger');
+    if(uploadTrigger)uploadTrigger.hidden=activeImageMode==='songbook';
+    if(imageUploadMenu)imageUploadMenu.hidden=true;
     const localRaw=song[imageField(owner)];
     const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
@@ -2548,7 +2561,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
   const viewerEdit=$('#viewerEditBtn');
   let viewerEditHold=0;
-  viewerEdit.addEventListener('pointerdown',()=>{viewerEditHold=setTimeout(()=>{const song=state.songs.find(x=>x.id===activeViewerSongId);if(!song)return;if(activeViewerType==='lyrics'){activeSongbookOwner='elena';openSongbookEditor(song.id);}else if(activeViewerType==='daniel'){activeSongbookOwner='daniel';openSongbookEditor(song.id);}else if(activeViewerType==='notes'){openImageEditor(song.id,'elena');}else if(activeViewerType==='daniel-image'){openImageEditor(song.id,'daniel');}},650);});
+  viewerEdit.addEventListener('pointerdown',()=>{viewerEditHold=setTimeout(()=>{const song=state.songs.find(x=>x.id===activeViewerSongId);if(!song)return;if(activeViewerType==='lyrics'){openImageEditor(song.id,'elena','songbook');}else if(activeViewerType==='daniel'){activeSongbookOwner='daniel';openSongbookEditor(song.id);}else if(activeViewerType==='notes'){openImageEditor(song.id,'elena','image');}else if(activeViewerType==='daniel-image'){openImageEditor(song.id,'daniel','image');}},650);});
   ['pointerup','pointercancel','pointerleave'].forEach(name=>viewerEdit.addEventListener(name,()=>clearTimeout(viewerEditHold)));
 
 
