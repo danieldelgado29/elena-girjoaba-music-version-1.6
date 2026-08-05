@@ -771,7 +771,7 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-textbox-layer{position:absolute;inset:0;z-index:4;pointer-events:none;line-height:normal}
 .image-text-box{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:auto;border:1px dashed transparent;border-radius:6px;touch-action:none}
 .image-text-box.is-selected{border-color:rgba(208,0,0,.8);background:rgba(255,255,255,.08)}
-.image-text-box .text-box-editor{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;overflow:auto;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text;white-space:pre-wrap;word-break:break-word}
+.image-text-box textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;overflow:hidden;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text}
 .image-text-box .text-box-delete,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:2;box-sizing:border-box}
 .image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:block}
 .text-box-delete{right:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:0;background:#b00020;color:#fff;font-size:22px;line-height:24px;padding:0;box-shadow:0 2px 7px rgba(0,0,0,.35)}
@@ -784,8 +784,8 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-editor-paper,.image-textbox-layer{overflow:visible!important}
 .image-text-box .text-box-delete,.image-text-box .text-box-move,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:5;box-sizing:border-box;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:none;-webkit-touch-callout:none}
 .image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-move,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:flex}
-.image-text-box .text-box-delete{left:-54px;right:auto;top:-46px;background:#b00020;color:#fff;border-color:#b00020}
-.image-text-box .text-box-move{right:-54px;top:-46px;cursor:move}
+.image-text-box .text-box-delete{left:-8px;right:auto;top:-44px;background:#b00020;color:#fff;border-color:#b00020}
+.image-text-box .text-box-move{right:-8px;top:-44px;cursor:move}
 .image-text-box .text-box-rotate{left:-8px;bottom:-44px;top:auto;margin:0;cursor:grab}
 .image-text-box .text-box-resize{right:-8px;bottom:-44px;cursor:nwse-resize}
 .image-text-box .text-box-delete b,.image-text-box .text-box-move b,.image-text-box .text-box-rotate b,.image-text-box .text-box-resize b{font-size:17px;line-height:15px}
@@ -904,67 +904,3 @@ body.live-mode #queueCount{justify-self:end;text-align:right}
   body.live-mode .show-timer-display{font-size:11px;min-width:53px;letter-spacing:0}
   body.live-mode .show-timer-toggle{width:22px;height:22px;min-width:22px;font-size:10px}
 }
-
-/* Entrega 6.36.70 · alineación y bloqueo por caja de texto */
-.image-text-box .text-box-center-tools{
-  display:none;
-  position:absolute;
-  left:50%;
-  top:-44px;
-  transform:translateX(-50%);
-  z-index:6;
-  align-items:center;
-  gap:5px;
-  white-space:nowrap;
-}
-.image-text-box.is-selected .text-box-center-tools{display:flex}
-.image-text-box .text-box-align,
-.image-text-box .text-box-lock{
-  display:flex;
-  min-width:48px;
-  height:38px;
-  padding:2px 5px;
-  border:1px solid rgba(0,0,0,.25);
-  border-radius:9px;
-  background:#fff;
-  color:#111;
-  box-shadow:0 2px 8px rgba(0,0,0,.28);
-  align-items:center;
-  justify-content:center;
-  flex-direction:column;
-  line-height:1;
-  touch-action:manipulation;
-  -webkit-touch-callout:none;
-}
-.image-text-box .text-box-align b,
-.image-text-box .text-box-lock b{font-size:17px;line-height:15px}
-.image-text-box .text-box-align small,
-.image-text-box .text-box-lock small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
-.image-text-box .text-box-lock.is-active{background:#24272e;color:#fff;border-color:#24272e}
-.image-text-box.is-locked{border-style:solid;border-color:rgba(35,39,46,.78)}
-.image-text-box.is-locked .text-box-editor{cursor:default;user-select:none;-webkit-user-select:none}
-.image-text-box.is-locked .text-box-delete,
-.image-text-box.is-locked .text-box-move,
-.image-text-box.is-locked .text-box-rotate,
-.image-text-box.is-locked .text-box-resize{display:none!important}
-@media(max-width:480px){
-  .image-text-box .text-box-center-tools{top:-42px;gap:3px}
-  .image-text-box .text-box-align,.image-text-box .text-box-lock{min-width:43px;height:36px;padding:2px 3px}
-}
-
-/* Entrega 6.36.71 · controles superiores más separados */
-@media(max-width:480px){
-  .image-text-box .text-box-delete{left:-46px;top:-44px}
-  .image-text-box .text-box-move{right:-46px;top:-44px}
-}
-
-
-/* Entrega 6.36.72 · caja bloqueada recuperable e historial total */
-.image-text-box.is-locked .text-box-center-tools{display:flex!important;left:50%;transform:translateX(-50%)}
-.image-text-box.is-locked .text-box-align{display:none!important}
-.image-text-box.is-locked .text-box-lock{display:flex!important;min-width:34px;width:34px;height:30px;padding:0;border-radius:15px;opacity:.78}
-.image-text-box.is-locked .text-box-lock small{display:none!important}
-.image-text-box.is-locked .text-box-lock b{font-size:15px;line-height:1}
-.image-text-box.is-locked:not(.is-selected){border-color:transparent!important;background:transparent!important}
-.image-text-box.is-locked:not(.is-selected) .text-box-center-tools{top:-34px}
-.image-text-box.is-locked .text-box-editor{pointer-events:none}
