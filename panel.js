@@ -977,12 +977,12 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
           const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
           ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
           const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
-          ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';
+          ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;
           const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
           for(const paragraph of String(box.text||'').split(/\n/)){
             const words=paragraph.split(/\s+/);let line='';
-            for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}
-            if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;
+            for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}
+            if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;
           }
           ctx.restore();
         }
@@ -1921,7 +1921,7 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
     box.bold=false;box.italic=false;
   }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false,align:'left'};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
@@ -1930,13 +1930,13 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
     const area=el.querySelector('.text-box-editor');
     if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
-    if(area){area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight='400';area.style.fontStyle='normal';}
+    if(area){area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight='400';area.style.fontStyle='normal';area.style.textAlign=['left','center','right'].includes(box.align)?box.align:'left';}
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Cambiar alineación del texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
       const area=el.querySelector('.text-box-editor');
       const rememberSelection=()=>{const sel=getSelection();if(!sel||!sel.rangeCount)return;const range=sel.getRangeAt(0);if(area.contains(range.commonAncestorContainer))box._selection=range.cloneRange();};
@@ -1944,6 +1944,11 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
       area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
       area.addEventListener('input',()=>{box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);});
       el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
+      const alignButton=el.querySelector('.text-box-align');
+      const syncAlignButton=()=>{const align=['left','center','right'].includes(box.align)?box.align:'left';alignButton.dataset.align=align;alignButton.querySelector('b').textContent=align==='left'?'≡':align==='center'?'☰':'≣';alignButton.setAttribute('aria-label',`Alineación ${align}. Pulsar para cambiar`);};
+      syncAlignButton();
+      alignButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
+      alignButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();imageEditorState.activeTextBoxId=box.id;const order=['left','center','right'];const current=order.includes(box.align)?box.align:'left';box.align=order[(order.indexOf(current)+1)%order.length];area.style.textAlign=box.align;syncAlignButton();renderTextBoxSelection();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
@@ -2155,7 +2160,7 @@ document.documentElement.dataset.egmVersion="6.36.69.4";
   }else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
-    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
+    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,textX,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,textX,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
   }
   async function saveImageEditorVectorsRemote(){
     const stamp=Date.now();

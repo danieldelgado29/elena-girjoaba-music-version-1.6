@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.69.4-estado-unico";
+const VERSION = "egm-v6.36.70-alinear-cajas";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [

@@ -939,3 +939,10 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
   body.live-mode .song-action{font-size:9px!important;letter-spacing:-.01em!important}
   body.live-mode #finishShowBtn{padding:0 6px!important;font-size:11px!important}
 }
+
+/* 6.36.70: alineación independiente por caja de texto */
+.image-text-box .text-box-align{display:none;position:absolute;z-index:5;box-sizing:border-box;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:manipulation;-webkit-touch-callout:none;left:50%;top:-44px;transform:translateX(-50%)}
+.image-text-box.is-selected .text-box-align{display:flex}
+.image-text-box .text-box-align b{font-size:17px;line-height:15px}
+.image-text-box .text-box-align small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
+@media(max-width:480px){.image-text-box .text-box-align{min-width:42px;height:36px;top:-42px}}
