@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.70.5-text-wrap";
+const VERSION = "egm-v6.36.71-elena-import";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [

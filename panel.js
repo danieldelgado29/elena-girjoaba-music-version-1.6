@@ -927,6 +927,114 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     }
     return '';
   }
+  function stableTextHash(value){
+    const text=String(value||'').replace(/\r\n?/g,'\n').trim();
+    let hash=2166136261;
+    for(let i=0;i<text.length;i++){
+      hash^=text.charCodeAt(i);
+      hash=Math.imul(hash,16777619);
+    }
+    return `txt-${(hash>>>0).toString(16)}-${text.length}`;
+  }
+  function importedElenaBoxId(songId){return `import-elena-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
+  function initialImageSourceForSong(song,owner){
+    const value=song?.[imageField(owner)];
+    if(value&&typeof value==='object'){
+      const candidate=value.originalSrc||value.original||value.dataUrl||value.src||'';
+      if(candidate)return String(candidate);
+    }else if(value)return String(value);
+    if(owner==='elena'){
+      const fallback=state.notes[slug(song?.titulo||'')];
+      const raw=Array.isArray(fallback)?fallback[0]:fallback;
+      if(raw){const v=String(raw);return v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`;}
+    }
+    return '';
+  }
+  function importedTextBoxHeight(text){
+    const normalized=String(text||'').replace(/\r\n?/g,'\n');
+    const explicitLines=normalized.split('\n');
+    let visualLines=0;
+    for(const line of explicitLines)visualLines+=Math.max(1,Math.ceil(Math.max(1,line.length)/42));
+    return Math.min(.84,Math.max(.18,.055*visualLines+.06));
+  }
+  async function syncElenaSongTextToImageEdit(song,previousText=''){
+    if(!song?.id)return null;
+    const text=String(song.cancioneroElena||'').replace(/\r\n?/g,'\n').trim();
+    const previous=String(previousText||'').replace(/\r\n?/g,'\n').trim();
+    const editId=remoteImageKey(song.id,'elena');
+    const existing=await loadRemoteImageEdit(song.id,'elena')||await offlineStoreGet('imageEdits',editId)||null;
+    const boxes=Array.isArray(existing?.textBoxes)?existing.textBoxes.map(box=>({...box})):[];
+    const boxId=importedElenaBoxId(song.id);
+    const index=boxes.findIndex(box=>box.id===boxId||box.importSource==='cancioneroElena');
+    const newHash=stableTextHash(text);
+    const oldHash=index>=0?String(boxes[index].importHash||''):stableTextHash(previous);
+
+    // Si el campo no cambió y ya existe la caja importada, no sobrescribir
+    // posibles ajustes hechos dentro del editor visual.
+    if(text&&index>=0&&oldHash===newHash)return existing;
+
+    if(!text){
+      if(index<0)return existing;
+      boxes.splice(index,1);
+    }else{
+      const current=index>=0?boxes[index]:null;
+      const box={
+        ...(current||{}),
+        id:boxId,
+        importSource:'cancioneroElena',
+        importHash:newHash,
+        x:Number.isFinite(Number(current?.x))?Number(current.x):.06,
+        y:Number.isFinite(Number(current?.y))?Number(current.y):.06,
+        w:Number.isFinite(Number(current?.w))?Number(current.w):.88,
+        h:current&&Number.isFinite(Number(current.h))?Number(current.h):importedTextBoxHeight(text),
+        rotation:Number(current?.rotation)||0,
+        text,
+        html:escapeTextHtml(text),
+        color:current?.color||'#d00000',
+        size:Number(current?.size)||9,
+        fontRatio:Number(current?.fontRatio)||0,
+        bold:false,
+        italic:false,
+        align:['left','center','right'].includes(current?.align)?current.align:'left',
+        locked:true
+      };
+      if(index>=0)boxes[index]=box;else boxes.unshift(box);
+    }
+
+    const stamp=Date.now();
+    const metadata={
+      editId,
+      songId:song.id,
+      owner:'elena',
+      originalSrc:existing?.originalSrc||existing?.original||initialImageSourceForSong(song,'elena')||'',
+      operations:Array.isArray(existing?.operations)?existing.operations:[],
+      textBoxes:boxes.map(serializeImageTextBox),
+      updatedAt:stamp,
+      format:'vector-v4',
+      source:'imageEdits',
+      pendingSync:true
+    };
+    await offlineStorePut('imageEdits',metadata);
+    await offlineStorePut('pendingSync',metadata);
+    song.notasElena={original:metadata.originalSrc,operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
+
+    if(navigator.onLine){
+      try{
+        await initRemoteSync();
+        const ref=remoteImageRef(song.id,'elena');
+        if(ref&&remoteSetDoc){
+          const remotePayload={...metadata,pendingSync:false,syncedAt:Date.now()};
+          await remoteSetDoc(ref,remotePayload,{merge:false});
+          await offlineStorePut('imageEdits',remotePayload);
+          await offlineStoreDelete('pendingSync',editId);
+          song.notasElena={original:remotePayload.originalSrc,operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
+          return remotePayload;
+        }
+      }catch(err){console.warn('Texto Elena guardado localmente; sincronización pendiente',err);}
+    }
+    return metadata;
+  }
+
   function imageCandidates(song,owner){
     const candidates=[];
     const add=value=>{
@@ -1282,8 +1390,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       notasElena:state.newSongElenaNotes,
       cancioneroDaniel:$('#newSongDanielLyrics').value.trim(),notasDaniel:state.newSongDanielNotes
     };
-    askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,()=>{
-      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveLibraryState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
+    askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,async()=>{
+      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveLibraryState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
+      try{await syncElenaSongTextToImageEdit(song,'');}catch(err){console.error(err);toast('Canción guardada; la caja de Elena quedó pendiente');}
+      buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
       if(state.config)filterSongs();
     },'Guardar');
   });
@@ -1347,12 +1457,14 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const title=$('#editSongTitle').value.trim(),artist=$('#editSongArtist').value.trim();if(!title||!artist)return toast('Completa título y artista');
     const duplicate=state.songs.some(s=>s.id!==id&&norm(s.titulo)===norm(title)&&norm(s.artista)===norm(artist));if(duplicate)return toast('Esta canción ya existe');
     const updated={...song,titulo:title,artista:artist,idioma:$('#editSongLanguage').value,generos:$$('#editSongGenres input:checked').map(x=>x.value),listas:[...new Set(['todas',...$$('#editSongRepertoires input:checked:not([value="todas"])').map(x=>x.value)])],letraPublica:$('#editSongPublicLyrics').value.trim(),cancioneroElena:$('#editSongElenaLyrics').value.trim(),notasElena:state.editSongElenaNotes,cancioneroDaniel:$('#editSongDanielLyrics').value.trim(),notasDaniel:state.editSongDanielNotes};
-    askConfirm('Guardar cambios',`Se actualizará “${title}”.`,()=>{
+    const previousElenaText=String(song.cancioneroElena||'');
+    askConfirm('Guardar cambios',`Se actualizará “${title}”.`,async()=>{
       const index=state.songs.findIndex(s=>s.id===id);state.songs[index]=updated;
       const customIndex=state.customSongs.findIndex(s=>s.id===id);
       if(customIndex>=0)state.customSongs[customIndex]=updated;else state.songEdits[id]={...updated};
       sortMasterSongs();
       try{saveLibraryState();}catch(err){return toast('La imagen es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
+      try{await syncElenaSongTextToImageEdit(updated,previousElenaText);}catch(err){console.error(err);toast('Canción guardada; la caja de Elena quedó pendiente');}
       buildRepertoires();dialogBaselines.delete($('#editSongDialog'));$('#editSongDialog').close();renderEditSongsList();if(state.config)filterSongs();toast('Guardado exitosamente');
     },'Guardar');
   });
