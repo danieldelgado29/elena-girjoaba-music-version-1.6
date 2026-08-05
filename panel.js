@@ -1,4 +1,6 @@
 "use strict";
+console.info("Elena Girjoaba Music · reparación 6.36.69.1");
+document.documentElement.dataset.egmVersion="6.36.69.1";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -39,9 +41,16 @@
   let remoteSetDoc = null;
   let remoteReady = false;
   let pendingRemoteLibrary = null;
-  let remoteWriteTimer = 0;
+  let remoteShowWriteTimer = 0;
+  let remoteLibraryWriteTimer = 0;
+  let remoteShowWriteChain = Promise.resolve();
+  let remoteLibraryWriteChain = Promise.resolve();
+  let localShowTransitionUntil = 0;
+  let localDesiredShowActive = null;
   let remoteInitPromise = null;
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
+  let applyingRemoteShowState=false;
+  let latestRemoteState=null;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -124,6 +133,10 @@
         const data=snap.data()||{};
         if(Array.isArray(data.cola)) state.queue=[...data.cola];
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+
+        latestRemoteState=data;
+        applyRemotePanelState(data);
+
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
           pendingRemoteLibrary=b;
@@ -154,45 +167,94 @@
     try{return await remoteInitPromise;}finally{if(!remoteStateRef)remoteInitPromise=null;}
   }
 
-  async function syncRemoteState(immediate=false){
-    clearTimeout(remoteWriteTimer);
-    const write=async()=>{
-      if(!remoteStateRef) await initRemoteSync();
-      if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-      const cfg=state.config||{};
-      const activeId=cfg.repertoire||'todas';
-      // Puente directo panel → cliente. Evita depender de que el cliente
-      // reconstruya el repertorio desde ediciones/biblioteca.
-      const activeSongIds=(activeId==='todas'
-        ? state.songs
-        : state.songs.filter(song=>Array.isArray(song.listas)&&song.listas.includes(activeId))
-      ).map(song=>song.id);
-      await window.__egmSetDoc(remoteStateRef,{
-        lista_activa:activeId,
-        listaActiva:activeId,
-        repertorio_activo_ids:activeSongIds,
-        repertorioActivoIds:activeSongIds,
-        pedidos_whatsapp:cfg.whatsapp!==false,
-        mostrar_cola:cfg.publicQueue!==false,
-        lugar:cfg.venue||'',
-        perfil_clientes:cfg.profile||'medio',
-        show_activo:Boolean(state.config),
-        inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
-        cola:[...state.queue],
-        tocadas:[...state.played],
-        biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
-      },{merge:true});
-      if(!remoteGetDoc) throw new Error('Firebase no cargó la función de verificación');
-      const verified=await remoteGetDoc(remoteStateRef);
-      const savedId=verified.exists()?(verified.data().lista_activa||verified.data().listaActiva):null;
-      if(savedId!==activeId) throw new Error(`Firebase no confirmó el repertorio ${activeId}`);
-      remoteReady=true;
-      return activeId;
+  function buildRemoteShowPayload(){
+    const cfg=state.config||{};
+    const activeId=cfg.repertoire||'todas';
+    const activeSongIds=(activeId==='todas'
+      ? state.songs
+      : state.songs.filter(song=>Array.isArray(song.listas)&&song.listas.includes(activeId))
+    ).map(song=>song.id);
+    const active=Boolean(state.config);
+    return {
+      lista_activa:activeId,
+      listaActiva:activeId,
+      repertorio_activo_ids:activeSongIds,
+      repertorioActivoIds:activeSongIds,
+      pedidos_whatsapp:cfg.whatsapp!==false,
+      mostrar_cola:cfg.publicQueue!==false,
+      lugar:cfg.venue||'',
+      perfil_clientes:cfg.profile||'medio',
+      repertorio_nombre:cfg.repertoireName||'',
+      show_activo:active,
+      inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
+      cronometro_elapsed_ms:active&&typeof showTimerTotalMs==='function'?showTimerTotalMs():0,
+      cronometro_running:active&&typeof showTimer!=='undefined'&&showTimer.running===true,
+      cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
+      cola:active?[...state.queue]:[],
+      tocadas:active?[...state.played]:[],
+      updated_at:Date.now()
     };
-    if(immediate) return write();
+  }
+
+  async function performRemoteShowWrite(){
+    if(!remoteStateRef) await initRemoteSync();
+    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+    const payload=buildRemoteShowPayload();
+    await window.__egmSetDoc(remoteStateRef,payload,{merge:true});
+    if(remoteGetDoc){
+      const verified=await remoteGetDoc(remoteStateRef);
+      const data=verified.exists()?verified.data():{};
+      if(Boolean(data.show_activo)!==Boolean(payload.show_activo)){
+        throw new Error('Firebase no confirmó el estado del show');
+      }
+    }
+    remoteReady=true;
+    return payload;
+  }
+
+  async function syncRemoteState(immediate=false){
+    clearTimeout(remoteShowWriteTimer);
+    const enqueue=()=>{
+      const task=()=>performRemoteShowWrite();
+      remoteShowWriteChain=remoteShowWriteChain.then(task,task);
+      return remoteShowWriteChain;
+    };
+    if(immediate)return enqueue();
     return new Promise((resolve,reject)=>{
-      remoteWriteTimer=setTimeout(()=>write().then(resolve).catch(reject),80);
+      remoteShowWriteTimer=setTimeout(()=>enqueue().then(resolve,reject),80);
     });
+  }
+
+  async function performRemoteLibraryWrite(){
+    if(!remoteStateRef) await initRemoteSync();
+    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+    await window.__egmSetDoc(remoteStateRef,{
+      biblioteca:{
+        songEdits:state.songEdits,
+        customSongs:state.customSongs,
+        customRepertoires:state.customRepertoires
+      },
+      biblioteca_updated_at:Date.now()
+    },{merge:true});
+    return true;
+  }
+
+  async function syncRemoteLibrary(immediate=false){
+    clearTimeout(remoteLibraryWriteTimer);
+    const enqueue=()=>{
+      const task=()=>performRemoteLibraryWrite();
+      remoteLibraryWriteChain=remoteLibraryWriteChain.then(task,task);
+      return remoteLibraryWriteChain;
+    };
+    if(immediate)return enqueue();
+    return new Promise((resolve,reject)=>{
+      remoteLibraryWriteTimer=setTimeout(()=>enqueue().then(resolve,reject),160);
+    });
+  }
+
+  function saveLibraryState(immediate=false){
+    saveStateLocalOnly();
+    return syncRemoteLibrary(immediate);
   }
 
 
@@ -226,6 +288,7 @@
       saveStateLocalOnly();
     }
     buildRepertoires();
+    if(latestRemoteState)applyRemotePanelState(latestRemoteState);
   }
 
   function hydrateSavedState(){
@@ -289,22 +352,80 @@
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
   }
 
+  function applyRemotePanelState(data){
+    if(!data||typeof data!=='object')return;
+    applyingRemoteShowState=true;
+    try{
+      if(Array.isArray(data.cola)) state.queue=[...data.cola];
+      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+      const remoteActive=data.show_activo===true;
+      if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive){
+        return;
+      }
+      if(data.show_activo===true){
+        const repertoire=data.lista_activa||data.listaActiva||'todas';
+        const select=$('#repertoireSelect');
+        const option=select?[...select.options].find(o=>o.value===repertoire):null;
+        state.config={
+          venue:data.lugar||'',
+          repertoire,
+          repertoireName:data.repertorio_nombre||option?.dataset?.name||option?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire),
+          profile:data.perfil_clientes||'medio',
+          whatsapp:data.pedidos_whatsapp!==false,
+          publicQueue:data.mostrar_cola!==false,
+          startedAt:new Date(Number(data.inicio_show)||Date.now()).toISOString()
+        };
+        $('#venueInput').value=state.config.venue;
+        $('#profileSelect').value=state.config.profile;
+        $('#whatsappToggle').checked=state.config.whatsapp;
+        $('#publicQueueToggle').checked=state.config.publicQueue;
+        if(select&&select.querySelector(`option[value="${CSS.escape(repertoire)}"]`))select.value=repertoire;
+        setStatus(true);
+        applyRemoteShowTimer({
+          elapsedMs:Number(data.cronometro_elapsed_ms)||0,
+          running:data.cronometro_running===true,
+          startedAt:Number(data.cronometro_started_at)||0
+        });
+        saveStateLocalOnly();
+        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showLive();
+      }else if(data.show_activo===false){
+        state.config=null;
+        state.queue=[];
+        state.played.clear();
+        setStatus(false);
+        applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
+        saveStateLocalOnly();
+        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('dialog[open]'))showConfig();
+      }
+      renderQueue();
+      if(document.body.classList.contains('live-mode'))renderSongs();
+    }finally{
+      applyingRemoteShowState=false;
+    }
+  }
+
   $('#showForm').addEventListener('submit',e=>{
     e.preventDefault();
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
-    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',async()=>{
+    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
+      // Entrada inmediata: no esperar una lectura de verificación para mostrar Control en vivo.
+      localDesiredShowActive=true;localShowTransitionUntil=Date.now()+10000;
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
-      try{
-        await saveState(true);
-        startNewShowTimer();
-        setStatus(true);showLive();toast(`Configuración guardada correctamente. Repertorio activo: ${config.repertoireName}.`);
-      }catch(err){
-        console.error('No se pudo publicar el repertorio activo:',err);
-        toast('No se pudo actualizar la interfaz cliente. Revisa la conexión y vuelve a guardar.');
-        showConfig();
-      }
+      startNewShowTimer();
+      saveStateLocalOnly();
+      setStatus(true);showLive();
+      toast(`Show iniciado. Repertorio activo: ${config.repertoireName}.`);
+
+      // Publicación en segundo plano. Los demás dispositivos reciben el show por onSnapshot.
+      syncRemoteState(true).then(()=>{
+        localDesiredShowActive=null;localShowTransitionUntil=0;
+        toast('Configuración sincronizada en todos los dispositivos.');
+      }).catch(err=>{
+        console.error('No se pudo publicar el show activo:',err);
+        toast('Show iniciado localmente. Se sincronizará cuando vuelva la conexión.');
+      });
     },'Comenzar');
   });
 
@@ -361,6 +482,20 @@
     };
     tick();
   }
+  function applyRemoteShowTimer(remote){
+    if(!remote||applyingRemoteShowState===false&&remote===showTimer)return;
+    const next={
+      elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
+      running:remote.running===true,
+      startedAt:Number(remote.startedAt)||0
+    };
+    if(next.running&&!next.startedAt)next.startedAt=Date.now();
+    const same=showTimer.elapsedMs===next.elapsedMs&&showTimer.running===next.running&&showTimer.startedAt===next.startedAt;
+    if(same)return;
+    showTimer=next;
+    saveShowTimer();
+    showTimerLoop();
+  }
   function toggleShowTimer(){
     if(showTimer.running){
       showTimer.elapsedMs=showTimerTotalMs();
@@ -372,11 +507,13 @@
     }
     saveShowTimer();
     showTimerLoop();
+    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el cronómetro',err));
   }
   function resetShowTimer(){
     showTimer={elapsedMs:0,running:false,startedAt:0};
     saveShowTimer();
     showTimerLoop();
+    if(state.config&&!applyingRemoteShowState)syncRemoteState(true).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
   }
   function startNewShowTimer(){
     showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
@@ -433,7 +570,13 @@
   });
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{resetShowTimer();state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{
+    localDesiredShowActive=false;localShowTransitionUntil=Date.now()+10000;
+    state.config=null;state.queue=[];state.played.clear();resetShowTimer();saveStateLocalOnly();setStatus(false);showConfig();toast('Show finalizado');
+    syncRemoteState(true).then(()=>{
+      localDesiredShowActive=null;localShowTransitionUntil=0;
+    }).catch(err=>console.warn('El cierre del show quedó pendiente de sincronización',err));
+  },'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 
@@ -1042,7 +1185,7 @@
       cancioneroDaniel:$('#newSongDanielLyrics').value.trim(),notasDaniel:state.newSongDanielNotes
     };
     askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,()=>{
-      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
+      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveLibraryState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
       if(state.config)filterSongs();
     },'Guardar');
   });
@@ -1111,7 +1254,7 @@
       const customIndex=state.customSongs.findIndex(s=>s.id===id);
       if(customIndex>=0)state.customSongs[customIndex]=updated;else state.songEdits[id]={...updated};
       sortMasterSongs();
-      try{saveState();}catch(err){return toast('La imagen es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
+      try{saveLibraryState();}catch(err){return toast('La imagen es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
       buildRepertoires();dialogBaselines.delete($('#editSongDialog'));$('#editSongDialog').close();renderEditSongsList();if(state.config)filterSongs();toast('Guardado exitosamente');
     },'Guardar');
   });
@@ -1260,7 +1403,7 @@
   $('#songbookEditor').addEventListener('input',()=>{saveEditorSelection();scheduleWordHistory();});
   $('#songbookEditor').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoEditor():undoEditor();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoEditor();}});
 
-  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
+  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteLibrary(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
 
   let activeRepertoireId = null;
 
@@ -1342,7 +1485,7 @@
     const id=`rep-${slug(name)}-${Date.now().toString().slice(-5)}`;
     state.customRepertoires.push({id,name});
     activeRepertoireId=id;$('#newRepertoireName').value='';
-    saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+    saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
   });
 
   $('#saveRepertoireBtn').addEventListener('click',()=>{
@@ -1362,7 +1505,7 @@
         if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
       });
       if(state.config?.repertoire===rep.id)state.config.repertoireName=name;
-      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));if(state.config)filterSongs();toast('Guardado exitosamente');
+      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));if(state.config)filterSongs();toast('Guardado exitosamente');
     },'Guardar');
   });
 
@@ -1384,7 +1527,7 @@
         if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
       });
       activeRepertoireId=id;
-      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
     },'Duplicar');
   });
 
@@ -1395,7 +1538,7 @@
       state.songs.forEach(song=>{song.listas=[...new Set(['todas',...(song.listas||[]).filter(id=>id!==rep.id&&id!=='todas')])];const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};});
       if(state.config?.repertoire===rep.id){state.config.repertoire='todas';state.config.repertoireName='Todas las canciones';}
       activeRepertoireId=allRepertoires().find(r=>r.id!=='todas')?.id||'todas';
-      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
     },'Eliminar');
   });
 
@@ -1713,30 +1856,44 @@
     if(!layer){layer=document.createElement('div');layer.id='imageTextBoxLayer';layer.className='image-textbox-layer';imageEditorPaper().append(layer);}
     return layer;
   }
+  function escapeTextHtml(value){return String(value||'').replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch])).replace(/\n/g,'<br>');}
+  function normalizeTextBoxRichContent(box){
+    if(typeof box.html==='string')return;
+    let html=escapeTextHtml(box.text||'');
+    if(box.bold)html=`<b>${html}</b>`;
+    if(box.italic)html=`<i>${html}</i>`;
+    box.html=html;
+    box.bold=false;box.italic=false;
+  }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false};
     imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
   function applyTextBoxStyle(el,box){
+    normalizeTextBoxRichContent(box);
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
-    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';
+    const area=el.querySelector('.text-box-editor');
+    if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
+    if(area){area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight='400';area.style.fontStyle='normal';}
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
-      const area=el.querySelector('textarea');
-      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
-      area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
+      const area=el.querySelector('.text-box-editor');
+      const rememberSelection=()=>{const sel=getSelection();if(!sel||!sel.rangeCount)return;const range=sel.getRangeAt(0);if(area.contains(range.commonAncestorContainer))box._selection=range.cloneRange();};
+      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();updateImageTextFormatButtons(area);});
+      area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
+      area.addEventListener('input',()=>{box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);persistImageEditorLayers(false);});
       el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
     });
-    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] textarea`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}area.setSelectionRange?.(area.value.length,area.value.length);}}
+    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] .text-box-editor`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}const range=document.createRange(),sel=getSelection();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);activeTextBox()._selection=range.cloneRange();}}
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
@@ -1746,9 +1903,31 @@
   }
   function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function activeTextEditor(){const box=activeTextBox();return box?textBoxLayer().querySelector(`[data-id="${box.id}"] .text-box-editor`):null;}
+  function restoreImageTextSelection(area,box){
+    if(!area||!box)return false;
+    try{area.focus({preventScroll:true});}catch(_){area.focus();}
+    const sel=getSelection();
+    if(box._selection&&area.contains(box._selection.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(box._selection);return true;}
+    const range=document.createRange();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);box._selection=range.cloneRange();return true;
+  }
+  function updateImageTextFormatButtons(area=activeTextEditor()){
+    if(area&&document.activeElement===area){imageEditorState.textBold=document.queryCommandState('bold');imageEditorState.textItalic=document.queryCommandState('italic');}
+    $('#imageBold').classList.toggle('is-active',Boolean(imageEditorState.textBold));$('#imageItalic').classList.toggle('is-active',Boolean(imageEditorState.textItalic));
+  }
+  function applyImageTextCommand(command){
+    const box=activeTextBox(),area=activeTextEditor();
+    if(!box||!area){imageEditorState[command==='bold'?'textBold':'textItalic']=!imageEditorState[command==='bold'?'textBold':'textItalic'];updateImageTextFormatButtons();return;}
+    restoreImageTextSelection(area,box);
+    document.execCommand('styleWithCSS',false,false);
+    document.execCommand(command,false,null);
+    box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');
+    const sel=getSelection();if(sel?.rangeCount&&area.contains(sel.getRangeAt(0).commonAncestorContainer))box._selection=sel.getRangeAt(0).cloneRange();
+    updateImageTextFormatButtons(area);persistImageEditorLayers(false);
+  }
   function syncInlineTextStyle(){
-    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
-    $('#imageBold').classList.toggle('is-active',imageEditorState.textBold);$('#imageItalic').classList.toggle('is-active',imageEditorState.textItalic);syncImageSwatches();
+    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
+    updateImageTextFormatButtons();syncImageSwatches();
   }
   function placeImageTextAt(clientX,clientY){const paper=imageEditorPaper(),r=paper.getBoundingClientRect();const x=(clientX-r.left)/Math.max(1,r.width),y=(clientY-r.top)/Math.max(1,r.height);newTextBox(x,y);}
   function activateImageText(){imageEditorState.tool='text';imageEditorPaper().classList.add('text-mode');$('#imageTextTool').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');syncInlineTextStyle();}
@@ -1756,8 +1935,10 @@
   let suppressTextClick=false,textHold=0;const imageTextButton=$('#imageTextTool'),imageTextMenu=$('#imageTextOptions');imageTextButton.addEventListener('contextmenu',e=>e.preventDefault());imageTextButton.addEventListener('click',()=>{if(suppressTextClick){suppressTextClick=false;return;}if(!imageTextMenu.hidden){imageTextMenu.hidden=true;return;}activateImageText();});imageTextButton.addEventListener('pointerdown',()=>{clearTimeout(textHold);suppressTextClick=false;textHold=setTimeout(()=>{suppressTextClick=true;activateImageText();positionPopover(imageTextMenu,imageTextButton);},520);});['pointerup','pointercancel'].forEach(n=>imageTextButton.addEventListener(n,()=>clearTimeout(textHold)));
   $$('[data-image-text-color]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textColor=b.dataset.imageTextColor;$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
-  $('#imageBold').addEventListener('click',()=>{imageEditorState.textBold=!imageEditorState.textBold;syncInlineTextStyle();});
-  $('#imageItalic').addEventListener('click',()=>{imageEditorState.textItalic=!imageEditorState.textItalic;syncInlineTextStyle();});
+  $('#imageBold').addEventListener('pointerdown',e=>e.preventDefault());
+  $('#imageItalic').addEventListener('pointerdown',e=>e.preventDefault());
+  $('#imageBold').addEventListener('click',()=>applyImageTextCommand('bold'));
+  $('#imageItalic').addEventListener('click',()=>applyImageTextCommand('italic'));
   function activateImagePencil(){
     commitImageText();
     imageEditorState.tool='pencil';
@@ -2126,8 +2307,20 @@
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
   login.hidden=!trusted ? false : true;
   loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
-  Promise.all([loadData(),initRemoteSync()]).then(()=>{
-    if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
+  loadData().then(async()=>{
+    if(trusted&&state.config)showLive(); else if(trusted)showConfig();
+    try{
+      await initRemoteSync();
+      if(remoteGetDoc&&remoteStateRef){
+        const snap=await remoteGetDoc(remoteStateRef);
+        if(snap.exists()){
+          latestRemoteState=snap.data()||{};
+          applyRemotePanelState(latestRemoteState);
+        }
+      }
+    }catch(err){
+      console.warn('Panel iniciado con la última copia local; la sincronización se reintentará al recuperar conexión.',err);
+    }
   });
 })();
 
