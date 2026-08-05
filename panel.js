@@ -1105,8 +1105,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     return yy;
   }
 
-  async function composeRemoteImageEdit(remote,song,owner){
-    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'';
+  async function composeRemoteImageEdit(remote,song,owner,mode='image'){
+    // Cancionero (Elena/Daniel) comparte el motor visual, pero nunca la foto de Imagen.
+    const src=mode==='songbook'
+      ? (remote?.originalSrc||remote?.original||'')
+      : (remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'');
     const paintComposition=(img=null)=>{
       try{
         const c=document.createElement('canvas');
@@ -1166,10 +1169,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     requestAnimationFrame(()=>installNoteGestures(canvas));
     return true;
   }
-  async function showComposedViewerEdit(content,edit,song,owner){
+  async function showComposedViewerEdit(content,edit,song,owner,mode='image'){
     if(!edit||typeof edit!=='object')return false;
     if((Array.isArray(edit.operations)&&edit.operations.length)||Array.isArray(edit.textBoxes)||edit.originalSrc||edit.original){
-      const canvas=await composeRemoteImageEdit(edit,song,owner);
+      const canvas=await composeRemoteImageEdit(edit,song,owner,mode);
       if(canvas)return showViewerCanvas(content,canvas,song);
     }
     if(edit.composite)return showViewerImage(content,edit.composite,song);
@@ -1191,7 +1194,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
       const renderBlankCanvas=async()=>{
         if(rendered)return;
-        const blankCanvas=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner);
+        const blankCanvas=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner,viewerMode);
         if(blankCanvas){rendered=showViewerCanvas(content,blankCanvas,song);return;}
         content.classList.remove('is-note-viewer');
         content.innerHTML='<div class="viewer-empty viewer-blank-canvas" aria-label="Lienzo blanco editable"></div>';
@@ -1217,7 +1220,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       // mostrando la versión anterior después de guardar.
       if(raw&&typeof raw==='object'){
         const immediate={...raw,originalSrc:raw.originalSrc||raw.original||'',operations:Array.isArray(raw.operations)?raw.operations:[],textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[]};
-        void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
+        void showComposedViewerEdit(content,immediate,song,owner,viewerMode).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
       }
       loadRemoteImageEdit(song.id,owner,viewerMode).then(async remote=>{
         if(renderGeneration!==viewerRenderGeneration)return;
@@ -1225,7 +1228,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         const remoteUpdated=Number(remote?.updatedAt||0);
         // No reemplazar una edición recién guardada por una respuesta remota vieja.
         if(remote&&remoteUpdated>=localUpdated){
-          const ok=await showComposedViewerEdit(content,remote,song,owner);
+          const ok=await showComposedViewerEdit(content,remote,song,owner,viewerMode);
           if(renderGeneration!==viewerRenderGeneration)return;
           if(ok){rendered=true;song[visualField(owner,viewerMode)]={original:viewerMode==='songbook'?'':(remote.originalSrc||remote.original||''),operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
         }
@@ -2003,7 +2006,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       ? `Cancionero ${ownerLabel(owner)} · ${song.titulo}`
       : `Imagen ${ownerLabel(owner)} · ${song.titulo}`;
     const uploadTrigger=$('#imageUploadTrigger');
-    if(uploadTrigger){const hideUpload=activeImageMode==='songbook';uploadTrigger.hidden=hideUpload;uploadTrigger.style.display=hideUpload?'none':'';uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');}
+    const uploadWrap=uploadTrigger?.closest('.toolbar-popover-wrap');
+    const hideUpload=activeImageMode==='songbook';
+    if(uploadTrigger){uploadTrigger.hidden=hideUpload;uploadTrigger.style.display=hideUpload?'none':'';uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');}
+    if(uploadWrap){uploadWrap.hidden=hideUpload;uploadWrap.style.display=hideUpload?'none':'';uploadWrap.setAttribute('aria-hidden',hideUpload?'true':'false');}
     if(imageUploadMenu)imageUploadMenu.hidden=true;
     const localRaw=song[visualField(owner,activeImageMode)];
     const remote=await loadRemoteImageEdit(songId,owner,activeImageMode);
@@ -2474,9 +2480,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const content=$('#viewerContent');
     content.innerHTML='';
     content.classList.remove('is-note-viewer');
-    const ok=await showComposedViewerEdit(content,normalized,song,owner);
+    const ok=await showComposedViewerEdit(content,normalized,song,owner,mode);
     if(!ok){
-      const src=normalized.originalSrc||imageCandidates(song,owner)[0];
+      const src=mode==='songbook'
+        ? (normalized.originalSrc||'')
+        : (normalized.originalSrc||imageCandidates(song,owner)[0]);
       if(src)return showViewerImage(content,src,song);
     }
     return ok;
