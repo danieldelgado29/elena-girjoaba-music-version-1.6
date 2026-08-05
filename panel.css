@@ -771,7 +771,7 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-textbox-layer{position:absolute;inset:0;z-index:4;pointer-events:none;line-height:normal}
 .image-text-box{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:auto;border:1px dashed transparent;border-radius:6px;touch-action:none}
 .image-text-box.is-selected{border-color:rgba(208,0,0,.8);background:rgba(255,255,255,.08)}
-.image-text-box .text-box-editor{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;overflow:auto;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text;white-space:pre-wrap;word-break:break-word}
+.image-text-box textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;overflow:hidden;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text}
 .image-text-box .text-box-delete,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:2;box-sizing:border-box}
 .image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:block}
 .text-box-delete{right:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:0;background:#b00020;color:#fff;font-size:22px;line-height:24px;padding:0;box-shadow:0 2px 7px rgba(0,0,0,.35)}
