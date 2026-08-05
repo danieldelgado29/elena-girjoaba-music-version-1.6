@@ -298,6 +298,7 @@
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
       try{
         await saveState(true);
+        startNewShowTimer();
         setStatus(true);showLive();toast(`Configuración guardada correctamente. Repertorio activo: ${config.repertoireName}.`);
       }catch(err){
         console.error('No se pudo publicar el repertorio activo:',err);
@@ -316,8 +317,95 @@
   }
   function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({top:0,behavior:'smooth'}); }
 
+  // Entrega 6.36.64 · cronómetro inicia al comenzar el show.
+  const SHOW_TIMER_KEY='egm-show-timer-v1';
+  let showTimer={elapsedMs:0,running:false,startedAt:0};
+  let showTimerFrame=0;
+  function loadShowTimer(){
+    try{
+      const saved=JSON.parse(localStorage.getItem(SHOW_TIMER_KEY)||'null');
+      if(saved&&Number.isFinite(saved.elapsedMs)){
+        showTimer={elapsedMs:Math.max(0,saved.elapsedMs),running:!!saved.running,startedAt:Number(saved.startedAt)||0};
+        if(showTimer.running&&!showTimer.startedAt)showTimer.startedAt=Date.now();
+      }
+    }catch(_){showTimer={elapsedMs:0,running:false,startedAt:0};}
+  }
+  function saveShowTimer(){
+    try{localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify(showTimer));}catch(_){}
+  }
+  function showTimerTotalMs(){
+    return showTimer.elapsedMs+(showTimer.running?Math.max(0,Date.now()-showTimer.startedAt):0);
+  }
+  function formatShowTimer(ms){
+    const total=Math.floor(Math.max(0,ms)/1000);
+    const hours=Math.floor(total/3600);
+    const minutes=Math.floor((total%3600)/60);
+    const seconds=total%60;
+    return [hours,minutes,seconds].map(value=>String(value).padStart(2,'0')).join(':');
+  }
+  function renderShowTimer(){
+    const display=$('#showTimerDisplay');
+    const button=$('#showTimerToggle');
+    if(!display||!button)return;
+    display.textContent=formatShowTimer(showTimerTotalMs());
+    button.textContent=showTimer.running?'Ⅱ':'▶';
+    button.classList.toggle('is-running',showTimer.running);
+    button.setAttribute('aria-label',showTimer.running?'Pausar cronómetro':'Iniciar cronómetro');
+    button.title=showTimer.running?'Doble clic o doble toque para pausar':'Doble clic o doble toque para iniciar';
+  }
+  function showTimerLoop(){
+    cancelAnimationFrame(showTimerFrame);
+    const tick=()=>{
+      renderShowTimer();
+      if(showTimer.running)showTimerFrame=requestAnimationFrame(tick);
+    };
+    tick();
+  }
+  function toggleShowTimer(){
+    if(showTimer.running){
+      showTimer.elapsedMs=showTimerTotalMs();
+      showTimer.running=false;
+      showTimer.startedAt=0;
+    }else{
+      showTimer.running=true;
+      showTimer.startedAt=Date.now();
+    }
+    saveShowTimer();
+    showTimerLoop();
+  }
+  function resetShowTimer(){
+    showTimer={elapsedMs:0,running:false,startedAt:0};
+    saveShowTimer();
+    showTimerLoop();
+  }
+  function startNewShowTimer(){
+    showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
+    saveShowTimer();
+    showTimerLoop();
+  }
+  function bindDoubleActivation(button,handler){
+    if(!button)return;
+    let lastPointerUp=0;
+    button.addEventListener('dblclick',event=>{event.preventDefault();lastPointerUp=0;handler();});
+    button.addEventListener('pointerup',event=>{
+      if(event.pointerType==='mouse')return;
+      event.preventDefault();
+      const now=Date.now();
+      if(now-lastPointerUp<=420){lastPointerUp=0;handler();}
+      else lastPointerUp=now;
+    });
+    button.addEventListener('contextmenu',event=>event.preventDefault());
+  }
+  loadShowTimer();
+  bindDoubleActivation($('#showTimerToggle'),toggleShowTimer);
+  showTimerLoop();
+  window.addEventListener('pagehide',()=>{
+    if(showTimer.running){showTimer.elapsedMs=showTimerTotalMs();showTimer.startedAt=Date.now();}
+    saveShowTimer();
+  });
+
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{resetShowTimer();state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 

@@ -842,3 +842,65 @@ body{touch-action:pan-x pan-y;}
 /* 6.36.46 · visor centrado real y pellizco táctil estable */
 .viewer-content.is-note-viewer{position:relative!important;display:block!important;overflow:hidden!important;}
 .viewer-content.is-note-viewer .note-photo{position:absolute!important;left:50%!important;top:50%!important;margin:0!important;max-width:none!important;max-height:none!important;transform-origin:center center!important;touch-action:none!important;}
+
+/* Entrega 6.36.63 · cronómetro del show */
+body.live-mode .queue-heading{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+}
+body.live-mode .queue-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+body.live-mode .show-timer{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  color:#fff;
+  white-space:nowrap;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+body.live-mode .show-timer-display{
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+  font-size:12px;
+  line-height:1;
+  font-weight:700;
+  letter-spacing:.35px;
+  min-width:58px;
+  text-align:center;
+}
+body.live-mode .show-timer-toggle{
+  appearance:none;
+  -webkit-appearance:none;
+  width:24px;
+  height:24px;
+  min-width:24px;
+  padding:0;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:50%;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font:700 11px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+body.live-mode .show-timer-toggle:active{transform:scale(.94)}
+body.live-mode .show-timer-toggle.is-running{background:rgba(255,255,255,.16)}
+body.live-mode #queueCount{justify-self:end;text-align:right}
+@media(max-width:430px){
+  body.live-mode .queue-heading{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:4px}
+  body.live-mode .show-timer{gap:3px}
+  body.live-mode .show-timer-display{font-size:11px;min-width:53px;letter-spacing:0}
+  body.live-mode .show-timer-toggle{width:22px;height:22px;min-width:22px;font-size:10px}
+}
