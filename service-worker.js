@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-offline-v6-20260804-entrega-63654";
+const VERSION = "egm-v6.36.71.3-elena-songbook-white-canvas";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [

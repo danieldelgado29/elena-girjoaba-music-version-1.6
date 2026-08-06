@@ -106,7 +106,9 @@ const estado = {
   letraOriginalEdicion: "",
   confirmarResolver: null,
   agregarLetraTipo: null,
-  nuevaCancionAbierta: false
+  nuevaCancionAbierta: false,
+  cancionGritaActivaId: null,
+  firmaEstadoRemoto: ""
 };
 
 const DOM = {};
@@ -810,8 +812,32 @@ function iniciarFirebase(firebaseConfig) {
     estado.db = initializeFirestore(estado.firebase,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
     estado.estadoRef = doc(estado.db, "config", "estado");
 
+    const crearFirmaEstadoRemoto = (datos = {}) => JSON.stringify({
+      lista_activa: datos.lista_activa || datos.listaActiva || "",
+      repertorio_activo_ids: Array.isArray(datos.repertorio_activo_ids)
+        ? datos.repertorio_activo_ids
+        : (Array.isArray(datos.repertorioActivoIds) ? datos.repertorioActivoIds : []),
+      pedidos_whatsapp: Boolean(datos.pedidos_whatsapp),
+      mostrar_cola: datos.mostrar_cola !== false,
+      inicio_show: Number(datos.inicio_show || 0),
+      cola: Array.isArray(datos.cola) ? datos.cola : [],
+      tocadas: Array.isArray(datos.tocadas) ? datos.tocadas : [],
+      lugar: String(datos.lugar || ""),
+      perfil_clientes: String(datos.perfil_clientes || ""),
+      show_activo: Boolean(datos.show_activo),
+      biblioteca: datos.biblioteca || null
+    });
+
     const procesarEstadoRemoto = async (snapshot) => {
       const datos = snapshot.exists() ? snapshot.data() : {};
+
+      if (snapshot.exists()) {
+        const firmaNueva = crearFirmaEstadoRemoto(datos);
+        // El sondeo periódico queda como respaldo, pero un estado idéntico no
+        // vuelve a reconstruir la lista ni reinicia sus animaciones visuales.
+        if (firmaNueva === estado.firmaEstadoRemoto) return;
+        estado.firmaEstadoRemoto = firmaNueva;
+      }
 
       if (!snapshot.exists()) {
         await setDoc(
@@ -1025,6 +1051,9 @@ function crearTarjeta(cancion, indice) {
   const articulo = document.createElement("article");
 
   articulo.className = "cancion cancion-enter";
+  if (estado.cancionGritaActivaId === cancion.id) {
+    articulo.classList.add("is-grita-activa");
+  }
   articulo.dataset.id = cancion.id;
   articulo.dataset.estado = situacion;
   articulo.setAttribute("role", "listitem");
@@ -1110,17 +1139,20 @@ function crearTarjeta(cancion, indice) {
 
   if (!estado.vistaClientes && !estado.configRemota.pedidos_whatsapp && situacion === "disponible") {
     const mostrarIndicacion = () => {
+      estado.cancionGritaActivaId = cancion.id;
       document.querySelectorAll(".cancion.is-grita-activa").forEach((otra) => {
         if (otra !== articulo) otra.classList.remove("is-grita-activa");
       });
-      articulo.classList.remove("is-grita-activa");
-      void articulo.offsetWidth;
       articulo.classList.add("is-grita-activa");
-      // Permanece activa hasta que el cliente seleccione otra canción.
+      // Permanece activa aunque la lista se vuelva a renderizar.
     };
-    articulo.querySelector(".cancion__cerrar")?.addEventListener("click",(e)=>{e.stopPropagation();articulo.classList.remove("is-grita-activa");});
+    articulo.querySelector(".cancion__cerrar")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      estado.cancionGritaActivaId = null;
+      articulo.classList.remove("is-grita-activa");
+    });
 
-articulo.addEventListener("click", mostrarIndicacion);
+    articulo.addEventListener("click", mostrarIndicacion);
     articulo.addEventListener("keydown", (evento) => {
       if (evento.key === "Enter" || evento.key === " ") {
         evento.preventDefault();
