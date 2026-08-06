@@ -1,6 +1,4 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.70.5 · controles, cierre seguro y escritura fluida");
-document.documentElement.dataset.egmVersion="6.36.70.5";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -41,20 +39,9 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   let remoteSetDoc = null;
   let remoteReady = false;
   let pendingRemoteLibrary = null;
-  let remoteShowWriteTimer = 0;
-  let remoteLibraryWriteTimer = 0;
-  let remoteShowWriteChain = Promise.resolve();
-  let remoteLibraryWriteChain = Promise.resolve();
-  let localShowTransitionUntil = 0;
-  let localDesiredShowActive = null;
+  let remoteWriteTimer = 0;
   let remoteInitPromise = null;
-  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, activeImageMode='image', returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
-  let applyingRemoteShowState=false;
-  let latestRemoteState=null;
-  let remoteShowGeneration=0;
-  let lastAppliedRemoteRevision=0;
-  const DEVICE_ID=sessionStorage.getItem('egm-device-id')||(`dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  sessionStorage.setItem('egm-device-id',DEVICE_ID);
+  let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -137,10 +124,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         const data=snap.data()||{};
         if(Array.isArray(data.cola)) state.queue=[...data.cola];
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
-
-        latestRemoteState=data;
-        applyRemotePanelState(data);
-
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
           pendingRemoteLibrary=b;
@@ -171,101 +154,45 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     try{return await remoteInitPromise;}finally{if(!remoteStateRef)remoteInitPromise=null;}
   }
 
-  function buildRemoteShowPayload(){
-    const cfg=state.config||{};
-    const activeId=cfg.repertoire||'todas';
-    const activeSongIds=(activeId==='todas'
-      ? state.songs
-      : state.songs.filter(song=>Array.isArray(song.listas)&&song.listas.includes(activeId))
-    ).map(song=>song.id);
-    const active=Boolean(state.config);
-    return {
-      lista_activa:activeId,
-      listaActiva:activeId,
-      repertorio_activo_ids:activeSongIds,
-      repertorioActivoIds:activeSongIds,
-      pedidos_whatsapp:cfg.whatsapp!==false,
-      mostrar_cola:cfg.publicQueue!==false,
-      lugar:cfg.venue||'',
-      perfil_clientes:cfg.profile||'medio',
-      repertorio_nombre:cfg.repertoireName||'',
-      show_activo:active,
-      inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
-      cronometro_elapsed_ms:active&&typeof showTimerTotalMs==='function'?showTimerTotalMs():0,
-      cronometro_running:active&&typeof showTimer!=='undefined'&&showTimer.running===true,
-      cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
-      cola:active?[...state.queue]:[],
-      tocadas:active?[...state.played]:[],
-      updated_at:Date.now(),
-      show_revision:Date.now(),
-      show_writer:DEVICE_ID
-    };
-  }
-
-  async function performRemoteShowWrite(expectedGeneration=remoteShowGeneration){
-    if(!remoteStateRef) await initRemoteSync();
-    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-    // Siempre construir el payload justo antes de escribir. Así una tarea antigua
-    // nunca puede reactivar un show que ya fue finalizado.
-    const payload=buildRemoteShowPayload();
-    if(expectedGeneration!==remoteShowGeneration) return payload;
-    await window.__egmSetDoc(remoteStateRef,payload,{merge:true});
-    remoteReady=true;
-    return payload;
-  }
-
   async function syncRemoteState(immediate=false){
-    clearTimeout(remoteShowWriteTimer);
-    const generation=remoteShowGeneration;
-    const enqueue=()=>{
-      const task=()=>performRemoteShowWrite(generation);
-      remoteShowWriteChain=remoteShowWriteChain.then(task,task);
-      return remoteShowWriteChain;
+    clearTimeout(remoteWriteTimer);
+    const write=async()=>{
+      if(!remoteStateRef) await initRemoteSync();
+      if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
+      const cfg=state.config||{};
+      const activeId=cfg.repertoire||'todas';
+      // Puente directo panel → cliente. Evita depender de que el cliente
+      // reconstruya el repertorio desde ediciones/biblioteca.
+      const activeSongIds=(activeId==='todas'
+        ? state.songs
+        : state.songs.filter(song=>Array.isArray(song.listas)&&song.listas.includes(activeId))
+      ).map(song=>song.id);
+      await window.__egmSetDoc(remoteStateRef,{
+        lista_activa:activeId,
+        listaActiva:activeId,
+        repertorio_activo_ids:activeSongIds,
+        repertorioActivoIds:activeSongIds,
+        pedidos_whatsapp:cfg.whatsapp!==false,
+        mostrar_cola:cfg.publicQueue!==false,
+        lugar:cfg.venue||'',
+        perfil_clientes:cfg.profile||'medio',
+        show_activo:Boolean(state.config),
+        inicio_show:cfg.startedAt?new Date(cfg.startedAt).getTime():Date.now(),
+        cola:[...state.queue],
+        tocadas:[...state.played],
+        biblioteca:{songEdits:state.songEdits,customSongs:state.customSongs,customRepertoires:state.customRepertoires}
+      },{merge:true});
+      if(!remoteGetDoc) throw new Error('Firebase no cargó la función de verificación');
+      const verified=await remoteGetDoc(remoteStateRef);
+      const savedId=verified.exists()?(verified.data().lista_activa||verified.data().listaActiva):null;
+      if(savedId!==activeId) throw new Error(`Firebase no confirmó el repertorio ${activeId}`);
+      remoteReady=true;
+      return activeId;
     };
-    if(immediate)return enqueue();
+    if(immediate) return write();
     return new Promise((resolve,reject)=>{
-      remoteShowWriteTimer=setTimeout(()=>enqueue().then(resolve,reject),80);
+      remoteWriteTimer=setTimeout(()=>write().then(resolve).catch(reject),80);
     });
-  }
-
-  async function publishShowPatch(patch){
-    if(!remoteStateRef) await initRemoteSync();
-    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-    const revision=Date.now();
-    await window.__egmSetDoc(remoteStateRef,{...patch,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision},{merge:true});
-    return revision;
-  }
-
-  async function performRemoteLibraryWrite(){
-    if(!remoteStateRef) await initRemoteSync();
-    if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-    await window.__egmSetDoc(remoteStateRef,{
-      biblioteca:{
-        songEdits:state.songEdits,
-        customSongs:state.customSongs,
-        customRepertoires:state.customRepertoires
-      },
-      biblioteca_updated_at:Date.now()
-    },{merge:true});
-    return true;
-  }
-
-  async function syncRemoteLibrary(immediate=false){
-    clearTimeout(remoteLibraryWriteTimer);
-    const enqueue=()=>{
-      const task=()=>performRemoteLibraryWrite();
-      remoteLibraryWriteChain=remoteLibraryWriteChain.then(task,task);
-      return remoteLibraryWriteChain;
-    };
-    if(immediate)return enqueue();
-    return new Promise((resolve,reject)=>{
-      remoteLibraryWriteTimer=setTimeout(()=>enqueue().then(resolve,reject),160);
-    });
-  }
-
-  function saveLibraryState(immediate=false){
-    saveStateLocalOnly();
-    return syncRemoteLibrary(immediate);
   }
 
 
@@ -299,7 +226,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       saveStateLocalOnly();
     }
     buildRepertoires();
-    if(latestRemoteState)applyRemotePanelState(latestRemoteState);
   }
 
   function hydrateSavedState(){
@@ -356,84 +282,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const o=document.createElement('option');o.value=value;$('#venueHistory').append(o);
   }
   $('#venueInput').addEventListener('input',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
-  $('#repertoireSelect').addEventListener('change',()=>{
-    sessionStorage.setItem('egm-venue-draft',$('#venueInput').value);
-    // Si el show ya está activo, el cambio de repertorio se publica sin reiniciar
-    // cola, cronómetro ni canciones tocadas.
-    if(!state.config||applyingRemoteShowState)return;
-    const select=$('#repertoireSelect');
-    const repertoire=select.value;
-    const repertoireName=select.selectedOptions[0]?.dataset?.name||select.selectedOptions[0]?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire);
-    state.config={...state.config,repertoire,repertoireName};
-    invalidateRepertoireCache();
-    saveStateLocalOnly();
-    $('#liveRepertoireName').textContent=repertoireName;
-    filterSongs();
-    const ids=(repertoire==='todas'?state.songs:state.songs.filter(song=>(song.listas||[]).includes(repertoire))).map(song=>song.id);
-    publishShowPatch({lista_activa:repertoire,listaActiva:repertoire,repertorio_nombre:repertoireName,repertorio_activo_ids:ids,repertorioActivoIds:ids,show_activo:true})
-      .then(()=>toast('Repertorio sincronizado en todos los dispositivos.'))
-      .catch(err=>{console.error('No se sincronizó el repertorio',err);toast('Cambio guardado localmente; sincronización pendiente.');});
-  });
+  $('#repertoireSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
   $('#profileSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
   const venueDraft=sessionStorage.getItem('egm-venue-draft'); if(venueDraft&&!$('#venueInput').value) $('#venueInput').value=venueDraft;
   function setStatus(active){
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
-  }
-
-  function panelAuthValid(){return $('#panelLogin')?.hidden===true;}
-
-  function closeDialogsForRemoteShowEnd(){
-    document.querySelectorAll('dialog[open]').forEach(dialog=>{
-      if(dialog.id==='confirmDialog')return;
-      try{dialog.close();}catch(_){dialog.removeAttribute('open');}
-    });
-  }
-
-  function applyRemotePanelState(data){
-    if(!data||typeof data!=='object')return;
-    const revision=Number(data.show_revision||data.updated_at||0);
-    if(revision&&revision<lastAppliedRemoteRevision)return;
-    if(revision)lastAppliedRemoteRevision=revision;
-    applyingRemoteShowState=true;
-    try{
-      if(Array.isArray(data.cola)) state.queue=[...data.cola];
-      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
-      const remoteActive=data.show_activo===true;
-      if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
-      if(remoteActive){
-        const repertoire=data.lista_activa||data.listaActiva||'todas';
-        const select=$('#repertoireSelect');
-        const option=select?[...select.options].find(o=>o.value===repertoire):null;
-        state.config={
-          venue:data.lugar||'', repertoire,
-          repertoireName:data.repertorio_nombre||option?.dataset?.name||option?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire),
-          profile:data.perfil_clientes||'medio', whatsapp:data.pedidos_whatsapp!==false,
-          publicQueue:data.mostrar_cola!==false,
-          startedAt:new Date(Number(data.inicio_show)||Date.now()).toISOString()
-        };
-        $('#venueInput').value=state.config.venue;
-        $('#profileSelect').value=state.config.profile;
-        $('#whatsappToggle').checked=state.config.whatsapp;
-        $('#publicQueueToggle').checked=state.config.publicQueue;
-        if(select&&select.querySelector(`option[value="${CSS.escape(repertoire)}"]`))select.value=repertoire;
-        $('#liveRepertoireName').textContent=state.config.repertoireName;
-        invalidateRepertoireCache();
-        setStatus(true);
-        applyRemoteShowTimer({elapsedMs:Number(data.cronometro_elapsed_ms)||0,running:data.cronometro_running===true,startedAt:Number(data.cronometro_started_at)||0});
-        saveStateLocalOnly();
-        // Tras autenticar, un show remoto activo lleva directamente a Control en vivo.
-        if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('#imageEditorDialog[open],#songbookEditorDialog[open]'))showLive();
-      }else if(data.show_activo===false){
-        state.config=null;state.queue=[];state.played.clear();
-        setStatus(false);
-        applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
-        saveStateLocalOnly();
-        // El cierre remoto es global: ningún modal puede impedir volver a Configuración.
-        if(panelAuthValid()&&$('#panelLogin').hidden){closeDialogsForRemoteShowEnd();showConfig();toast('El show fue finalizado desde otro dispositivo.');}
-      }
-      renderQueue();
-      if(document.body.classList.contains('live-mode')){invalidateRepertoireCache();filterSongs();}
-    }finally{applyingRemoteShowState=false;}
   }
 
   $('#showForm').addEventListener('submit',e=>{
@@ -441,23 +294,16 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
     const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
-    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
-      // Entrada inmediata: no esperar una lectura de verificación para mostrar Control en vivo.
-      remoteShowGeneration++;localDesiredShowActive=true;localShowTransitionUntil=Date.now()+10000;
+    askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',async()=>{
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
-      startNewShowTimer();
-      saveStateLocalOnly();
-      setStatus(true);showLive();
-      toast(`Show iniciado. Repertorio activo: ${config.repertoireName}.`);
-
-      // Publicación en segundo plano. Los demás dispositivos reciben el show por onSnapshot.
-      syncRemoteState(true).then(()=>{
-        localDesiredShowActive=null;localShowTransitionUntil=0;
-        toast('Configuración sincronizada en todos los dispositivos.');
-      }).catch(err=>{
-        console.error('No se pudo publicar el show activo:',err);
-        toast('Show iniciado localmente. Se sincronizará cuando vuelva la conexión.');
-      });
+      try{
+        await saveState(true);
+        setStatus(true);showLive();toast(`Configuración guardada correctamente. Repertorio activo: ${config.repertoireName}.`);
+      }catch(err){
+        console.error('No se pudo publicar el repertorio activo:',err);
+        toast('No se pudo actualizar la interfaz cliente. Revisa la conexión y vuelve a guardar.');
+        showConfig();
+      }
     },'Comenzar');
   });
 
@@ -466,172 +312,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     document.body.classList.add('live-mode');
     $('#configView').classList.remove('is-active');$('#liveView').classList.add('is-active');
     $('#liveRepertoireName').textContent=state.config.repertoireName || 'Repertorio';
-    window.scrollTo({left:0,top:0,behavior:'auto'});
     $('#songSearch').value='';filterSongs();renderQueue();window.scrollTo({top:0,behavior:'smooth'});
   }
-  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({left:0,top:0,behavior:'smooth'}); }
-
-  // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
-  const SHOW_TIMER_KEY='egm-show-timer-v1';
-  let showTimer={elapsedMs:0,running:false,startedAt:0};
-  let showTimerFrame=0;
-  function loadShowTimer(){
-    try{
-      const saved=JSON.parse(localStorage.getItem(SHOW_TIMER_KEY)||'null');
-      if(saved&&Number.isFinite(saved.elapsedMs)){
-        showTimer={elapsedMs:Math.max(0,saved.elapsedMs),running:!!saved.running,startedAt:Number(saved.startedAt)||0};
-        if(showTimer.running&&!showTimer.startedAt)showTimer.startedAt=Date.now();
-      }
-    }catch(_){showTimer={elapsedMs:0,running:false,startedAt:0};}
-  }
-  function saveShowTimer(){
-    try{localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify(showTimer));}catch(_){}
-  }
-  function showTimerTotalMs(){
-    return showTimer.elapsedMs+(showTimer.running?Math.max(0,Date.now()-showTimer.startedAt):0);
-  }
-  function formatShowTimer(ms){
-    const total=Math.floor(Math.max(0,ms)/1000);
-    const hours=Math.floor(total/3600);
-    const minutes=Math.floor((total%3600)/60);
-    const seconds=total%60;
-    return [hours,minutes,seconds].map(value=>String(value).padStart(2,'0')).join(':');
-  }
-  function renderShowTimer(){
-    const display=$('#showTimerDisplay');
-    const button=$('#showTimerToggle');
-    if(!display||!button)return;
-    display.textContent=formatShowTimer(showTimerTotalMs());
-    button.textContent=showTimer.running?'Ⅱ':'▶';
-    button.classList.toggle('is-running',showTimer.running);
-    button.setAttribute('aria-label',showTimer.running?'Pausar cronómetro':'Iniciar cronómetro');
-    button.title=showTimer.running?'Doble clic o doble toque para pausar':'Doble clic o doble toque para iniciar';
-  }
-  function showTimerLoop(){
-    cancelAnimationFrame(showTimerFrame);
-    const tick=()=>{
-      renderShowTimer();
-      if(showTimer.running)showTimerFrame=requestAnimationFrame(tick);
-    };
-    tick();
-  }
-  function applyRemoteShowTimer(remote){
-    if(!remote||applyingRemoteShowState===false&&remote===showTimer)return;
-    const next={
-      elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
-      running:remote.running===true,
-      startedAt:Number(remote.startedAt)||0
-    };
-    if(next.running&&!next.startedAt)next.startedAt=Date.now();
-    const same=showTimer.elapsedMs===next.elapsedMs&&showTimer.running===next.running&&showTimer.startedAt===next.startedAt;
-    if(same)return;
-    showTimer=next;
-    saveShowTimer();
-    showTimerLoop();
-  }
-  function toggleShowTimer(){
-    if(showTimer.running){
-      showTimer.elapsedMs=showTimerTotalMs();
-      showTimer.running=false;
-      showTimer.startedAt=0;
-    }else{
-      showTimer.running=true;
-      showTimer.startedAt=Date.now();
-    }
-    saveShowTimer();
-    showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:showTimerTotalMs(),cronometro_running:showTimer.running,cronometro_started_at:showTimer.running?showTimer.startedAt:0}).catch(err=>console.warn('No se sincronizó el cronómetro',err));
-  }
-  function resetShowTimer(){
-    showTimer={elapsedMs:0,running:false,startedAt:0};
-    saveShowTimer();
-    showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0}).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
-  }
-  function startNewShowTimer(){
-    showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
-    saveShowTimer();
-    showTimerLoop();
-  }
-  function bindDoubleActivation(button,handler){
-    if(!button)return;
-    let lastTouchUp=0;
-    let lastActivation=0;
-    let touchResetTimer=0;
-
-    const activate=(event)=>{
-      const now=Date.now();
-      // Safari/Chrome can emit both click(detail=2) and dblclick for the same gesture.
-      // This guard guarantees a single pause/play change per double activation.
-      if(now-lastActivation<320)return;
-      lastActivation=now;
-      if(event){event.preventDefault();event.stopPropagation();}
-      handler();
-    };
-
-    // Mouse and trackpad: click.detail is the most consistent signal across browsers.
-    button.addEventListener('click',event=>{
-      if(event.detail>=2)activate(event);
-    });
-    // Fallback for browsers that only emit dblclick.
-    button.addEventListener('dblclick',event=>activate(event));
-
-    // iPhone, Android and installed PWA: detect two pointer releases.
-    button.addEventListener('pointerup',event=>{
-      if(event.pointerType==='mouse')return;
-      event.preventDefault();
-      event.stopPropagation();
-      const now=Date.now();
-      if(now-lastTouchUp<=480){
-        lastTouchUp=0;
-        clearTimeout(touchResetTimer);
-        activate(event);
-      }else{
-        lastTouchUp=now;
-        clearTimeout(touchResetTimer);
-        touchResetTimer=setTimeout(()=>{lastTouchUp=0;},520);
-      }
-    });
-    button.addEventListener('contextmenu',event=>event.preventDefault());
-  }
-  loadShowTimer();
-  bindDoubleActivation($('#showTimerToggle'),toggleShowTimer);
-  showTimerLoop();
-  window.addEventListener('pagehide',()=>{
-    if(showTimer.running){showTimer.elapsedMs=showTimerTotalMs();showTimer.startedAt=Date.now();}
-    saveShowTimer();
-  });
+  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({top:0,behavior:'smooth'}); }
 
   $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
-
-  // 6.36.69.4 · cierre global directo, independiente de colas antiguas.
-  async function publishFinishedShow(){
-    clearTimeout(remoteShowWriteTimer);
-    remoteShowGeneration++;
-    remoteShowWriteChain=Promise.resolve();
-    const finishPayload={show_activo:false,cola:[],tocadas:[],cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0,inicio_show:0};
-    await publishShowPatch(finishPayload);
-    // Segunda publicación corta para ganar ante una pestaña con una escritura vieja en vuelo.
-    await new Promise(resolve=>setTimeout(resolve,180));
-    await publishShowPatch(finishPayload);
-    return finishPayload;
-  }
-
-  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola en todos los dispositivos.',async()=>{
-    localDesiredShowActive=false;localShowTransitionUntil=Date.now()+15000;
-    state.config=null;state.queue=[];state.played.clear();
-    showTimer={elapsedMs:0,running:false,startedAt:0};saveShowTimer();showTimerLoop();
-    saveStateLocalOnly();setStatus(false);showConfig();toast('Finalizando show en todos los dispositivos…');
-    try{
-      await publishFinishedShow();
-      localDesiredShowActive=null;localShowTransitionUntil=0;
-      toast('Show finalizado en todos los dispositivos.');
-    }catch(err){
-      console.error('No se pudo finalizar el show remotamente:',err);
-      localDesiredShowActive=null;localShowTransitionUntil=0;
-      toast('No se pudo confirmar el cierre remoto. Revisa la conexión.');
-    }
-  },'Finalizar'));
+  $('#finishShowBtn').addEventListener('click',()=>askConfirm('Finalizar show','Se cerrará el show actual y se limpiará la cola.',()=>{state.config=null;state.queue=[];state.played.clear();saveState();setStatus(false);showConfig();toast('Show finalizado');},'Finalizar'));
   $('#closePanelBtn').addEventListener('click',()=>askConfirm('Cerrar el panel','¿Deseas cerrar esta pantalla?',()=>{window.location.href='index.html?panel=1';},'Cerrar'));
   $('#exitPanelBtn').addEventListener('click',()=>askConfirm('Salir del panel','¿Deseas regresar a la página principal?',()=>{window.location.href='index.html?panel=1';},'Salir'));
 
@@ -703,8 +389,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       const noteFile=state.notes[slug(song.titulo)];
       const storedLyrics=state.lyrics[song.id]||{};
       const hasNotes=Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||song.notasElena);
-      const elenaVisual=song.notasElena&&typeof song.notasElena==='object'&&Array.isArray(song.notasElena.textBoxes)&&song.notasElena.textBoxes.some(box=>box.importSource==='cancioneroElena'||String(box.id||'').startsWith('import-elena-'));
-      const hasElena=elenaVisual||hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
+      const hasElena=hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
       const hasDaniel=hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)||hasMeaningfulContent(song.notasDaniel);
       const card=document.createElement('article');card.dataset.songId=song.id;card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
       card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
@@ -916,9 +601,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   }
 
   function imageField(owner){ return owner==='daniel'?'notasDaniel':'notasElena'; }
-  function songbookVisualField(owner){ return owner==='daniel'?'cancioneroDanielVisual':'cancioneroElenaVisual'; }
-  function visualField(owner,mode='image'){ return mode==='songbook'?songbookVisualField(owner):imageField(owner); }
-  function imageEditScope(owner,mode='image'){ return mode==='songbook'?`${owner}-songbook`:owner; }
   function imagePayload(song,owner){
     const value=song[imageField(owner)];
     let candidate='';
@@ -931,115 +613,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     }
     return '';
   }
-  function stableTextHash(value){
-    const text=String(value||'').replace(/\r\n?/g,'\n').trim();
-    let hash=2166136261;
-    for(let i=0;i<text.length;i++){
-      hash^=text.charCodeAt(i);
-      hash=Math.imul(hash,16777619);
-    }
-    return `txt-${(hash>>>0).toString(16)}-${text.length}`;
-  }
-  function importedElenaBoxId(songId){return `import-elena-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
-  function initialImageSourceForSong(song,owner){
-    const value=song?.[imageField(owner)];
-    if(value&&typeof value==='object'){
-      const candidate=value.originalSrc||value.original||value.dataUrl||value.src||'';
-      if(candidate)return String(candidate);
-    }else if(value)return String(value);
-    if(owner==='elena'){
-      const fallback=state.notes[slug(song?.titulo||'')];
-      const raw=Array.isArray(fallback)?fallback[0]:fallback;
-      if(raw){const v=String(raw);return v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`;}
-    }
-    return '';
-  }
-  function importedTextBoxHeight(text){
-    const normalized=String(text||'').replace(/\r\n?/g,'\n');
-    const explicitLines=normalized.split('\n');
-    let visualLines=0;
-    for(const line of explicitLines)visualLines+=Math.max(1,Math.ceil(Math.max(1,line.length)/42));
-    return Math.min(.84,Math.max(.18,.055*visualLines+.06));
-  }
-  async function syncElenaSongTextToImageEdit(song,previousText=''){
-    if(!song?.id)return null;
-    const text=String(song.cancioneroElena||'').replace(/\r\n?/g,'\n').trim();
-    const previous=String(previousText||'').replace(/\r\n?/g,'\n').trim();
-    const editId=remoteImageKey(song.id,'elena','songbook');
-    const existing=await loadRemoteImageEdit(song.id,'elena','songbook')||await offlineStoreGet('imageEdits',editId)||null;
-    const boxes=Array.isArray(existing?.textBoxes)?existing.textBoxes.map(box=>({...box})):[];
-    const boxId=importedElenaBoxId(song.id);
-    const index=boxes.findIndex(box=>box.id===boxId||box.importSource==='cancioneroElena');
-    const newHash=stableTextHash(text);
-    const oldHash=index>=0?String(boxes[index].importHash||''):stableTextHash(previous);
-
-    // Si el campo no cambió y ya existe la caja importada, no sobrescribir
-    // posibles ajustes hechos dentro del editor visual.
-    if(text&&index>=0&&oldHash===newHash)return existing;
-
-    if(!text){
-      if(index<0)return existing;
-      boxes.splice(index,1);
-    }else{
-      const current=index>=0?boxes[index]:null;
-      const box={
-        ...(current||{}),
-        id:boxId,
-        importSource:'cancioneroElena',
-        importHash:newHash,
-        x:Number.isFinite(Number(current?.x))?Number(current.x):.06,
-        y:Number.isFinite(Number(current?.y))?Number(current.y):.06,
-        w:Number.isFinite(Number(current?.w))?Number(current.w):.88,
-        h:current&&Number.isFinite(Number(current.h))?Number(current.h):importedTextBoxHeight(text),
-        rotation:Number(current?.rotation)||0,
-        text,
-        html:escapeTextHtml(text),
-        color:current?.color||'#d00000',
-        size:Number(current?.size)||9,
-        fontRatio:Number(current?.fontRatio)||0,
-        bold:false,
-        italic:false,
-        align:['left','center','right'].includes(current?.align)?current.align:'left',
-        locked:true
-      };
-      if(index>=0)boxes[index]=box;else boxes.unshift(box);
-    }
-
-    const stamp=Date.now();
-    const metadata={
-      editId,
-      songId:song.id,
-      owner:'elena',
-      mode:'songbook',
-      originalSrc:'',
-      operations:Array.isArray(existing?.operations)?existing.operations:[],
-      textBoxes:boxes.map(serializeImageTextBox),
-      updatedAt:stamp,
-      format:'vector-v4',
-      source:'imageEdits',
-      pendingSync:true
-    };
-    await offlineStorePut('imageEdits',metadata);
-    await offlineStorePut('pendingSync',metadata);
-    song.cancioneroElenaVisual={original:'',operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
-
-    if(navigator.onLine){
-      try{
-        await initRemoteSync();
-        const ref=remoteImageRef(song.id,'elena','songbook');
-        if(ref&&remoteSetDoc){
-          const remotePayload={...metadata,pendingSync:false,syncedAt:Date.now()};
-          await remoteSetDoc(ref,remotePayload,{merge:false});
-          await offlineStorePut('imageEdits',remotePayload);
-          await offlineStoreDelete('pendingSync',editId);
-          song.cancioneroElenaVisual={original:'',operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
-          return remotePayload;
-        }
-      }catch(err){console.warn('Texto Elena guardado localmente; sincronización pendiente',err);}
-    }
-    return metadata;
-  }
-
   function imageCandidates(song,owner){
     const candidates=[];
     const add=value=>{
@@ -1060,56 +633,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   }
 
 
-  function wrapCanvasTextLines(ctx,text,maxWidth){
-    const width=Math.max(1,Number(maxWidth)||1);
-    const lines=[];
-    const splitLongToken=token=>{
-      const chunks=[];
-      let current='';
-      for(const char of Array.from(String(token||''))){
-        const test=current+char;
-        if(current&&ctx.measureText(test).width>width){chunks.push(current);current=char;}
-        else current=test;
-      }
-      if(current||!chunks.length)chunks.push(current);
-      return chunks;
-    };
-    for(const paragraph of String(text??'').split(/\n/)){
-      if(paragraph===''){lines.push('');continue;}
-      const words=paragraph.trim().split(/\s+/).filter(Boolean);
-      if(!words.length){lines.push('');continue;}
-      let line='';
-      for(const word of words){
-        const candidate=line?`${line} ${word}`:word;
-        if(ctx.measureText(candidate).width<=width){line=candidate;continue;}
-        if(line){lines.push(line);line='';}
-        if(ctx.measureText(word).width<=width){line=word;continue;}
-        const chunks=splitLongToken(word);
-        chunks.forEach((chunk,index)=>{
-          if(index<chunks.length-1)lines.push(chunk);
-          else line=chunk;
-        });
-      }
-      if(line)lines.push(line);
-    }
-    return lines;
-  }
-
-  function drawWrappedCanvasText(ctx,text,{x=0,y=0,maxWidth=1,maxHeight=Infinity,lineHeight=20}={}){
-    let yy=y;
-    for(const line of wrapCanvasTextLines(ctx,text,maxWidth)){
-      if(yy+lineHeight>y+maxHeight+0.5)break;
-      ctx.fillText(line,x,yy);
-      yy+=lineHeight;
-    }
-    return yy;
-  }
-
-  async function composeRemoteImageEdit(remote,song,owner,mode='image'){
-    // Cancionero (Elena/Daniel) comparte el motor visual, pero nunca la foto de Imagen.
-    const src=mode==='songbook'
-      ? (remote?.originalSrc||remote?.original||'')
-      : (remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'');
+  async function composeRemoteImageEdit(remote,song,owner){
+    const src=remote?.originalSrc||remote?.original||imageCandidates(song,owner)[0]||'';
     const paintComposition=(img=null)=>{
       try{
         const c=document.createElement('canvas');
@@ -1137,10 +662,14 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
           ctx.save();
           const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
           ctx.translate(x+bw/2,y+bh/2);ctx.rotate((Number(box.rotation)||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);
-          const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*c.width:Math.max(16,(Number(box.size)||9)*3)*(c.width/1200);
-          ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;
-          const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);
-          drawWrappedCanvasText(ctx,box.text||'',{x:textX,y:0,maxWidth,maxHeight:bh,lineHeight});
+          const fontSize=Math.max(16,(Number(box.size)||9)*2.5)*(c.width/1200);
+          ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';
+          const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);let yy=0;
+          for(const paragraph of String(box.text||'').split(/\n/)){
+            const words=paragraph.split(/\s+/);let line='';
+            for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}
+            if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;
+          }
           ctx.restore();
         }
         return c;
@@ -1169,10 +698,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     requestAnimationFrame(()=>installNoteGestures(canvas));
     return true;
   }
-  async function showComposedViewerEdit(content,edit,song,owner,mode='image'){
+  async function showComposedViewerEdit(content,edit,song,owner){
     if(!edit||typeof edit!=='object')return false;
     if((Array.isArray(edit.operations)&&edit.operations.length)||Array.isArray(edit.textBoxes)||edit.originalSrc||edit.original){
-      const canvas=await composeRemoteImageEdit(edit,song,owner,mode);
+      const canvas=await composeRemoteImageEdit(edit,song,owner);
       if(canvas)return showViewerCanvas(content,canvas,song);
     }
     if(edit.composite)return showViewerImage(content,edit.composite,song);
@@ -1184,17 +713,14 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const label=type==='notes'?'Imagen':type==='daniel-image'?'Imagen Daniel':type==='daniel'?'Daniel':'Letra';
     $('#viewerTitle').textContent=`${label} · ${song.titulo}`;
     const content=$('#viewerContent');content.innerHTML='';content.classList.remove('is-note-viewer');
-    if(type==='notes'||type==='daniel-image'||type==='lyrics'){
-      // 6.36.71.2 · Elena deja de usar el visor antiguo de texto. El botón
-      // Letra abre el mismo visor vectorial que Imagen, sobre lienzo blanco
-      // cuando no existe fotografía ni capas guardadas.
-      const owner=type==='daniel-image'?'daniel':'elena',viewerMode=type==='lyrics'?'songbook':'image',raw=preferredEdit||song[visualField(owner,viewerMode)];
+    if(type==='notes'||type==='daniel-image'){
+      const owner=type==='daniel-image'?'daniel':'elena',raw=preferredEdit||song[imageField(owner)];
       let rendered=false;
       // 6.36.34 · Si no existe una foto, el visor muestra un lienzo blanco editable.
       // El mismo lienzo se usa como base al mantener pulsado “Editar imagen”.
       const renderBlankCanvas=async()=>{
         if(rendered)return;
-        const blankCanvas=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner,viewerMode);
+        const blankCanvas=await composeRemoteImageEdit({originalSrc:'',operations:[],textBoxes:[]},song,owner);
         if(blankCanvas){rendered=showViewerCanvas(content,blankCanvas,song);return;}
         content.classList.remove('is-note-viewer');
         content.innerHTML='<div class="viewer-empty viewer-blank-canvas" aria-label="Lienzo blanco editable"></div>';
@@ -1202,7 +728,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       };
       const renderFallback=()=>{
         if(rendered)return;
-        const files=viewerMode==='songbook'?[]:imageCandidates(song,owner);
+        const files=imageCandidates(song,owner);
         if(!files.length){void renderBlankCanvas();return;}
         content.innerHTML='';content.classList.add('is-note-viewer');
         const img=new Image();img.alt=`Notas de ${song.titulo}`;let fileIndex=0;
@@ -1220,17 +746,17 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       // mostrando la versión anterior después de guardar.
       if(raw&&typeof raw==='object'){
         const immediate={...raw,originalSrc:raw.originalSrc||raw.original||'',operations:Array.isArray(raw.operations)?raw.operations:[],textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[]};
-        void showComposedViewerEdit(content,immediate,song,owner,viewerMode).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
+        void showComposedViewerEdit(content,immediate,song,owner).then(ok=>{if(renderGeneration!==viewerRenderGeneration)return;if(ok)rendered=true;});
       }
-      loadRemoteImageEdit(song.id,owner,viewerMode).then(async remote=>{
+      loadRemoteImageEdit(song.id,owner).then(async remote=>{
         if(renderGeneration!==viewerRenderGeneration)return;
         const localUpdated=Number((raw&&typeof raw==='object'&&raw.updatedAt)||0);
         const remoteUpdated=Number(remote?.updatedAt||0);
         // No reemplazar una edición recién guardada por una respuesta remota vieja.
         if(remote&&remoteUpdated>=localUpdated){
-          const ok=await showComposedViewerEdit(content,remote,song,owner,viewerMode);
+          const ok=await showComposedViewerEdit(content,remote,song,owner);
           if(renderGeneration!==viewerRenderGeneration)return;
-          if(ok){rendered=true;song[visualField(owner,viewerMode)]={original:viewerMode==='songbook'?'':(remote.originalSrc||remote.original||''),operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
+          if(ok){rendered=true;song[imageField(owner)]={original:remote.originalSrc||remote.original||'',operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
         }
         if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();
       }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();});
@@ -1259,13 +785,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     if(dialog.id==='newSongDialog') fields.push(`photo:${state.newSongElenaNotes?.dataUrl||''}`);
     if(dialog.id==='editSongDialog') fields.push(`photo:${state.editSongElenaNotes?.dataUrl||state.editSongElenaNotes?.src||''}`);
     if(dialog.id==='songbookEditorDialog'){ fields.push(`html:${$('#songbookEditor').innerHTML}`); fields.push(`drawing:${state.songbookDrawingData||''}`); }
-    if(dialog.id==='imageEditorDialog') fields.push(`image-revision:${imageEditorChangeRevision}`);
     return JSON.stringify(fields);
   }
   function rememberDialogState(dialog){dialogBaselines.set(dialog,dialogSnapshot(dialog));}
   function dialogHasUnsavedChanges(dialog){
     if(!trackedDialogIds.has(dialog.id)) return false;
-    if(dialog.id==='imageEditorDialog') return imageEditorChangeRevision!==imageEditorSavedRevision;
     return dialogBaselines.get(dialog)!==dialogSnapshot(dialog);
   }
   function closeDialogDirect(dialog){dialog.close();dialogBaselines.delete(dialog);}
@@ -1401,10 +925,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       notasElena:state.newSongElenaNotes,
       cancioneroDaniel:$('#newSongDanielLyrics').value.trim(),notasDaniel:state.newSongDanielNotes
     };
-    askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,async()=>{
-      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveLibraryState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
-      try{await syncElenaSongTextToImageEdit(song,'');}catch(err){console.error(err);toast('Canción guardada; la caja de Elena quedó pendiente');}
-      buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
+    askConfirm('Guardar nueva canción',`Se añadirá “${title}” a la base de canciones.`,()=>{
+      song._sourceIndex=Math.max(-1,...state.songs.map(x=>Number(x._sourceIndex)||0))+1;state.customSongs.push(song);state.songs.push(song);sortMasterSongs();state.customSongs.sort((a,b)=>a.numero-b.numero);try{saveState();}catch(err){state.customSongs=state.customSongs.filter(s=>s.id!==song.id);state.songs=state.songs.filter(s=>s.id!==song.id);sortMasterSongs();return toast('La foto es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}buildRepertoires();dialogBaselines.delete($('#newSongDialog'));$('#newSongDialog').close();clearElenaNotesSelection();toast('Guardado exitosamente');
       if(state.config)filterSongs();
     },'Guardar');
   });
@@ -1468,14 +990,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const title=$('#editSongTitle').value.trim(),artist=$('#editSongArtist').value.trim();if(!title||!artist)return toast('Completa título y artista');
     const duplicate=state.songs.some(s=>s.id!==id&&norm(s.titulo)===norm(title)&&norm(s.artista)===norm(artist));if(duplicate)return toast('Esta canción ya existe');
     const updated={...song,titulo:title,artista:artist,idioma:$('#editSongLanguage').value,generos:$$('#editSongGenres input:checked').map(x=>x.value),listas:[...new Set(['todas',...$$('#editSongRepertoires input:checked:not([value="todas"])').map(x=>x.value)])],letraPublica:$('#editSongPublicLyrics').value.trim(),cancioneroElena:$('#editSongElenaLyrics').value.trim(),notasElena:state.editSongElenaNotes,cancioneroDaniel:$('#editSongDanielLyrics').value.trim(),notasDaniel:state.editSongDanielNotes};
-    const previousElenaText=String(song.cancioneroElena||'');
-    askConfirm('Guardar cambios',`Se actualizará “${title}”.`,async()=>{
+    askConfirm('Guardar cambios',`Se actualizará “${title}”.`,()=>{
       const index=state.songs.findIndex(s=>s.id===id);state.songs[index]=updated;
       const customIndex=state.customSongs.findIndex(s=>s.id===id);
       if(customIndex>=0)state.customSongs[customIndex]=updated;else state.songEdits[id]={...updated};
       sortMasterSongs();
-      try{saveLibraryState();}catch(err){return toast('La imagen es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
-      try{await syncElenaSongTextToImageEdit(updated,previousElenaText);}catch(err){console.error(err);toast('Canción guardada; la caja de Elena quedó pendiente');}
+      try{saveState();}catch(err){return toast('La imagen es demasiado pesada para guardarla. Prueba una imagen más pequeña.');}
       buildRepertoires();dialogBaselines.delete($('#editSongDialog'));$('#editSongDialog').close();renderEditSongsList();if(state.config)filterSongs();toast('Guardado exitosamente');
     },'Guardar');
   });
@@ -1500,7 +1020,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   function renderSongbookList(){
     const q=norm($('#songbookSearch').value),field=songbookField(activeSongbookOwner),songs=state.songs.filter(song=>!q||norm(song.titulo).includes(q)||norm(song.artista).includes(q));
     $('#songbookCount').textContent=`${songs.length} canciones`;const list=$('#songbookSongsList');list.innerHTML='';
-    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>activeSongbookOwner==='elena'?openImageEditor(song.id,'elena','songbook'):openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner,'image'));list.append(row);});
+    songs.forEach(song=>{const row=document.createElement('div');row.className='edit-song-row';const hasText=Boolean(String(song[field]||'').trim());const hasImage=Boolean(imagePayload(song,activeSongbookOwner));row.innerHTML=`<span class="edit-song-number">${String(song.numero||'').padStart(2,'0')}</span><div><strong>${esc(song.titulo)}</strong><small>${esc(song.artista||'Artista no indicado')} · ${hasText?'Con texto':'Sin texto'} · ${hasImage?'Con imagen':'Sin imagen'}</small></div><div class="edit-song-actions"><button type="button" class="secondary-btn" data-edit-text>Editar letra</button><button type="button" class="secondary-btn" data-edit-image>Editar imagen</button></div>`;row.querySelector('[data-edit-text]').addEventListener('click',()=>openSongbookEditor(song.id));row.querySelector('[data-edit-image]').addEventListener('click',()=>openImageEditor(song.id,activeSongbookOwner));list.append(row);});
     if(!songs.length)list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3></div>';
   }
   $('#songbookSearch').addEventListener('input',renderSongbookList);
@@ -1624,7 +1144,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   $('#songbookEditor').addEventListener('input',()=>{saveEditorSelection();scheduleWordHistory();});
   $('#songbookEditor').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoEditor():undoEditor();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoEditor();}});
 
-  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteLibrary(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
+  $('#saveSongbookBtn').addEventListener('click',()=>{commitEditorHistory();const song=state.songs.find(s=>s.id===activeSongbookSongId);if(!song)return;const field=songbookField(activeSongbookOwner),html=$('#songbookEditor').innerHTML.trim();askConfirm('Guardar cancionero',`Se actualizará “${song.titulo}”.`,()=>{song[field]=html;song[songbookDrawingField(activeSongbookOwner)]=state.songbookDrawingData||'';const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};saveStateLocalOnly();syncRemoteState(true);dialogBaselines.delete($('#songbookEditorDialog'));$('#songbookEditorDialog').close();renderSongbookList();toast('Guardado exitosamente');},'Guardar');});
 
   let activeRepertoireId = null;
 
@@ -1706,7 +1226,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const id=`rep-${slug(name)}-${Date.now().toString().slice(-5)}`;
     state.customRepertoires.push({id,name});
     activeRepertoireId=id;$('#newRepertoireName').value='';
-    saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+    saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
   });
 
   $('#saveRepertoireBtn').addEventListener('click',()=>{
@@ -1726,7 +1246,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
       });
       if(state.config?.repertoire===rep.id)state.config.repertoireName=name;
-      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));if(state.config)filterSongs();toast('Guardado exitosamente');
+      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));if(state.config)filterSongs();toast('Guardado exitosamente');
     },'Guardar');
   });
 
@@ -1748,7 +1268,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
       });
       activeRepertoireId=id;
-      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
     },'Duplicar');
   });
 
@@ -1759,7 +1279,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       state.songs.forEach(song=>{song.listas=[...new Set(['todas',...(song.listas||[]).filter(id=>id!==rep.id&&id!=='todas')])];const ci=state.customSongs.findIndex(s=>s.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};});
       if(state.config?.repertoire===rep.id){state.config.repertoire='todas';state.config.repertoireName='Todas las canciones';}
       activeRepertoireId=allRepertoires().find(r=>r.id!=='todas')?.id||'todas';
-      saveLibraryState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
+      saveState();buildRepertoires();renderRepertoireManager();rememberDialogState($('#repertoiresDialog'));toast('Guardado exitosamente');
     },'Eliminar');
   });
 
@@ -1919,17 +1439,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
   const IMAGE_COLORS=['#d00000','#111111','#ffffff','#0057d9','#ffd400'];
   const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
-  let imageEditorChangeRevision=0,imageEditorSavedRevision=0,imageTextAutosaveTimer=0;
-  function markImageEditorDirty(){imageEditorChangeRevision++;}
-  function resetImageEditorDirty(){imageEditorChangeRevision=0;imageEditorSavedRevision=0;}
-  function markImageEditorSaved(){imageEditorSavedRevision=imageEditorChangeRevision;}
-  function scheduleImageTextAutosave(){
-    clearTimeout(imageTextAutosaveTimer);
-    imageTextAutosaveTimer=setTimeout(()=>{
-      const run=()=>persistImageEditorLayers(false).catch?.(()=>{});
-      if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:1200});else setTimeout(run,0);
-    },1100);
-  }
   const imageInlineText=$('#imageInlineText');
   function imageEditorCanvas(){return $('#imageEditorCanvas');}
   function imageBaseCanvas(){return $('#imageBaseCanvas');}
@@ -1970,49 +1479,34 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const loadNext=()=>{const base=sources.shift();if(!base){blank();return;}const img=new Image();img.onload=()=>{imageEditorState.original=base;const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.clearRect(0,0,w,h);b.drawImage(img,0,0,w,h);o.clearRect(0,0,w,h);replayImageOperations();if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{o.drawImage(ov,0,0,w,h);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.onerror=()=>{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();}};img.onerror=loadNext;img.src=encodeURI(base);};loadNext();
   }
   function syncImageSwatches(){$('#imageTextSwatch').style.background=imageEditorState.textColor;$('#imagePencilSwatch').style.background=imageEditorState.pencilColor;}
-  function remoteImageKey(songId,owner,mode='image'){return `${imageEditScope(owner,mode)}-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
-  function remoteImageRef(songId,owner,mode='image'){
+  function remoteImageKey(songId,owner){return `${owner}-${String(songId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
+  function remoteImageRef(songId,owner){
     if(!remoteDb||!remoteDoc)return null;
-    return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner,mode));
+    return remoteDoc(remoteDb,'imageEdits',remoteImageKey(songId,owner));
   }
-  async function loadRemoteImageEdit(songId,owner,mode='image'){
-    const editId=remoteImageKey(songId,owner,mode);
+  async function loadRemoteImageEdit(songId,owner){
+    const editId=remoteImageKey(songId,owner);
     const local=await offlineStoreGet('imageEdits',editId);
     if(!navigator.onLine)return local;
     try{
       await initRemoteSync();
       if(!remoteGetDoc)throw new Error('Firestore todavía no está listo');
-      const ref=remoteImageRef(songId,owner,mode);
+      const ref=remoteImageRef(songId,owner);
       if(!ref)throw new Error('No se pudo crear la referencia imageEdits');
       const snap=await remoteGetDoc(ref);
       const remote=snap.exists()?(snap.data()||null):null;
-      // Una edición local pendiente nunca debe ser reemplazada por una copia
-      // remota anterior. Cuando no hay cambios pendientes, Firestore vuelve a
-      // ser la fuente compartida entre dispositivos.
-      const latest=(local&&local.pendingSync)?local:(remote||local);
+      const latest=remote&&Number(remote.updatedAt||0)>=Number(local?.updatedAt||0)?remote:local;
       if(latest){await offlineStorePut('imageEdits',{...latest,editId});cacheEditorImage(latest.originalSrc||latest.original||'');}
       return latest;
     }catch(err){console.warn('Se usará la edición offline',err);return local;}
   }
-  async function openImageEditor(songId,owner,mode='image'){
+  async function openImageEditor(songId,owner){
     const song=state.songs.find(x=>x.id===songId);if(!song)return;
-    activeImageMode=mode==='songbook'?'songbook':'image';
-    const viewerMatchesOwner=owner==='daniel'
-      ? activeViewerType==='daniel-image'
-      : (activeViewerType==='notes'||activeViewerType==='lyrics');
-    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&viewerMatchesOwner);
-    activeImageSongId=songId;activeImageOwner=owner;
-    $('#imageEditorTitle').textContent=activeImageMode==='songbook'
-      ? `Cancionero ${ownerLabel(owner)} · ${song.titulo}`
-      : `Imagen ${ownerLabel(owner)} · ${song.titulo}`;
-    const uploadTrigger=$('#imageUploadTrigger');
-    const uploadWrap=uploadTrigger?.closest('.toolbar-popover-wrap');
-    const hideUpload=activeImageMode==='songbook';
-    if(uploadTrigger){uploadTrigger.hidden=hideUpload;uploadTrigger.style.display=hideUpload?'none':'';uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');}
-    if(uploadWrap){uploadWrap.hidden=hideUpload;uploadWrap.style.display=hideUpload?'none':'';uploadWrap.setAttribute('aria-hidden',hideUpload?'true':'false');}
-    if(imageUploadMenu)imageUploadMenu.hidden=true;
-    const localRaw=song[visualField(owner,activeImageMode)];
-    const remote=await loadRemoteImageEdit(songId,owner,activeImageMode);
+    const expectedViewerType=owner==='daniel'?'daniel-image':'notes';
+    returnToImageViewer=Boolean($('#viewerDialog')?.open&&activeViewerSongId===songId&&activeViewerType===expectedViewerType);
+    activeImageSongId=songId;activeImageOwner=owner;$('#imageEditorTitle').textContent=`Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    const localRaw=song[imageField(owner)];
+    const remote=await loadRemoteImageEdit(songId,owner);
     // 6.36.37: el editor usa la misma fuente oficial que el visor. Si existe
     // imageEdits, sus capas siempre prevalecen sobre copias antiguas del objeto canción.
     const raw=remote ? {
@@ -2021,30 +1515,27 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],
       updatedAt:remote.updatedAt||Date.now(),remote:true
     } : (localRaw&&typeof localRaw==='object'?localRaw:{});
-    if(remote) song[visualField(owner,activeImageMode)]={...raw};
+    if(remote) song[imageField(owner)]={...raw};
     const baseSources=[];
     const addBase=value=>{if(!value)return;const v=String(value);if(!baseSources.includes(v))baseSources.push(v);};
-    if(activeImageMode==='image'){
-      addBase(raw.original);
-      // Evitar usar una previsualización compuesta como foto base: el editor debe
-      // reconstruir siempre foto + operaciones + cajas editables.
-      const fieldValue=localRaw&&typeof localRaw==='object'?(localRaw.original||localRaw.src||localRaw.dataUrl||''):localRaw;
-      addBase(fieldValue);
-      if(owner==='elena'){
-        const fallback=state.notes[slug(song.titulo)];
-        (Array.isArray(fallback)?fallback:[fallback]).forEach(value=>{
-          if(!value)return;const v=String(value);addBase(v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`);
-        });
-      }
+    addBase(raw.original);
+    // Evitar usar una previsualización compuesta como foto base: el editor debe
+    // reconstruir siempre foto + operaciones + cajas editables.
+    const fieldValue=localRaw&&typeof localRaw==='object'?(localRaw.original||localRaw.src||localRaw.dataUrl||''):localRaw;
+    addBase(fieldValue);
+    if(owner==='elena'){
+      const fallback=state.notes[slug(song.titulo)];
+      (Array.isArray(fallback)?fallback:[fallback]).forEach(value=>{
+        if(!value)return;const v=String(value);addBase(v.startsWith('data:')||v.startsWith('http:')||v.startsWith('https:')||v.startsWith('assets/')?v:`assets/anotaciones/${v}`);
+      });
     }
     imageEditorState.sources=baseSources;imageEditorState.original=baseSources[0]||'';imageEditorState.overlay=raw.drawingOverlay||raw.overlay||'';imageEditorState.operations=Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
-    $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();resetImageEditorDirty();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
+    $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
   const imageUploadMenu=$('#imageUploadOptions');
   $('#imageUploadTrigger').addEventListener('click',e=>{
     e.preventDefault();e.stopPropagation();
-    if(activeImageMode==='songbook')return;
     if(!imageUploadMenu.hidden){imageUploadMenu.hidden=true;return;}
     positionPopover(imageUploadMenu,$('#imageUploadTrigger'));
   });
@@ -2054,7 +1545,6 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   });
   $('#imageDeletePhotoBtn').addEventListener('click',()=>{
     imageUploadMenu.hidden=true;
-    if(activeImageMode==='songbook')return;
     if(!imageEditorState.original){toast('No hay una foto para eliminar');return;}
     askConfirm('Eliminar fotografía','Se eliminará únicamente la fotografía. Los dibujos y cajas de texto se conservarán sobre un lienzo blanco.',async()=>{
       imageEditorState.original='';
@@ -2093,7 +1583,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       try{
         toast('Preparando imagen…');
         const compressed=await compressEditorPhoto(file);
-        imageEditorState.original=compressed;imageEditorState.sources=[compressed];imageEditorState.overlay='';markImageEditorDirty();
+        imageEditorState.original=compressed;imageEditorState.sources=[compressed];imageEditorState.overlay='';
         // Al reemplazar la foto se conservan las operaciones y cajas como capas editables.
         renderImageEditor();
         await persistImageEditorLayers(false);
@@ -2107,131 +1597,51 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     if(!layer){layer=document.createElement('div');layer.id='imageTextBoxLayer';layer.className='image-textbox-layer';imageEditorPaper().append(layer);}
     return layer;
   }
-  function escapeTextHtml(value){return String(value||'').replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch])).replace(/\n/g,'<br>');}
-  function normalizeTextBoxRichContent(box){
-    if(typeof box.html==='string')return;
-    let html=escapeTextHtml(box.text||'');
-    if(box.bold)html=`<b>${html}</b>`;
-    if(box.italic)html=`<i>${html}</i>`;
-    box.html=html;
-    box.bold=false;box.italic=false;
-  }
   function newTextBox(x,y){
-    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',html:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:false,italic:false,align:'left',locked:false};
-    imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;markImageEditorDirty();renderTextBoxes(true);return box;
+    const box={id:`txt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,x,y,w:.34,h:.13,rotation:0,text:'',color:imageEditorState.textColor,size:imageEditorState.textSize,bold:imageEditorState.textBold,italic:imageEditorState.textItalic};
+    imageEditorState.textBoxes.push(box);imageEditorState.activeTextBoxId=box.id;renderTextBoxes(true);return box;
   }
   function activeTextBox(){return imageEditorState.textBoxes.find(x=>x.id===imageEditorState.activeTextBoxId)||null;}
   function applyTextBoxStyle(el,box){
-    normalizeTextBoxRichContent(box);
     el.style.left=`${box.x*100}%`;el.style.top=`${box.y*100}%`;el.style.width=`${box.w*100}%`;el.style.height=`${box.h*100}%`;el.style.transform=`rotate(${box.rotation||0}deg)`;
-    const area=el.querySelector('.text-box-editor');
-    if(area&&document.activeElement!==area&&area.innerHTML!==box.html)area.innerHTML=box.html||'';
-    if(area){
-      box.locked=Boolean(box.locked);
-      el.classList.toggle('is-locked',box.locked);
-      area.contentEditable=box.locked?'false':'true';
-      area.setAttribute('aria-readonly',box.locked?'true':'false');
-      const paperWidth=Math.max(1,imageEditorPaper().offsetWidth||1);
-      const fontPx=Number(box.fontRatio)>0?Number(box.fontRatio)*paperWidth:Math.max(16,(box.size||9)*3);
-      area.style.color=box.color||'#d00000';area.style.fontSize=`${fontPx}px`;area.style.fontWeight='400';area.style.fontStyle='normal';area.style.textAlign=['left','center','right'].includes(box.align)?box.align:'left';
-    }
+    const area=el.querySelector('textarea');area.value=box.text||'';area.style.color=box.color||'#d00000';area.style.fontSize=`${Math.max(16,(box.size||9)*3)}px`;area.style.fontWeight=box.bold?'700':'400';area.style.fontStyle=box.italic?'italic':'normal';
   }
   function renderTextBoxes(focusActive=false){
     const layer=textBoxLayer();layer.innerHTML='';
     imageEditorState.textBoxes.forEach(box=>{
       const el=document.createElement('div');el.className='image-text-box'+(box.id===imageEditorState.activeTextBoxId?' is-selected':'');el.dataset.id=box.id;
-      el.innerHTML='<div class="text-box-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Caja de texto"></div><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-align" aria-label="Cambiar alineación del texto"><b>≡</b><small>Alinear</small></button><button type="button" class="text-box-lock" aria-label="Bloquear caja con doble toque"><b>🔓</b><small>Bloquear</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
+      el.innerHTML='<textarea spellcheck="false" aria-label="Caja de texto"></textarea><button type="button" class="text-box-delete" aria-label="Eliminar texto"><b>×</b><small>Eliminar</small></button><button type="button" class="text-box-move" aria-label="Mover caja"><b>↔</b><small>Mover</small></button><button type="button" class="text-box-rotate" aria-label="Girar caja"><b>↻</b><small>Girar</small></button><button type="button" class="text-box-resize" aria-label="Cambiar tamaño"><b>↘</b><small>Tamaño</small></button>';
       applyTextBoxStyle(el,box);layer.append(el);
-      const area=el.querySelector('.text-box-editor');
-      const rememberSelection=()=>{const sel=getSelection();if(!sel||!sel.rangeCount)return;const range=sel.getRangeAt(0);if(area.contains(range.commonAncestorContainer))box._selection=range.cloneRange();};
-      area.addEventListener('focus',()=>{if(box.locked){area.blur();return;}imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();updateImageTextFormatButtons(area);setTimeout(keepFocusedTextBoxVisible,60);});
-      area.addEventListener('keyup',rememberSelection);area.addEventListener('pointerup',rememberSelection);area.addEventListener('selectstart',()=>setTimeout(rememberSelection,0));
-      area.addEventListener('input',()=>{if(box.locked)return;box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');rememberSelection();updateImageTextFormatButtons(area);markImageEditorDirty();scheduleImageTextAutosave();setTimeout(keepFocusedTextBoxVisible,0);});
-      area.addEventListener('blur',()=>{if(!box.locked&&imageEditorChangeRevision!==imageEditorSavedRevision)scheduleImageTextAutosave();});
-      el.addEventListener('pointerdown',e=>{if(box.locked&&!e.target.closest('button')){imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();e.preventDefault();e.stopPropagation();}});
-      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{if(box.locked)return;e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;markImageEditorDirty();renderTextBoxes();persistImageEditorLayers(false);});
-      const alignButton=el.querySelector('.text-box-align');
-      const syncAlignButton=()=>{const align=['left','center','right'].includes(box.align)?box.align:'left';alignButton.dataset.align=align;alignButton.querySelector('b').textContent=align==='left'?'≡':align==='center'?'☰':'≣';alignButton.setAttribute('aria-label',`Alineación ${align}. Pulsar para cambiar`);};
-      syncAlignButton();
-      alignButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
-      alignButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(box.locked)return;imageEditorState.activeTextBoxId=box.id;const order=['left','center','right'];const current=order.includes(box.align)?box.align:'left';box.align=order[(order.indexOf(current)+1)%order.length];area.style.textAlign=box.align;syncAlignButton();renderTextBoxSelection();markImageEditorDirty();persistImageEditorLayers(false);});
-      const lockButton=el.querySelector('.text-box-lock');
-      const syncLockButton=()=>{lockButton.querySelector('b').textContent=box.locked?'🔒':'🔓';lockButton.querySelector('small').textContent=box.locked?'Bloqueada':'Bloquear';lockButton.setAttribute('aria-label',box.locked?'Caja bloqueada. Doble toque para desbloquear':'Caja desbloqueada. Doble toque para bloquear');};
-      syncLockButton();
-      let lastLockTap=0,lastLockPointer='';
-      lockButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
-      lockButton.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const now=Date.now(),kind=e.pointerType||'mouse';if(kind===lastLockPointer&&now-lastLockTap<430){lastLockTap=0;lastLockPointer='';box.locked=!box.locked;imageEditorState.activeTextBoxId=box.id;syncImageTextBoxesFromDom();markImageEditorDirty();renderTextBoxes();persistImageEditorLayers(false);}else{lastLockTap=now;lastLockPointer=kind;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();}});
+      const area=el.querySelector('textarea');
+      area.addEventListener('focus',()=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();});
+      area.addEventListener('input',()=>{box.text=area.value;persistImageEditorLayers(false);});
+      el.querySelector('.text-box-delete').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();imageEditorState.textBoxes=imageEditorState.textBoxes.filter(x=>x.id!==box.id);imageEditorState.activeTextBoxId=null;renderTextBoxes();persistImageEditorLayers(false);});
       bindTextBoxDrag(el.querySelector('.text-box-move'),el,box);
       bindTextBoxResize(el.querySelector('.text-box-resize'),box);
       bindTextBoxRotate(el.querySelector('.text-box-rotate'),box);
     });
-    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] .text-box-editor`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}const range=document.createRange(),sel=getSelection();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);activeTextBox()._selection=range.cloneRange();}}
+    if(focusActive){const area=layer.querySelector(`[data-id="${imageEditorState.activeTextBoxId}"] textarea`);if(area){try{area.focus({preventScroll:true});}catch(_){area.focus();}area.setSelectionRange?.(area.value.length,area.value.length);}}
   }
   function renderTextBoxSelection(){textBoxLayer().querySelectorAll('.image-text-box').forEach(el=>el.classList.toggle('is-selected',el.dataset.id===imageEditorState.activeTextBoxId));}
   function bindTextBoxDrag(handle,el,box){let drag=null;
-    handle.addEventListener('pointerdown',e=>{if(box.locked)return;imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('pointerdown',e=>{imageEditorState.activeTextBoxId=box.id;renderTextBoxSelection();const paper=imageEditorPaper(),r=paper.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,bx:box.x,by:box.y,w:r.width,h:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});
     handle.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;box.x=Math.max(-1.5,Math.min(2.5,drag.bx+(e.clientX-drag.x)/drag.w));box.y=Math.max(-1.5,Math.min(2.5,drag.by+(e.clientY-drag.y)/drag.h));applyTextBoxStyle(el,box);e.preventDefault();});
-    const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;markImageEditorDirty();persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
+    const end=e=>{if(!drag||drag.id!==e.pointerId)return;drag=null;persistImageEditorLayers(false);};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
   }
-  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;markImageEditorDirty();persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
-  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{if(box.locked)return;const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;markImageEditorDirty();persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
-  function activeTextEditor(){const box=activeTextBox();return box?textBoxLayer().querySelector(`[data-id="${box.id}"] .text-box-editor`):null;}
-  function restoreImageTextSelection(area,box){
-    if(!area||!box)return false;
-    try{area.focus({preventScroll:true});}catch(_){area.focus();}
-    const sel=getSelection();
-    if(box._selection&&area.contains(box._selection.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(box._selection);return true;}
-    const range=document.createRange();range.selectNodeContents(area);range.collapse(false);sel.removeAllRanges();sel.addRange(range);box._selection=range.cloneRange();return true;
-  }
-  function updateImageTextFormatButtons(area=activeTextEditor()){
-    if(area&&document.activeElement===area){imageEditorState.textBold=document.queryCommandState('bold');imageEditorState.textItalic=document.queryCommandState('italic');}
-    $('#imageBold').classList.toggle('is-active',Boolean(imageEditorState.textBold));$('#imageItalic').classList.toggle('is-active',Boolean(imageEditorState.textItalic));
-  }
-  function applyImageTextCommand(command){
-    const box=activeTextBox(),area=activeTextEditor();
-    if(!box||!area){imageEditorState[command==='bold'?'textBold':'textItalic']=!imageEditorState[command==='bold'?'textBold':'textItalic'];updateImageTextFormatButtons();return;}
-    restoreImageTextSelection(area,box);
-    document.execCommand('styleWithCSS',false,false);
-    document.execCommand(command,false,null);
-    box.html=area.innerHTML;box.text=area.innerText.replace(/\n$/,'');
-    const sel=getSelection();if(sel?.rangeCount&&area.contains(sel.getRangeAt(0).commonAncestorContainer))box._selection=sel.getRangeAt(0).cloneRange();
-    updateImageTextFormatButtons(area);markImageEditorDirty();persistImageEditorLayers(false);
-  }
+  function bindTextBoxResize(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=imageEditorPaper().getBoundingClientRect();d={id:e.pointerId,x:e.clientX,y:e.clientY,w:box.w,h:box.h,pw:r.width,ph:r.height};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;box.w=Math.max(.12,Math.min(2,d.w+(e.clientX-d.x)/d.pw));box.h=Math.max(.07,Math.min(2,d.h+(e.clientY-d.y)/d.ph));applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
+  function bindTextBoxRotate(handle,box){let d=null;handle.addEventListener('pointerdown',e=>{const r=handle.parentElement.getBoundingClientRect();d={id:e.pointerId,cx:r.left+r.width/2,cy:r.top+r.height/2,start:Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2)),rotation:box.rotation||0};handle.setPointerCapture?.(e.pointerId);e.preventDefault();e.stopPropagation();});handle.addEventListener('pointermove',e=>{if(!d||d.id!==e.pointerId)return;const a=Math.atan2(e.clientY-d.cy,e.clientX-d.cx);box.rotation=d.rotation+(a-d.start)*180/Math.PI;applyTextBoxStyle(handle.parentElement,box);e.preventDefault();});const end=e=>{if(d&&d.id===e.pointerId){d=null;persistImageEditorLayers(false);}};handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);}
   function syncInlineTextStyle(){
-    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
-    updateImageTextFormatButtons();syncImageSwatches();
+    const box=activeTextBox();if(box){box.color=imageEditorState.textColor;box.size=imageEditorState.textSize;box.bold=imageEditorState.textBold;box.italic=imageEditorState.textItalic;const el=textBoxLayer().querySelector(`[data-id="${box.id}"]`);if(el)applyTextBoxStyle(el,box);}
+    $('#imageBold').classList.toggle('is-active',imageEditorState.textBold);$('#imageItalic').classList.toggle('is-active',imageEditorState.textItalic);syncImageSwatches();
   }
   function placeImageTextAt(clientX,clientY){const paper=imageEditorPaper(),r=paper.getBoundingClientRect();const x=(clientX-r.left)/Math.max(1,r.width),y=(clientY-r.top)/Math.max(1,r.height);newTextBox(x,y);}
   function activateImageText(){imageEditorState.tool='text';imageEditorPaper().classList.add('text-mode');$('#imageTextTool').classList.add('is-active');$('#imageToolPencil').classList.remove('is-active');$('#imageToolEraser').classList.remove('is-active');syncInlineTextStyle();}
-  function syncImageTextBoxesFromDom(){
-    const layer=document.querySelector('#imageTextBoxLayer');
-    if(!layer)return;
-    layer.querySelectorAll('.image-text-box[data-id]').forEach(el=>{
-      const box=imageEditorState.textBoxes.find(item=>item.id===el.dataset.id);
-      const area=el.querySelector('.text-box-editor');
-      if(!box||!area)return;
-      box.html=area.innerHTML;
-      box.text=area.innerText.replace(/\n$/,'');
-      const paperWidth=Math.max(1,imageEditorPaper().offsetWidth||1);
-      const fontPx=parseFloat(area.style.fontSize||getComputedStyle(area).fontSize)||Math.max(16,(box.size||9)*3);
-      box.fontRatio=fontPx/paperWidth;
-      const align=area.style.textAlign||getComputedStyle(area).textAlign;
-      if(['left','center','right'].includes(align))box.align=align;
-    });
-  }
-  function commitImageText(){
-    // Copia el contenido visible sin ejecutar una composición pesada en cada cambio de herramienta.
-    syncImageTextBoxesFromDom();
-    renderTextBoxes();
-    scheduleImageTextAutosave();
-  }
+  function commitImageText(){renderTextBoxes();persistImageEditorLayers(false);}
   let suppressTextClick=false,textHold=0;const imageTextButton=$('#imageTextTool'),imageTextMenu=$('#imageTextOptions');imageTextButton.addEventListener('contextmenu',e=>e.preventDefault());imageTextButton.addEventListener('click',()=>{if(suppressTextClick){suppressTextClick=false;return;}if(!imageTextMenu.hidden){imageTextMenu.hidden=true;return;}activateImageText();});imageTextButton.addEventListener('pointerdown',()=>{clearTimeout(textHold);suppressTextClick=false;textHold=setTimeout(()=>{suppressTextClick=true;activateImageText();positionPopover(imageTextMenu,imageTextButton);},520);});['pointerup','pointercancel'].forEach(n=>imageTextButton.addEventListener(n,()=>clearTimeout(textHold)));
   $$('[data-image-text-color]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textColor=b.dataset.imageTextColor;$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
   $$('[data-image-text-size]').forEach(b=>b.addEventListener('click',()=>{imageEditorState.textSize=Number(b.dataset.imageTextSize);$('#imageTextOptions').hidden=true;syncInlineTextStyle();}));
-  $('#imageBold').addEventListener('pointerdown',e=>e.preventDefault());
-  $('#imageItalic').addEventListener('pointerdown',e=>e.preventDefault());
-  $('#imageBold').addEventListener('click',()=>applyImageTextCommand('bold'));
-  $('#imageItalic').addEventListener('click',()=>applyImageTextCommand('italic'));
+  $('#imageBold').addEventListener('click',()=>{imageEditorState.textBold=!imageEditorState.textBold;syncInlineTextStyle();});
+  $('#imageItalic').addEventListener('click',()=>{imageEditorState.textItalic=!imageEditorState.textItalic;syncInlineTextStyle();});
   function activateImagePencil(){
     commitImageText();
     imageEditorState.tool='pencil';
@@ -2282,30 +1692,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   function strokeArrow(ctx,path,both=false){const len=Math.max(18,imageEditorState.pencilSize*3);const head=t=>{const ang=Math.atan2(t.tip.y-t.from.y,t.tip.x-t.from.x);ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang-Math.PI/6),t.tip.y-len*Math.sin(ang-Math.PI/6));ctx.moveTo(t.tip.x,t.tip.y);ctx.lineTo(t.tip.x-len*Math.cos(ang+Math.PI/6),t.tip.y-len*Math.sin(ang+Math.PI/6));};const end=arrowTangent(path,true);if(end)head(end);if(both){const start=arrowTangent(path,false);if(start)head(start);}}
   imageEditorCanvas().addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&imageEditorState.pointers.size>1)return;const pencilMenu=$('#imagePencilOptions');if(pencilMenu&&!pencilMenu.hidden){pencilMenu.hidden=true;activateImagePencil();}if(imageEditorState.tool==='text')return;syncImageEraserCursor(e);e.preventDefault();imageEditorState.drawing=true;imageEditorState.last=imagePoint(e);imageEditorState.path=[imageEditorState.last];e.currentTarget.setPointerCapture(e.pointerId);});
   imageEditorCanvas().addEventListener('pointermove',e=>{syncImageEraserCursor(e);if(imageEditorState.pointers.size>=2)return;if(!imageEditorState.drawing)return;e.preventDefault();const p=imagePoint(e),target=imageEditorState.tool==='eraser'&&imageEditorState.eraserTarget==='photo'?imageBaseCanvas():imageEditorCanvas(),ctx=target.getContext('2d');ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=imageEditorState.tool==='eraser'?imageEditorState.eraserSize:imageEditorState.pencilSize;ctx.strokeStyle=imageEditorState.pencilColor;ctx.globalCompositeOperation=imageEditorState.tool==='eraser'?'destination-out':'source-over';ctx.beginPath();ctx.moveTo(imageEditorState.last.x,imageEditorState.last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();imageEditorState.last=p;imageEditorState.path.push(p);});
-  const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1){imageEditorState.operations.push(operationFromCurrentPath());markImageEditorDirty();}pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
+  const finishImageDraw=e=>{hideImageEraserCursor(e);if(!imageEditorState.drawing)return;imageEditorState.drawing=false;if(imageEditorState.tool==='pencil'&&imageEditorState.drawMode!=='free'&&imageEditorState.path.length>1){const ctx=imageEditorContext();ctx.save();ctx.strokeStyle=imageEditorState.pencilColor;ctx.lineWidth=imageEditorState.pencilSize;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();strokeArrow(ctx,imageEditorState.path,imageEditorState.drawMode==='double-arrow');ctx.stroke();ctx.restore();}if(imageEditorState.path.length>1)imageEditorState.operations.push(operationFromCurrentPath());pushImageHistory();persistImageEditorLayers(false);};imageEditorCanvas().addEventListener('pointerup',finishImageDraw);imageEditorCanvas().addEventListener('pointercancel',finishImageDraw);imageEditorCanvas().addEventListener('pointerenter',e=>syncImageEraserCursor(e));imageEditorCanvas().addEventListener('pointerleave',e=>{if(!imageEditorState.drawing)imageEraserCursor().hidden=true;});
   $('#imageUndo').addEventListener('click',()=>{if(imageEditorState.undo.length<=1)return;imageEditorState.redo.push(imageEditorState.undo.pop());restoreImageSnapshot(imageEditorState.undo.at(-1));updateImageHistory();});$('#imageRedo').addEventListener('click',()=>{if(!imageEditorState.redo.length)return;const x=imageEditorState.redo.pop();imageEditorState.undo.push(x);restoreImageSnapshot(x);updateImageHistory();});
-  let imageKeyboardRestorePanY=null;
-  function restoreImageViewportAfterKeyboard(){
-    if(imageKeyboardRestorePanY===null)return;
-    imageEditorState.panY=imageKeyboardRestorePanY;imageKeyboardRestorePanY=null;applyImageTransform();
-  }
-  function keepFocusedTextBoxVisible(){
-    const dialog=$('#imageEditorDialog'),vv=window.visualViewport,area=document.activeElement?.closest?.('.text-box-editor');
-    if(!dialog?.open||!vv||!area||area.contentEditable==='false')return;
-    const viewportBottom=vv.offsetTop+vv.height,viewportTop=vv.offsetTop,margin=18,toolbarGap=62;
-    const rect=area.getBoundingClientRect();
-    if(vv.height>=window.innerHeight*.82){restoreImageViewportAfterKeyboard();return;}
-    if(imageKeyboardRestorePanY===null)imageKeyboardRestorePanY=imageEditorState.panY;
-    let shift=0;
-    if(rect.bottom>viewportBottom-margin)shift=rect.bottom-(viewportBottom-margin);
-    else if(rect.top<viewportTop+toolbarGap)shift=rect.top-(viewportTop+toolbarGap);
-    if(Math.abs(shift)>1){imageEditorState.panY-=shift;applyImageTransform();}
-  }
-  if(window.visualViewport){
-    window.visualViewport.addEventListener('resize',()=>requestAnimationFrame(keepFocusedTextBoxVisible));
-    window.visualViewport.addEventListener('scroll',()=>requestAnimationFrame(keepFocusedTextBoxVisible));
-  }
-  document.addEventListener('focusout',e=>{if(e.target?.classList?.contains('text-box-editor'))setTimeout(()=>{if(!document.activeElement?.classList?.contains('text-box-editor'))restoreImageViewportAfterKeyboard();},180);},true);
   const imageStage=$('#imageEditorStage');
   let nativeTouchPinch=null;
   const touchCenterAndDistance=touches=>{
@@ -2415,27 +1803,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   }else if(imageEditorState.textGesture?.id===e.pointerId){const dx=e.clientX-imageEditorState.textGesture.x,dy=e.clientY-imageEditorState.textGesture.y;if(Math.hypot(dx,dy)>6)imageEditorState.textGesture.moved=true;if(imageEditorState.textGesture.moved){imageEditorState.panX=imageEditorState.textGesture.panX+dx;imageEditorState.panY=imageEditorState.textGesture.panY+dy;applyImageTransform();e.preventDefault();}}else if(imageEditorState.panning?.id===e.pointerId){imageEditorState.panX=imageEditorState.panning.panX+e.clientX-imageEditorState.panning.x;imageEditorState.panY=imageEditorState.panning.panY+e.clientY-imageEditorState.panning.y;applyImageTransform();e.preventDefault();}},true);
   const endImagePointer=e=>{const tg=imageEditorState.textGesture?.id===e.pointerId?imageEditorState.textGesture:null;imageEditorState.pointers.delete(e.pointerId);if(imageEditorState.pointers.size<2)imageEditorState.pinch=null;if(tg&&!tg.moved&&imageEditorState.tool==='text'){imageTextMenu.hidden=true;placeImageTextAt(e.clientX,e.clientY);}if(imageEditorState.textGesture?.id===e.pointerId)imageEditorState.textGesture=null;if(imageEditorState.panning?.id===e.pointerId)imageEditorState.panning=null;};imageStage.addEventListener('pointerup',endImagePointer,true);imageStage.addEventListener('pointercancel',endImagePointer,true);
   function drawTextBoxesToContext(ctx,w,h){
-    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Number(box.fontRatio)>0?Number(box.fontRatio)*w:Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const align=['left','center','right'].includes(box.align)?box.align:'left';ctx.textAlign=align;const textX=align==='left'?0:align==='center'?bw/2:bw;const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw);drawWrappedCanvasText(ctx,box.text||'',{x:textX,y:0,maxWidth,maxHeight:bh,lineHeight});ctx.restore();});
-  }
-  function serializeImageTextBox(box){
-    // Firestore solo recibe datos simples. Rangos de selección, nodos DOM y
-    // otras propiedades temporales del editor nunca deben salir del navegador.
-    const clean={};
-    for(const [key,value] of Object.entries(box||{})){
-      if(key.startsWith('_'))continue;
-      if(value===undefined||typeof value==='function')continue;
-      if(value===null||['string','number','boolean'].includes(typeof value))clean[key]=value;
-      else if(Array.isArray(value))clean[key]=value.map(item=>item&&typeof item==='object'?JSON.parse(JSON.stringify(item)):item);
-      else if(value&&value.constructor===Object)clean[key]=JSON.parse(JSON.stringify(value));
-    }
-    clean.align=['left','center','right'].includes(clean.align)?clean.align:'left';
-    return clean;
+    imageEditorState.textBoxes.forEach(box=>{if(!String(box.text||'').trim())return;ctx.save();const x=box.x*w,y=box.y*h,bw=box.w*w,bh=box.h*h;ctx.translate(x+bw/2,y+bh/2);ctx.rotate((box.rotation||0)*Math.PI/180);ctx.translate(-bw/2,-bh/2);const fontSize=Math.max(18,(box.size||9)*3)*(w/Math.max(1,imageEditorPaper().offsetWidth));ctx.fillStyle=box.color||'#d00000';ctx.font=`${box.italic?'italic ':''}${box.bold?'700':'400'} ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;ctx.textBaseline='top';const lineHeight=fontSize*1.25,maxWidth=Math.max(fontSize*2,bw),paragraphs=String(box.text||'').split(/\n/);let yy=0;for(const paragraph of paragraphs){const words=paragraph.split(/\s+/);let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){ctx.fillText(line,0,yy);yy+=lineHeight;line=word;}else line=test;}if(line)ctx.fillText(line,0,yy);yy+=lineHeight;if(yy>bh)break;}ctx.restore();});
   }
   async function saveImageEditorVectorsRemote(){
-    syncImageTextBoxesFromDom();
     const stamp=Date.now();
-    const editId=remoteImageKey(activeImageSongId,activeImageOwner,activeImageMode);
-    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,mode:activeImageMode,originalSrc:activeImageMode==='songbook'?'':(imageEditorState.original||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
+    const editId=remoteImageKey(activeImageSongId,activeImageOwner);
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,originalSrc:imageEditorState.original||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
     // El guardado local siempre ocurre primero y nunca depende de internet.
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
@@ -2449,7 +1822,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       const originalSrc=String(metadata.originalSrc||'');
       if(originalSrc.startsWith('data:')&&originalSrc.length>780000)throw new Error('La foto supera el tamaño seguro para Firestore');
       const remotePayload={...metadata,originalSrc,pendingSync:false,syncedAt:Date.now()};
-      const ref=remoteImageRef(activeImageSongId,activeImageOwner,activeImageMode);
+      const ref=remoteImageRef(activeImageSongId,activeImageOwner);
       if(!ref)throw new Error('No se pudo crear el documento remoto de la edición');
       const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Firestore tardó demasiado en responder')),15000));
       await Promise.race([remoteSetDoc(ref,remotePayload,{merge:false}),timeout]);
@@ -2466,37 +1839,34 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       return metadata;
     }
   }
-  async function refreshOpenImageViewer(edit,song,owner,mode='image'){
+  async function refreshOpenImageViewer(edit,song,owner){
     const viewer=$('#viewerDialog');
-    const expectedType=mode==='songbook'?(owner==='daniel'?'daniel':'lyrics'):(owner==='daniel'?'daniel-image':'notes');
+    const expectedType=owner==='daniel'?'daniel-image':'notes';
     if(!viewer?.open)return false;
     // El editor puede cerrarse antes de que Safari actualice la pila de dialogs.
     // Forzamos el visor activo a la canción recién guardada y pintamos la copia
     // en memoria, sin esperar otra lectura de Firestore.
     activeViewerSongId=song.id;
     activeViewerType=expectedType;
-    $('#viewerTitle').textContent=`${expectedType==='daniel-image'?'Imagen Daniel':expectedType==='lyrics'?'Letra':expectedType==='daniel'?'Daniel':'Imagen'} · ${song.titulo}`;
+    $('#viewerTitle').textContent=`${expectedType==='daniel-image'?'Imagen Daniel':'Imagen'} · ${song.titulo}`;
     const normalized={...edit,originalSrc:edit?.originalSrc||edit?.original||'',operations:Array.isArray(edit?.operations)?edit.operations:[],textBoxes:Array.isArray(edit?.textBoxes)?edit.textBoxes:[]};
     const content=$('#viewerContent');
     content.innerHTML='';
     content.classList.remove('is-note-viewer');
-    const ok=await showComposedViewerEdit(content,normalized,song,owner,mode);
+    const ok=await showComposedViewerEdit(content,normalized,song,owner);
     if(!ok){
-      const src=mode==='songbook'
-        ? (normalized.originalSrc||'')
-        : (normalized.originalSrc||imageCandidates(song,owner)[0]);
+      const src=normalized.originalSrc||imageCandidates(song,owner)[0];
       if(src)return showViewerImage(content,src,song);
     }
     return ok;
   }
 
   async function persistImageEditorLayers(syncRemote=false){
-    syncImageTextBoxesFromDom();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
-    let saved={original:activeImageMode==='songbook'?'':(imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
+    let saved={original:imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||'',operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(x=>({...x})),composite,updatedAt:Date.now()};
     if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
-    song[visualField(activeImageOwner,activeImageMode)]=saved;
+    song[imageField(activeImageOwner)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
     return saved;
@@ -2506,19 +1876,18 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   // realmente terminó de cerrarse. Safari/iOS no siempre repinta un dialog inferior
   // mientras el superior sigue en la pila modal.
   $('#imageEditorDialog').addEventListener('close',()=>{
-    clearTimeout(imageTextAutosaveTimer);
     const pending=pendingViewerRefresh;
     pendingViewerRefresh=null;
     returnToImageViewer=false;
     if(!pending)return;
     requestAnimationFrame(()=>requestAnimationFrame(async()=>{
       const song=state.songs.find(x=>x.id===pending.songId);
-      const expectedType=pending.mode==='songbook'?(pending.owner==='daniel'?'daniel':'lyrics'):(pending.owner==='daniel'?'daniel-image':'notes');
+      const expectedType=pending.owner==='daniel'?'daniel-image':'notes';
       if(!song||!$('#viewerDialog')?.open||activeViewerSongId!==pending.songId||activeViewerType!==expectedType)return;
       try{
         // Invalida cualquier lectura remota antigua iniciada cuando se abrió el visor.
         viewerRenderGeneration++;
-        await refreshOpenImageViewer(pending.edit,song,pending.owner,pending.mode||'image');
+        await refreshOpenImageViewer(pending.edit,song,pending.owner);
       }catch(err){
         console.error('No se pudo redibujar el visor abierto después de cerrar el editor',err);
       }
@@ -2537,15 +1906,13 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       try{
         // Guardar primero la edición completa en IndexedDB y Firestore.
         // El editor solo se cierra después de que la copia local quede confirmada.
-        clearTimeout(imageTextAutosaveTimer);
         const saved=await persistImageEditorLayers(true);
         if(!saved)throw new Error('No se pudo preparar la edición');
-        markImageEditorSaved();
-        const editId=remoteImageKey(saveSongId,saveOwner,activeImageMode);
+        const editId=remoteImageKey(saveSongId,saveOwner);
         const local=await offlineStoreGet('imageEdits',editId);
         const savedSong=state.songs.find(x=>x.id===saveSongId)||song;
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
-        savedSong[visualField(saveOwner,activeImageMode)]={
+        savedSong[imageField(saveOwner)]={
           original:immediateEdit.originalSrc||immediateEdit.original||'',
           operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
           textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
@@ -2557,7 +1924,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         // exactamente el visor que queda visible debajo. Esto también cubre el caso
         // en que el usuario pulsa la X después de haber guardado.
         if(returnToImageViewer){
-          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner,mode:activeImageMode};
+          pendingViewerRefresh={edit:immediateEdit,songId:saveSongId,owner:saveOwner};
         }
         rememberDialogState($('#imageEditorDialog'));
         dialogBaselines.delete($('#imageEditorDialog'));
@@ -2577,7 +1944,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
   const viewerEdit=$('#viewerEditBtn');
   let viewerEditHold=0;
-  viewerEdit.addEventListener('pointerdown',()=>{viewerEditHold=setTimeout(()=>{const song=state.songs.find(x=>x.id===activeViewerSongId);if(!song)return;if(activeViewerType==='lyrics'){openImageEditor(song.id,'elena','songbook');}else if(activeViewerType==='daniel'){activeSongbookOwner='daniel';openSongbookEditor(song.id);}else if(activeViewerType==='notes'){openImageEditor(song.id,'elena','image');}else if(activeViewerType==='daniel-image'){openImageEditor(song.id,'daniel','image');}},650);});
+  viewerEdit.addEventListener('pointerdown',()=>{viewerEditHold=setTimeout(()=>{const song=state.songs.find(x=>x.id===activeViewerSongId);if(!song)return;if(activeViewerType==='lyrics'){activeSongbookOwner='elena';openSongbookEditor(song.id);}else if(activeViewerType==='daniel'){activeSongbookOwner='daniel';openSongbookEditor(song.id);}else if(activeViewerType==='notes'){openImageEditor(song.id,'elena');}else if(activeViewerType==='daniel-image'){openImageEditor(song.id,'daniel');}},650);});
   ['pointerup','pointercancel','pointerleave'].forEach(name=>viewerEdit.addEventListener(name,()=>clearTimeout(viewerEditHold)));
 
 
@@ -2601,10 +1968,25 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});
 
-  // 6.36.69.2 — La contraseña se solicita en cada apertura del panel.
-  // No se conserva autorización en localStorage/sessionStorage, para que otro dispositivo
-  // nunca entre directamente aunque ya exista un show activo.
-  function rememberPanelAuth(){}
+  // 6.36.36 — Sesión persistente y bloqueo de pull-to-refresh dentro del panel.
+  const PANEL_AUTH_KEY='egm-panel-auth-v2';
+  const PANEL_AUTH_TTL=12*60*60*1000;
+  function panelAuthValid(){
+    try{
+      if(sessionStorage.getItem('egm-panel-auth')==='1')return true;
+      const saved=JSON.parse(localStorage.getItem(PANEL_AUTH_KEY)||'null');
+      if(saved&&Number(saved.expiresAt)>Date.now()){
+        sessionStorage.setItem('egm-panel-auth','1');
+        return true;
+      }
+      localStorage.removeItem(PANEL_AUTH_KEY);
+    }catch(_){}
+    return false;
+  }
+  function rememberPanelAuth(){
+    sessionStorage.setItem('egm-panel-auth','1');
+    try{localStorage.setItem(PANEL_AUTH_KEY,JSON.stringify({expiresAt:Date.now()+PANEL_AUTH_TTL}));}catch(_){}
+  }
 
   // Impide el gesto de recarga al jalar hacia abajo, sin bloquear el scroll normal de listas/modales.
   let pullStartY=null;
@@ -2624,24 +2006,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
   const login=$('#panelLogin'),loginForm=$('#panelLoginForm'),loginPassword=$('#panelLoginPassword'),loginError=$('#panelLoginError');
   const params=new URLSearchParams(location.search);
-  const trusted=params.get('trusted')==='1';
+  const trusted=params.get('trusted')==='1'||panelAuthValid();
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
-  login.hidden=trusted;
-  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(latestRemoteState)applyRemotePanelState(latestRemoteState);else if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
-  loadData().then(async()=>{
-    if(trusted&&state.config)showLive(); else if(trusted)showConfig();
-    try{
-      await initRemoteSync();
-      if(remoteGetDoc&&remoteStateRef){
-        const snap=await remoteGetDoc(remoteStateRef);
-        if(snap.exists()){
-          latestRemoteState=snap.data()||{};
-          applyRemotePanelState(latestRemoteState);
-        }
-      }
-    }catch(err){
-      console.warn('Panel iniciado con la última copia local; la sincronización se reintentará al recuperar conexión.',err);
-    }
+  login.hidden=!trusted ? false : true;
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
+  Promise.all([loadData(),initRemoteSync()]).then(()=>{
+    if(trusted&&params.get('live')==='1'&&state.config) showLive(); else if(trusted&&state.config) showLive(); else showConfig();
   });
 })();
 
