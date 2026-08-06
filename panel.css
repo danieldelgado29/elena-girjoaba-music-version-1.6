@@ -967,105 +967,37 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
 }
 
-/* Entrega 6.36.72.4 · scroll multiplataforma estable
-   Un solo viewport fijo. La barra superior, Cola activa y el buscador no se desplazan.
-   Únicamente la lista de canciones tiene scroll en Android, iPhone, Mac y Windows. */
-html:has(body.live-mode),
+/* Entrega 6.36.72.1 · scroll Android y barra Cola activa estable */
+html,body{
+  overscroll-behavior-y:contain;
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+}
 body.live-mode{
-  width:100%!important;
-  height:100%!important;
-  min-height:0!important;
-  overflow:hidden!important;
-  overscroll-behavior:none!important;
+  overflow-y:auto!important;
+  min-height:100%;
 }
 body.live-mode .app-shell,
-body.live-mode main{
-  width:100%!important;
-  height:100%!important;
-  min-height:0!important;
-  margin:0!important;
-  padding:0!important;
-  overflow:hidden!important;
-}
-body.live-mode #liveView.view.is-active{
-  position:fixed!important;
-  inset:0!important;
-  z-index:20!important;
-  display:grid!important;
-  grid-template-rows:auto auto auto minmax(0,1fr)!important;
-  width:100%!important;
-  height:100dvh!important;
-  min-height:0!important;
-  padding:
-    max(4px,env(safe-area-inset-top))
-    max(8px,env(safe-area-inset-right))
-    max(4px,env(safe-area-inset-bottom))
-    max(8px,env(safe-area-inset-left))!important;
-  overflow:hidden!important;
-  background:var(--bg)!important;
+body.live-mode #liveView{
+  overflow:visible!important;
+  touch-action:pan-y;
 }
 body.live-mode .live-toolbar{
-  position:relative!important;
-  inset:auto!important;
-  z-index:3!important;
-  min-height:44px!important;
-  margin:0!important;
-  flex:0 0 auto!important;
-  background:var(--bg)!important;
+  position:sticky!important;
+  top:0!important;
+  z-index:90!important;
 }
 body.live-mode .live-sticky-tools{
-  position:relative!important;
-  inset:auto!important;
-  z-index:2!important;
-  min-width:0!important;
-  min-height:0!important;
-  margin:0!important;
-  padding:4px 0 0!important;
+  position:sticky!important;
+  top:44px!important;
+  z-index:80!important;
+  align-self:start;
+  transform:none!important;
+}
+body.live-mode .song-list{
+  touch-action:pan-y!important;
   overflow:visible!important;
-  background:var(--bg)!important;
 }
-body.live-mode .queue-panel{
-  width:100%!important;
-  max-height:min(30dvh,250px)!important;
-  margin:0 0 8px!important;
-  overflow:hidden!important;
-}
-body.live-mode .queue-list{
-  max-height:min(19dvh,150px)!important;
-  overflow-x:hidden!important;
-  overflow-y:auto!important;
-  overscroll-behavior:contain!important;
-  -webkit-overflow-scrolling:touch!important;
-  touch-action:pan-y!important;
-  scrollbar-gutter:stable;
-}
-body.live-mode .search-wrap{
-  width:100%!important;
-  margin:0 0 8px!important;
-}
-body.live-mode .song-table-head{
-  position:relative!important;
-  inset:auto!important;
-  z-index:1!important;
-  margin:0!important;
-  flex:0 0 auto!important;
-  background:var(--bg)!important;
-}
-body.live-mode #songList.song-list{
-  display:grid!important;
-  min-width:0!important;
-  min-height:0!important;
-  height:100%!important;
-  margin:0!important;
-  padding:4px 0 calc(18px + env(safe-area-inset-bottom))!important;
-  overflow-x:hidden!important;
-  overflow-y:auto!important;
-  overscroll-behavior:contain!important;
-  -webkit-overflow-scrolling:touch!important;
-  touch-action:pan-y!important;
-  align-content:start!important;
-  scrollbar-gutter:stable;
-}
-@supports not (height:100dvh){
-  body.live-mode #liveView.view.is-active{height:100vh!important}
+@media(max-width:520px){
+  body.live-mode .live-sticky-tools{top:38px!important}
 }

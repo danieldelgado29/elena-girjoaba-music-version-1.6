@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#08090c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="EGP Músicos">
+  <title>EGP Músicos</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./style.css?v=1.0.1">
+</head>
+<body>
+  <main id="installView" class="install-view" hidden>
+    <div class="brand" aria-label="EGP Músicos">
+      <div class="brand-egp">EGP</div>
+      <div class="brand-musicos">MUSICOS</div>
+    </div>
+    <button id="installBtn" class="install-btn" type="button">Instalar app</button>
+    <p id="installHint" class="install-hint" aria-live="polite"></p>
+    <section id="iosHelp" class="ios-help" hidden>
+      <div><b>1.</b> Pulsa <span class="share-icon">↥</span> Compartir</div>
+      <div><b>2.</b> Elige <b>Añadir a pantalla de inicio</b></div>
+    </section>
+  </main>
+
+  <main id="appView" class="app-view" hidden>
+    <header class="venue-header">
+      <div class="mini-brand">EGP <span>MUSICOS</span></div>
+      <h1 id="venueName">No hay show activo</h1>
+      <div id="connectionDot" class="connection-dot" aria-label="Estado de conexión"></div>
+    </header>
+
+    <section class="queue-section" aria-live="polite">
+      <div class="queue-title-row">
+        <h2>Cola activa</h2>
+        <span id="queueCount">0 canciones</span>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+      <div id="emptyState" class="empty-state">No hay canciones en cola</div>
+    </section>
+  </main>
+
+  <dialog id="installDialog" class="install-dialog">
+    <button id="closeDialog" class="dialog-close" aria-label="Cerrar">×</button>
+    <h2>Instalar en iPhone</h2>
+    <p>En Safari, pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</p>
+  </dialog>
+
+  <script type="module" src="./app.js?v=1.0.1"></script>
+</body>
+</html>
