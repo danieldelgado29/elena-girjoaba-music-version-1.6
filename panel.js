@@ -466,10 +466,9 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     document.body.classList.add('live-mode');
     $('#configView').classList.remove('is-active');$('#liveView').classList.add('is-active');
     $('#liveRepertoireName').textContent=state.config.repertoireName || 'Repertorio';
-    window.scrollTo({left:0,top:0,behavior:'auto'});
-    $('#songSearch').value='';filterSongs();renderQueue();window.scrollTo({top:0,behavior:'smooth'});
+    $('#songSearch').value='';filterSongs();renderQueue();
   }
-  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({left:0,top:0,behavior:'smooth'}); }
+  function showConfig(){ document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active'); }
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';

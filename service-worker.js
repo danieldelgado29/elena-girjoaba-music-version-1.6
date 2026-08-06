@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.72.3-scroll-interno-estable";
+const VERSION = "egm-v6.36.72.4-scroll-multiplataforma-estable";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
