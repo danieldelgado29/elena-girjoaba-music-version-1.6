@@ -1,5 +1,5 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.70.5 · controles, cierre seguro y escritura fluida");
+console.info("Elena Girjoaba Music · 6.36.72.12 · controles de imagen ocultos en cancioneros");
 document.documentElement.dataset.egmVersion="6.36.70.5";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
@@ -954,12 +954,51 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     }
     return '';
   }
+  function estimateSongbookTextHeightPx(box,canvasWidth=1000){
+    const text=String(box?.text||'').replace(/\r\n?/g,'\n');
+    const widthPx=Math.max(120,(Number(box?.w)||.88)*canvasWidth);
+    const fontPx=Number(box?.fontRatio)>0?Number(box.fontRatio)*canvasWidth:Math.max(16,(Number(box?.size)||9)*3);
+    const charsPerLine=Math.max(4,Math.floor(widthPx/Math.max(7,fontPx*.56)));
+    let lines=0;
+    for(const explicit of text.split('\n')){
+      if(!explicit){lines+=1;continue;}
+      const words=explicit.split(/\s+/).filter(Boolean);
+      if(!words.length){lines+=1;continue;}
+      let used=0;
+      for(const word of words){
+        const token=Math.max(1,word.length);
+        if(token>charsPerLine){
+          if(used)lines+=1;
+          lines+=Math.floor(token/charsPerLine);
+          used=token%charsPerLine;
+        }else if(!used)used=token;
+        else if(used+1+token<=charsPerLine)used+=1+token;
+        else{lines+=1;used=token;}
+      }
+      if(used||!words.length)lines+=1;
+    }
+    return Math.max(fontPx*3.4,lines*fontPx*1.25+fontPx*.9);
+  }
+  function prepareSongbookLayout(textBoxes,operations=[],canvasWidth=1000,canvasHeight=1300){
+    const width=Math.max(600,Number(canvasWidth)||1000);
+    const oldHeight=Math.max(800,Number(canvasHeight)||1300);
+    const sourceBoxes=Array.isArray(textBoxes)?textBoxes.map(box=>({...box})):[];
+    const pixelBoxes=sourceBoxes.map(box=>{
+      const top=(Number(box.y)||0)*oldHeight;
+      const currentHeight=Math.max(30,(Number(box.h)||.12)*oldHeight);
+      const needed=estimateSongbookTextHeightPx(box,width);
+      return {box,top,height:Math.max(currentHeight,needed)};
+    });
+    let newHeight=oldHeight;
+    for(const item of pixelBoxes)newHeight=Math.max(newHeight,item.top+item.height+70);
+    newHeight=Math.max(1300,Math.ceil(newHeight/50)*50);
+    const scaleY=oldHeight/newHeight;
+    const boxes=pixelBoxes.map(({box,top,height})=>({...box,y:top/newHeight,h:height/newHeight}));
+    const ops=(Array.isArray(operations)?operations:[]).map(op=>({...op,points:Array.isArray(op.points)?op.points.map(point=>({...point,y:(Number(point.y)||0)*scaleY})):[]}));
+    return {canvasWidth:width,canvasHeight:newHeight,textBoxes:boxes,operations:ops};
+  }
   function importedTextBoxHeight(text){
-    const normalized=String(text||'').replace(/\r\n?/g,'\n');
-    const explicitLines=normalized.split('\n');
-    let visualLines=0;
-    for(const line of explicitLines)visualLines+=Math.max(1,Math.ceil(Math.max(1,line.length)/42));
-    return Math.min(.84,Math.max(.18,.055*visualLines+.06));
+    return Math.max(.18,estimateSongbookTextHeightPx({text,w:.88,size:9},1000)/1300);
   }
   async function syncElenaSongTextToImageEdit(song,previousText=''){
     if(!song?.id)return null;
@@ -1005,6 +1044,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       if(index>=0)boxes[index]=box;else boxes.unshift(box);
     }
 
+    const layout=prepareSongbookLayout(boxes,existing?.operations,existing?.canvasWidth||1000,existing?.canvasHeight||1300);
     const stamp=Date.now();
     const metadata={
       editId,
@@ -1012,8 +1052,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       owner:'elena',
       mode:'songbook',
       originalSrc:'',
-      operations:Array.isArray(existing?.operations)?existing.operations:[],
-      textBoxes:boxes.map(serializeImageTextBox),
+      canvasWidth:layout.canvasWidth,
+      canvasHeight:layout.canvasHeight,
+      operations:layout.operations,
+      textBoxes:layout.textBoxes.map(serializeImageTextBox),
       updatedAt:stamp,
       format:'vector-v4',
       source:'imageEdits',
@@ -1021,7 +1063,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     };
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
-    song.cancioneroElenaVisual={original:'',operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
+    song.cancioneroElenaVisual={original:'',canvasWidth:metadata.canvasWidth,canvasHeight:metadata.canvasHeight,operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
 
     if(navigator.onLine){
       try{
@@ -1032,7 +1074,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
           await remoteSetDoc(ref,remotePayload,{merge:false});
           await offlineStorePut('imageEdits',remotePayload);
           await offlineStoreDelete('pendingSync',editId);
-          song.cancioneroElenaVisual={original:'',operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
+          song.cancioneroElenaVisual={original:'',canvasWidth:remotePayload.canvasWidth,canvasHeight:remotePayload.canvasHeight,operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
           return remotePayload;
         }
       }catch(err){console.warn('Texto Elena guardado localmente; sincronización pendiente',err);}
@@ -1083,6 +1125,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       if(index>=0)boxes[index]=box;else boxes.unshift(box);
     }
 
+    const layout=prepareSongbookLayout(boxes,existing?.operations,existing?.canvasWidth||1000,existing?.canvasHeight||1300);
     const stamp=Date.now();
     const metadata={
       editId,
@@ -1090,8 +1133,10 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       owner:'daniel',
       mode:'songbook',
       originalSrc:'',
-      operations:Array.isArray(existing?.operations)?existing.operations:[],
-      textBoxes:boxes.map(serializeImageTextBox),
+      canvasWidth:layout.canvasWidth,
+      canvasHeight:layout.canvasHeight,
+      operations:layout.operations,
+      textBoxes:layout.textBoxes.map(serializeImageTextBox),
       updatedAt:stamp,
       format:'vector-v4',
       source:'imageEdits',
@@ -1099,7 +1144,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     };
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
-    song.cancioneroDanielVisual={original:'',operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
+    song.cancioneroDanielVisual={original:'',canvasWidth:metadata.canvasWidth,canvasHeight:metadata.canvasHeight,operations:metadata.operations,textBoxes:metadata.textBoxes,updatedAt:stamp,pendingSync:true};
 
     if(navigator.onLine){
       try{
@@ -1110,7 +1155,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
           await remoteSetDoc(ref,remotePayload,{merge:false});
           await offlineStorePut('imageEdits',remotePayload);
           await offlineStoreDelete('pendingSync',editId);
-          song.cancioneroDanielVisual={original:'',operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
+          song.cancioneroDanielVisual={original:'',canvasWidth:remotePayload.canvasWidth,canvasHeight:remotePayload.canvasHeight,operations:remotePayload.operations,textBoxes:remotePayload.textBoxes,updatedAt:stamp,remote:true};
           return remotePayload;
         }
       }catch(err){console.warn('Texto Daniel guardado localmente; sincronización pendiente',err);}
@@ -1191,10 +1236,15 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     const paintComposition=(img=null)=>{
       try{
         const c=document.createElement('canvas');
+        let composition=remote||{};
+        if(mode==='songbook')composition={...composition,...prepareSongbookLayout(composition.textBoxes,composition.operations,composition.canvasWidth||1000,composition.canvasHeight||1300)};
         if(img&&img.naturalWidth&&img.naturalHeight){
           const ratio=Math.min(1,1800/Math.max(1,img.naturalWidth),2400/Math.max(1,img.naturalHeight));
           c.width=Math.max(1,Math.round(img.naturalWidth*ratio));
           c.height=Math.max(1,Math.round(img.naturalHeight*ratio));
+        }else if(mode==='songbook'){
+          c.width=Math.max(600,Number(composition.canvasWidth)||1000);
+          c.height=Math.max(1300,Number(composition.canvasHeight)||1300);
         }else{
           c.width=1000;c.height=1300;
         }
@@ -1203,14 +1253,14 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         if(img)ctx.drawImage(img,0,0,c.width,c.height);
         const overlay=document.createElement('canvas');overlay.width=c.width;overlay.height=c.height;const oc=overlay.getContext('2d');
         const arrowHead=(target,tip,from,size)=>{const angle=Math.atan2(tip.y-from.y,tip.x-from.x),len=Math.max(12,size*3.2),spread=Math.PI/6;target.beginPath();target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle-spread),tip.y-len*Math.sin(angle-spread));target.moveTo(tip.x,tip.y);target.lineTo(tip.x-len*Math.cos(angle+spread),tip.y-len*Math.sin(angle+spread));target.stroke();};
-        for(const op of remote?.operations||[]){
+        for(const op of composition?.operations||[]){
           const target=op.tool==='eraser'&&op.target==='photo'?ctx:oc;
           const pts=(op.points||[]).map(p=>({x:p.x*c.width,y:p.y*c.height}));
           if(pts.length<2)continue;
           target.save();target.lineCap='round';target.lineJoin='round';target.lineWidth=Math.max(1,(op.size||.008)*c.width);target.strokeStyle=op.color||'#d00000';target.globalCompositeOperation=op.tool==='eraser'?'destination-out':'source-over';target.beginPath();target.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)target.lineTo(pts[i].x,pts[i].y);target.stroke();if(op.tool==='pencil'&&op.mode&&op.mode!=='free'){arrowHead(target,pts.at(-1),pts.at(-2),target.lineWidth);if(op.mode==='double-arrow')arrowHead(target,pts[0],pts[1],target.lineWidth);}target.restore();
         }
         ctx.drawImage(overlay,0,0);
-        for(const box of (Array.isArray(remote?.textBoxes)?remote.textBoxes:[])){
+        for(const box of (Array.isArray(composition?.textBoxes)?composition.textBoxes:[])){
           if(!String(box.text||'').trim())continue;
           ctx.save();
           const x=(Number(box.x)||0)*c.width,y=(Number(box.y)||0)*c.height,bw=Math.max(40,(Number(box.w)||.25)*c.width),bh=Math.max(30,(Number(box.h)||.12)*c.height);
@@ -1308,7 +1358,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         if(remote&&remoteUpdated>=localUpdated){
           const ok=await showComposedViewerEdit(content,remote,song,owner,viewerMode);
           if(renderGeneration!==viewerRenderGeneration)return;
-          if(ok){rendered=true;song[visualField(owner,viewerMode)]={original:viewerMode==='songbook'?'':(remote.originalSrc||remote.original||''),operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
+          if(ok){rendered=true;song[visualField(owner,viewerMode)]={original:viewerMode==='songbook'?'':(remote.originalSrc||remote.original||''),canvasWidth:remote.canvasWidth||1000,canvasHeight:remote.canvasHeight||1300,operations:Array.isArray(remote.operations)?remote.operations:[],textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],updatedAt:remote.updatedAt||Date.now(),remote:true};return;}
         }
         if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();
       }).catch(err=>{console.warn('No se pudo actualizar el visor desde imageEdits',err);if(renderGeneration===viewerRenderGeneration&&!rendered)renderFallback();});
@@ -1999,7 +2049,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
 
   const IMAGE_COLORS=['#d00000','#111111','#ffffff','#0057d9','#ffd400'];
-  const imageEditorState={original:'',overlay:'',sources:[],operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
+  const imageEditorState={original:'',overlay:'',sources:[],canvasWidth:1000,canvasHeight:1300,operations:[],textBoxes:[],activeTextBoxId:null,tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,last:null,path:[],undo:[],redo:[],textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,pointers:new Map(),pinch:null,panning:null,textGesture:null};
   let imageEditorChangeRevision=0,imageEditorSavedRevision=0,imageTextAutosaveTimer=0;
   function markImageEditorDirty(){imageEditorChangeRevision++;}
   function resetImageEditorDirty(){imageEditorChangeRevision=0;imageEditorSavedRevision=0;}
@@ -2047,7 +2097,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   }
   function renderImageEditor(){
     const sources=[...(imageEditorState.sources||[])];
-    const blank=()=>{setCanvasSize(1000,1300);const b=imageBaseContext(),o=imageEditorContext();b.fillStyle='#fff';b.fillRect(0,0,1000,1300);o.clearRect(0,0,1000,1300);replayImageOperations();imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};
+    const blank=()=>{const w=Math.max(600,Number(imageEditorState.canvasWidth)||1000),h=Math.max(800,Number(imageEditorState.canvasHeight)||1300);imageEditorState.canvasWidth=w;imageEditorState.canvasHeight=h;setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.fillStyle='#fff';b.fillRect(0,0,w,h);o.clearRect(0,0,w,h);replayImageOperations();imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};
     const loadNext=()=>{const base=sources.shift();if(!base){blank();return;}const img=new Image();img.onload=()=>{imageEditorState.original=base;const ratio=Math.min(1,1800/img.naturalWidth,2400/img.naturalHeight);const w=Math.max(1,Math.round(img.naturalWidth*ratio)),h=Math.max(1,Math.round(img.naturalHeight*ratio));setCanvasSize(w,h);const b=imageBaseContext(),o=imageEditorContext();b.clearRect(0,0,w,h);b.drawImage(img,0,0,w,h);o.clearRect(0,0,w,h);replayImageOperations();if(imageEditorState.overlay){const ov=new Image();ov.onload=()=>{o.drawImage(ov,0,0,w,h);imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.onerror=()=>{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();};ov.src=imageEditorState.overlay;}else{imageEditorState.undo=[imageLayerSnapshot()];updateImageHistory();resetImageViewport();renderTextBoxes();}};img.onerror=loadNext;img.src=encodeURI(base);};loadNext();
   }
   function syncImageSwatches(){$('#imageTextSwatch').style.background=imageEditorState.textColor;$('#imagePencilSwatch').style.background=imageEditorState.pencilColor;}
@@ -2086,11 +2136,30 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     $('#imageEditorTitle').textContent=activeImageMode==='songbook'
       ? `Cancionero ${ownerLabel(owner)} · ${song.titulo}`
       : `Imagen ${ownerLabel(owner)} · ${song.titulo}`;
+    const editorDialog=$('#imageEditorDialog');
     const uploadTrigger=$('#imageUploadTrigger');
     const uploadWrap=uploadTrigger?.closest('.toolbar-popover-wrap');
+    const uploadInput=$('#imageSourceInput');
     const hideUpload=activeImageMode==='songbook';
-    if(uploadTrigger){uploadTrigger.hidden=hideUpload;uploadTrigger.style.display=hideUpload?'none':'';uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');}
-    if(uploadWrap){uploadWrap.hidden=hideUpload;uploadWrap.style.display=hideUpload?'none':'';uploadWrap.setAttribute('aria-hidden',hideUpload?'true':'false');}
+    // Cancionero Elena y Cancionero Daniel comparten el editor visual, pero
+    // nunca deben ofrecer controles para subir, reemplazar o eliminar fotos.
+    if(editorDialog){
+      editorDialog.classList.toggle('is-songbook-mode',hideUpload);
+      editorDialog.dataset.editorMode=activeImageMode;
+    }
+    if(uploadTrigger){
+      uploadTrigger.hidden=hideUpload;
+      uploadTrigger.disabled=hideUpload;
+      uploadTrigger.style.setProperty('display',hideUpload?'none':'','important');
+      uploadTrigger.setAttribute('aria-hidden',hideUpload?'true':'false');
+      uploadTrigger.tabIndex=hideUpload?-1:0;
+    }
+    if(uploadWrap){
+      uploadWrap.hidden=hideUpload;
+      uploadWrap.style.setProperty('display',hideUpload?'none':'','important');
+      uploadWrap.setAttribute('aria-hidden',hideUpload?'true':'false');
+    }
+    if(uploadInput){uploadInput.disabled=hideUpload;uploadInput.tabIndex=hideUpload?-1:0;}
     if(imageUploadMenu)imageUploadMenu.hidden=true;
     const localRaw=song[visualField(owner,activeImageMode)];
     const remote=await loadRemoteImageEdit(songId,owner,activeImageMode);
@@ -2098,6 +2167,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     // imageEdits, sus capas siempre prevalecen sobre copias antiguas del objeto canción.
     const raw=remote ? {
       original:remote.originalSrc||remote.original||'',
+      canvasWidth:Number(remote.canvasWidth)||1000,
+      canvasHeight:Number(remote.canvasHeight)||1300,
       operations:Array.isArray(remote.operations)?remote.operations:[],
       textBoxes:Array.isArray(remote.textBoxes)?remote.textBoxes:[],
       updatedAt:remote.updatedAt||Date.now(),remote:true
@@ -2118,7 +2189,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         });
       }
     }
-    imageEditorState.sources=baseSources;imageEditorState.original=baseSources[0]||'';imageEditorState.overlay=raw.drawingOverlay||raw.overlay||'';imageEditorState.operations=Array.isArray(raw.operations)?raw.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]})):[];imageEditorState.textBoxes=Array.isArray(raw.textBoxes)?raw.textBoxes.map(x=>({...x})):[];imageEditorState.activeTextBoxId=null;
+    const prepared=activeImageMode==='songbook'?prepareSongbookLayout(raw.textBoxes,raw.operations,raw.canvasWidth||1000,raw.canvasHeight||1300):{canvasWidth:Number(raw.canvasWidth)||1000,canvasHeight:Number(raw.canvasHeight)||1300,textBoxes:Array.isArray(raw.textBoxes)?raw.textBoxes:[],operations:Array.isArray(raw.operations)?raw.operations:[]};
+    imageEditorState.sources=baseSources;imageEditorState.original=baseSources[0]||'';imageEditorState.overlay=raw.drawingOverlay||raw.overlay||'';imageEditorState.canvasWidth=prepared.canvasWidth;imageEditorState.canvasHeight=prepared.canvasHeight;imageEditorState.operations=prepared.operations.map(x=>({...x,points:Array.isArray(x.points)?x.points.map(p=>({...p})):[]}));imageEditorState.textBoxes=prepared.textBoxes.map(x=>({...x}));imageEditorState.activeTextBoxId=null;
     Object.assign(imageEditorState,{tool:'pencil',pencilSize:8,eraserSize:100,textSize:9,pencilColor:'#d00000',textColor:'#d00000',drawMode:'free',eraserTarget:'annotations',drawing:false,textBold:false,textItalic:false,textX:.05,textY:.05,scale:1,panX:0,panY:0,textGesture:null});imageInlineText.value='';imageInlineText.hidden=true;
     $('#imageToolPencil').classList.add('is-active');$('#imageToolEraser').classList.remove('is-active');$('#imageTextTool').classList.remove('is-active');syncImageSwatches();resetImageEditorDirty();$('#imageEditorDialog').showModal();requestAnimationFrame(()=>{renderImageEditor();rememberDialogState($('#imageEditorDialog'));});
   }
@@ -2516,7 +2588,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     syncImageTextBoxesFromDom();
     const stamp=Date.now();
     const editId=remoteImageKey(activeImageSongId,activeImageOwner,activeImageMode);
-    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,mode:activeImageMode,originalSrc:activeImageMode==='songbook'?'':(imageEditorState.original||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
+    const metadata={editId,songId:activeImageSongId,owner:activeImageOwner,mode:activeImageMode,originalSrc:activeImageMode==='songbook'?'':(imageEditorState.original||''),canvasWidth:imageBaseCanvas().width||imageEditorState.canvasWidth||1000,canvasHeight:imageBaseCanvas().height||imageEditorState.canvasHeight||1300,operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),updatedAt:stamp,format:'vector-v4',source:'imageEdits',pendingSync:true};
     // El guardado local siempre ocurre primero y nunca depende de internet.
     await offlineStorePut('imageEdits',metadata);
     await offlineStorePut('pendingSync',metadata);
@@ -2575,8 +2647,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
     syncImageTextBoxesFromDom();
     const song=state.songs.find(x=>x.id===activeImageSongId);if(!song)return false;
     const composite=imageEditorComposite();
-    let saved={original:activeImageMode==='songbook'?'':(imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||''),operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
-    if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
+    let saved={original:activeImageMode==='songbook'?'':(imageEditorState.original||imageCandidates(song,activeImageOwner)[0]||''),canvasWidth:imageBaseCanvas().width||imageEditorState.canvasWidth||1000,canvasHeight:imageBaseCanvas().height||imageEditorState.canvasHeight||1300,operations:(imageEditorState.operations||[]).map(op=>({...op,points:(op.points||[]).map(p=>({...p}))})),textBoxes:imageEditorState.textBoxes.map(serializeImageTextBox),composite,updatedAt:Date.now()};
+    if(syncRemote){const remote=await saveImageEditorVectorsRemote();saved={original:remote.originalSrc,canvasWidth:remote.canvasWidth||1000,canvasHeight:remote.canvasHeight||1300,operations:remote.operations,textBoxes:remote.textBoxes,composite,updatedAt:remote.updatedAt,remote:!remote.pendingSync,pendingSync:Boolean(remote.pendingSync)};}
     song[visualField(activeImageOwner,activeImageMode)]=saved;
     const ci=state.customSongs.findIndex(x=>x.id===song.id);if(ci>=0)state.customSongs[ci]={...song};else state.songEdits[song.id]={...song};
     saveStateLocalOnly();renderSongbookList();renderSongs();
@@ -2628,6 +2700,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
         const immediateEdit={...saved,originalSrc:saved.originalSrc||saved.original||'',operations:Array.isArray(saved.operations)?saved.operations:[],textBoxes:Array.isArray(saved.textBoxes)?saved.textBoxes:[]};
         savedSong[visualField(saveOwner,activeImageMode)]={
           original:immediateEdit.originalSrc||immediateEdit.original||'',
+          canvasWidth:immediateEdit.canvasWidth||1000,
+          canvasHeight:immediateEdit.canvasHeight||1300,
           operations:Array.isArray(immediateEdit.operations)?immediateEdit.operations:[],
           textBoxes:Array.isArray(immediateEdit.textBoxes)?immediateEdit.textBoxes:[],
           updatedAt:immediateEdit.updatedAt||Date.now(),

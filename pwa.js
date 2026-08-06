@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "6.36.72.9";
+  const APP_VERSION = "6.36.72.12";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
@@ -96,7 +96,7 @@
 
   window.addEventListener("load", async () => {
     try {
-      const resetKey = "egm-cache-reset-6.36.72.9";
+      const resetKey = "egm-cache-reset-6.36.72.12";
       if (!localStorage.getItem(resetKey)) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.map(registration => registration.unregister()));
@@ -110,7 +110,7 @@
         location.replace(cleanUrl.href);
         return;
       }
-      const registration = await navigator.serviceWorker.register("./service-worker-6.36.72.9.js", {
+      const registration = await navigator.serviceWorker.register("./service-worker-6.36.72.12.js", {
         scope: "./",
         updateViaCache: "none"
       });

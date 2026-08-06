@@ -1090,3 +1090,14 @@ body.live-mode .song-card{
   height:auto!important;
   align-self:start!important;
 }
+
+
+/* Entrega 6.36.72.11 · Cancioneros sin controles de fotografía */
+#imageEditorDialog.is-songbook-mode #imageUploadTrigger,
+#imageEditorDialog.is-songbook-mode #imageUploadOptions,
+#imageEditorDialog.is-songbook-mode #imageSourceInput,
+#imageEditorDialog.is-songbook-mode .egm-tool-wrap:has(#imageUploadTrigger){
+  display:none !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+}

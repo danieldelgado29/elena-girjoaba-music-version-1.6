@@ -1471,12 +1471,16 @@ function abrirAdmin() {
   const clave = window.prompt("Contraseña del panel");
   if (clave === null) return;
 
-  if (clave.trim() !== CONFIG.claveAdmin) {
+  const seguridad = obtenerSeguridadLocal();
+  if (clave.trim() !== String(seguridad.password || CONFIG.claveAdmin)) {
     window.alert("Contraseña incorrecta.");
     return;
   }
 
-  window.location.href = "panel.html";
+  // La clave ya fue validada en la página pública. Entregamos una autorización
+  // limitada a esta pestaña para que panel.html no vuelva a pedirla.
+  sessionStorage.setItem("egm-panel-auth", "1");
+  window.location.href = "panel.html?trusted=1&live=1";
 }
 
 function cerrarAdmin() {
