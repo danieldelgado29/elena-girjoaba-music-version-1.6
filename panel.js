@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.72.12 · controles de imagen ocultos en cancioneros");
-document.documentElement.dataset.egmVersion="6.36.70.5";
+console.info("Elena Girjoaba Music · 6.36.73 · perfiles Elena y Daniel");
+document.documentElement.dataset.egmVersion="6.36.73";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -33,7 +33,60 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
   const dialogBaselines = new WeakMap();
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
+  const PANEL_PREFS_KEY='egm-panel-device-profile-v1';
+  let panelDevicePrefs={profile:'elena',autoOpen:'none'};
+  let suppressQueueAutoOpenUntil=Date.now()+2500;
+  function loadPanelDevicePrefs(){
+    try{
+      const saved=JSON.parse(localStorage.getItem(PANEL_PREFS_KEY)||'{}');
+      const profile=saved.profile==='daniel'?'daniel':'elena';
+      const autoOpen=profile==='daniel'?(saved.autoOpen==='songbook'?'songbook':saved.autoOpen==='none'?'none':'image'):(saved.autoOpen==='image'||saved.autoOpen==='lyrics'?saved.autoOpen:'none');
+      panelDevicePrefs={profile,autoOpen};
+    }catch(_){panelDevicePrefs={profile:'elena',autoOpen:'none'};}
+  }
+  function savePanelDevicePrefs(){localStorage.setItem(PANEL_PREFS_KEY,JSON.stringify(panelDevicePrefs));}
+  function refreshPanelProfileControls(){
+    const profile=$('#panelUserSelect');
+    const auto=$('#panelAutoOpenSelect');
+    if(!profile||!auto)return;
+    profile.value=panelDevicePrefs.profile;
+    auto.innerHTML=panelDevicePrefs.profile==='daniel'
+      ? '<option value="image">Imagen, solo si existe contenido</option><option value="songbook">Cancionero Daniel</option><option value="none">No abrir nada</option>'
+      : '<option value="none">No abrir nada</option><option value="image">Imagen</option><option value="lyrics">Letra</option>';
+    if(![...auto.options].some(o=>o.value===panelDevicePrefs.autoOpen))panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?'image':'none';
+    auto.value=panelDevicePrefs.autoOpen;
+    const help=$('#panelAutoOpenHelp');
+    if(help)help.textContent=panelDevicePrefs.profile==='daniel'?'Daniel: Imagen es el valor predeterminado y solo se abre cuando existe foto, dibujo o caja de texto.':'Elena: por defecto no se abre nada.';
+    document.body.dataset.panelUser=panelDevicePrefs.profile;
+  }
+  function hasDanielImageContent(song){
+    const value=song?.notasDaniel;
+    if(!value)return false;
+    if(typeof value==='string')return value.trim().length>0;
+    return Boolean(value.originalSrc||value.original||value.dataUrl||value.src||value.composite||(Array.isArray(value.operations)&&value.operations.length)||(Array.isArray(value.textBoxes)&&value.textBoxes.length));
+  }
+  function maybeAutoOpenQueuedSong(song){
+    if(!song||Date.now()<suppressQueueAutoOpenUntil||!document.body.classList.contains('live-mode'))return;
+    const pref=panelDevicePrefs.autoOpen;
+    if(pref==='none')return;
+    if(panelDevicePrefs.profile==='elena'){
+      if(pref==='image')openViewer(song,'notes');
+      else if(pref==='lyrics')openViewer(song,'lyrics');
+    }else{
+      if(pref==='image'){if(hasDanielImageContent(song))openViewer(song,'daniel-image');}
+      else if(pref==='songbook')openViewer(song,'daniel');
+    }
+  }
+  function processQueueAdditions(previous,next){
+    if(!remoteReady||Date.now()<suppressQueueAutoOpenUntil)return;
+    const before=new Set(previous||[]);
+    const added=(next||[]).filter(id=>!before.has(id));
+    if(!added.length)return;
+    const song=state.songs.find(x=>x.id===added[added.length-1]);
+    if(song)setTimeout(()=>maybeAutoOpenQueuedSong(song),120);
+  }
   const fallbackRepertoires = [{id:'todas',name:'Todas las canciones'}];
+  loadPanelDevicePrefs();
   let remoteStateRef = null;
   let remoteDb = null;
   let remoteGetDoc = null;
@@ -135,6 +188,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
+        const queueBeforeSnapshot=[...state.queue];
         if(Array.isArray(data.cola)) state.queue=[...data.cola];
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
 
@@ -161,9 +215,11 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
           $('#whatsappToggle').checked=state.config.whatsapp;
           $('#publicQueueToggle').checked=state.config.publicQueue;
         }
+        const wasRemoteReady=remoteReady;
         remoteReady=true;
         renderQueue();
         if(document.body.classList.contains('live-mode')) renderSongs();
+        if(wasRemoteReady)processQueueAdditions(queueBeforeSnapshot,state.queue);
       },err=>console.warn('Sincronización remota no disponible',err));
     }catch(err){ console.warn('No se pudo iniciar la sincronización remota',err); throw err; }
     return remoteStateRef;
@@ -321,6 +377,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       $('#publicQueueToggle').checked = state.config.publicQueue !== false;
       setStatus(true);
     }
+    refreshPanelProfileControls();
   }
 
   function saveStateLocalOnly(){
@@ -375,6 +432,12 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       .catch(err=>{console.error('No se sincronizó el repertorio',err);toast('Cambio guardado localmente; sincronización pendiente.');});
   });
   $('#profileSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
+  $('#panelUserSelect').addEventListener('change',()=>{
+    panelDevicePrefs.profile=$('#panelUserSelect').value==='daniel'?'daniel':'elena';
+    panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?'image':'none';
+    savePanelDevicePrefs();refreshPanelProfileControls();renderSongs();
+  });
+  $('#panelAutoOpenSelect').addEventListener('change',()=>{panelDevicePrefs.autoOpen=$('#panelAutoOpenSelect').value;savePanelDevicePrefs();refreshPanelProfileControls();});
   const venueDraft=sessionStorage.getItem('egm-venue-draft'); if(venueDraft&&!$('#venueInput').value) $('#venueInput').value=venueDraft;
   function setStatus(active){
     const chip=$('#statusChip');chip.textContent=active?'Show activo':'Sin show activo';chip.classList.toggle('active',active);
@@ -435,6 +498,8 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       if(document.body.classList.contains('live-mode')){invalidateRepertoireCache();filterSongs();}
     }finally{applyingRemoteShowState=false;}
   }
+
+  refreshPanelProfileControls();
 
   $('#showForm').addEventListener('submit',e=>{
     e.preventDefault();
@@ -707,12 +772,15 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       const danielVisual=song.cancioneroDanielVisual&&typeof song.cancioneroDanielVisual==='object'&&Array.isArray(song.cancioneroDanielVisual.textBoxes)&&song.cancioneroDanielVisual.textBoxes.some(box=>box.importSource==='cancioneroDaniel'||String(box.id||'').startsWith('import-daniel-'));
       const hasDaniel=danielVisual||hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)||hasMeaningfulContent(song.notasDaniel);
       const card=document.createElement('article');card.dataset.songId=song.id;card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
-      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button><button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Notas sin imagen'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene texto de Daniel':'Daniel sin contenido'}">Daniel</button></div>`;
+      const profileActions=panelDevicePrefs.profile==='daniel'
+        ? `<button class="song-action notes ${hasDanielImageContent(song)?'has-content':''}" data-act="daniel-image" title="${hasDanielImageContent(song)?'Contiene imagen o anotaciones de Daniel':'Imagen de Daniel sin contenido'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene cancionero de Daniel':'Cancionero Daniel sin contenido'}">Cancionero</button>`
+        : `<button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Imagen sin contenido'}">Imagen</button>`;
+      card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button>${profileActions}</div>`;
       const handleCardControl=e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
         const act=button.dataset.act;
-        if(['queue','played','lyrics','notes','daniel'].includes(act)) requireSecondTap(song,act,button);
+        if(['queue','played','lyrics','notes','daniel','daniel-image'].includes(act)) requireSecondTap(song,act,button);
       };
       card.addEventListener('pointerup',e=>{
         if(e.pointerType!=='touch'&&e.pointerType!=='pen') return;
@@ -747,7 +815,7 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
       pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
     }
     button.classList.add('is-awaiting-second-tap');
-    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Daniel'};
+    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Cancionero', 'daniel-image':'Imagen'};
     const label=labels[act]||'esta acción';
     toast(`Toca otra vez: ${label}`);
     const entry={key,time:now,button,timer:null};
@@ -760,14 +828,17 @@ document.documentElement.dataset.egmVersion="6.36.70.5";
 
   function handleSongAction(song,act){
     if(act==='queue'){
-      state.queue=state.queue.includes(song.id)?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
+      const wasQueued=state.queue.includes(song.id);
+      state.queue=wasQueued?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
       saveState();renderQueue();renderSongs();toast(state.queue.includes(song.id)?'Canción agregada a la cola':'Canción retirada de la cola');
+      if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
     } else if(act==='played'){
       state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
       saveState();renderQueue();renderSongs();toast(state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
     } else if(act==='lyrics') openViewer(song,'lyrics');
     else if(act==='notes') openViewer(song,'notes');
     else if(act==='daniel') openViewer(song,'daniel');
+    else if(act==='daniel-image') openViewer(song,'daniel-image');
   }
 
   function renderQueue(){
