@@ -966,3 +966,38 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-58px!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
 }
+
+/* Entrega 6.36.72.1 · scroll Android y barra Cola activa estable */
+html,body{
+  overscroll-behavior-y:contain;
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+}
+body.live-mode{
+  overflow-y:auto!important;
+  min-height:100%;
+}
+body.live-mode .app-shell,
+body.live-mode #liveView{
+  overflow:visible!important;
+  touch-action:pan-y;
+}
+body.live-mode .live-toolbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:90!important;
+}
+body.live-mode .live-sticky-tools{
+  position:sticky!important;
+  top:44px!important;
+  z-index:80!important;
+  align-self:start;
+  transform:none!important;
+}
+body.live-mode .song-list{
+  touch-action:pan-y!important;
+  overflow:visible!important;
+}
+@media(max-width:520px){
+  body.live-mode .live-sticky-tools{top:38px!important}
+}

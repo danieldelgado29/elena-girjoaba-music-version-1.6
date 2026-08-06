@@ -246,8 +246,25 @@ async function cargarLetras() {
   }
 }
 
+function documentoLetraCliente(cancion) {
+  if (!cancion) return null;
+  const existente = estado.letras[cancion.id];
+  if (existente) return existente;
+
+  const texto = String(cancion.letraPublica || "").trim();
+  if (!texto) return null;
+
+  const html = texto.includes("<") ? texto : textoAHtmlLetra(texto);
+  return {
+    titulo: cancion.titulo,
+    artista: cancion.artista,
+    publicaHtml: html,
+    escenarioHtml: html
+  };
+}
+
 function tieneLetra(idCancion) {
-  return Boolean(estado.letras[idCancion]);
+  return Boolean(documentoLetraCliente(obtenerCancion(idCancion)));
 }
 
 function ocultarMenusLetra() {
@@ -352,7 +369,7 @@ async function cerrarLetra() {
 }
 
 function abrirLetra(cancion, modoPanel = false) {
-  const documento = estado.letras[cancion.id];
+  const documento = documentoLetraCliente(cancion);
   if (!documento || !DOM.letraModal) return;
 
   estado.letraActualId = cancion.id;
