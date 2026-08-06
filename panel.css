@@ -914,7 +914,6 @@ body.live-mode .search-wrap,body.live-mode .song-table-head,body.live-mode .song
   width:100%!important;max-width:100%!important;min-width:0!important;
 }
 body.live-mode .app-shell{padding-left:12px!important;padding-right:12px!important;margin:0 auto!important}
-body.live-mode .song-list{overflow:visible!important}
 body.live-mode .song-card{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}
 body.live-mode .song-info,body.live-mode .song-title-row{width:100%!important;max-width:100%!important;min-width:0!important}
 body.live-mode .song-actions{width:100%!important;max-width:100%!important;min-width:0!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:6px!important;flex:0 1 auto!important}
@@ -967,16 +966,127 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
 }
 
-/* Entrega 6.36.72.5 · recuperación del scroll estable de 6.36.54
-   La pantalla en vivo vuelve a usar el scroll natural de la página.
-   Se conservan las barras sticky originales y se eliminan las reglas
-   acumuladas que competían por overflow/touch-action. */
-body.live-mode{overflow-y:visible!important;min-height:100%;}
-body.live-mode .app-shell,
-body.live-mode #liveView{overflow:visible!important;}
-body.live-mode .live-toolbar{position:sticky!important;top:0!important;}
-body.live-mode .live-sticky-tools{position:sticky!important;top:calc(44px + var(--egm-safe-top))!important;}
-body.live-mode .song-list{overflow:visible!important;}
+/* Entrega 6.36.72.8 · estructura única de scroll del modo show
+   - La ventana no desplaza el body.
+   - Cabecera, Cola activa y buscador quedan dentro del grid fijo.
+   - La lista de canciones es el único contenedor desplazable.
+   - Mismo comportamiento para touch, trackpad y rueda. */
+.build-version-badge{position:fixed;right:7px;bottom:7px;z-index:100000;padding:3px 7px;border-radius:999px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.72);font:600 10px/1.2 system-ui,-apple-system,sans-serif;pointer-events:none}
+
+html.live-mode,
+body.live-mode{
+  width:100%;
+  height:100%;
+  min-height:100%;
+  overflow:hidden!important;
+  overscroll-behavior:none;
+}
+body.live-mode{
+  touch-action:auto!important;
+}
+body.live-mode .app-shell{
+  width:min(1180px,100%);
+  height:100dvh!important;
+  min-height:0!important;
+  margin:0 auto!important;
+  padding:0 clamp(8px,2vw,24px)!important;
+  overflow:hidden!important;
+  display:block;
+}
+body.live-mode .app-shell > main{
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+body.live-mode #liveView.view.is-active{
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  display:grid!important;
+  grid-template-rows:auto auto auto minmax(0,1fr);
+  align-content:stretch;
+}
+body.live-mode .live-toolbar{
+  position:relative!important;
+  inset:auto!important;
+  top:auto!important;
+  z-index:35;
+  flex:0 0 auto;
+}
+body.live-mode .live-sticky-tools{
+  position:relative!important;
+  inset:auto!important;
+  top:auto!important;
+  z-index:30;
+  min-height:0;
+  flex:0 0 auto;
+}
+body.live-mode .song-table-head{
+  flex:0 0 auto;
+  margin-top:0!important;
+}
+body.live-mode .song-list{
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior-y:contain;
+  touch-action:pan-y!important;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:max(28px,env(safe-area-inset-bottom));
+  scrollbar-gutter:stable;
+}
+body.live-mode .song-list > :last-child{margin-bottom:8px}
+
 @media(max-width:520px){
-  body.live-mode .live-sticky-tools{top:calc(44px + var(--egm-safe-top))!important;}
+  body.live-mode .app-shell{padding-left:6px!important;padding-right:6px!important}
+}
+
+
+
+/* Entrega 6.36.72.9 · tabla estable dentro de un contenedor de scroll independiente */
+body.live-mode #liveView.view.is-active{
+  grid-template-rows:auto auto minmax(0,1fr)!important;
+}
+body.live-mode .song-table-region{
+  min-height:0!important;
+  overflow:hidden!important;
+  display:grid!important;
+  grid-template-rows:auto minmax(0,1fr)!important;
+  align-content:stretch!important;
+}
+body.live-mode .song-table-head{
+  position:relative!important;
+  inset:auto!important;
+  z-index:2;
+  margin:0!important;
+  background:var(--bg)!important;
+}
+body.live-mode .song-scroll-region{
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior-y:contain;
+  touch-action:pan-y!important;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable;
+  padding-bottom:max(28px,env(safe-area-inset-bottom));
+}
+body.live-mode .song-list{
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  overflow:visible!important;
+  display:grid!important;
+  grid-auto-flow:row!important;
+  grid-auto-rows:max-content!important;
+  align-content:start!important;
+  gap:8px!important;
+  padding-bottom:8px!important;
+}
+body.live-mode .song-card{
+  min-height:0!important;
+  height:auto!important;
+  align-self:start!important;
 }

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "6.36.72.5";
+  const APP_VERSION = "6.36.72.9";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
@@ -59,6 +59,24 @@
     }
   }
 
+  const host = location.hostname;
+  const isLocalDevelopment = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (isLocalDevelopment || window.__EGM_DISABLE_SERVICE_WORKER__) {
+    // Live Server debe cargar siempre los archivos de la carpeta abierta.
+    // No registra PWA ni conserva cachés entre proyectos locales.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+        .catch(error => console.warn("No se pudo desregistrar el Service Worker local", error));
+    }
+    if ("caches" in window) {
+      caches.keys()
+        .then(names => Promise.all(names.filter(name => name.startsWith("egm-")).map(name => caches.delete(name))))
+        .catch(error => console.warn("No se pudo limpiar la caché local", error));
+    }
+    return;
+  }
+
   window.addEventListener("offline", showConnectionStatus);
   window.addEventListener("online", () => {
     showConnectionStatus();
@@ -78,7 +96,21 @@
 
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js", {
+      const resetKey = "egm-cache-reset-6.36.72.9";
+      if (!localStorage.getItem(resetKey)) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration => registration.unregister()));
+        if ("caches" in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.filter(name => name.startsWith("egm-")).map(name => caches.delete(name)));
+        }
+        localStorage.setItem(resetKey, "1");
+        const cleanUrl = new URL(location.href);
+        cleanUrl.searchParams.set("cachefix", APP_VERSION);
+        location.replace(cleanUrl.href);
+        return;
+      }
+      const registration = await navigator.serviceWorker.register("./service-worker-6.36.72.9.js", {
         scope: "./",
         updateViaCache: "none"
       });
