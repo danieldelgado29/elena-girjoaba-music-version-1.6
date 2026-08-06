@@ -966,3 +966,82 @@ body.live-mode #finishShowBtn{white-space:nowrap!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-58px!important}
   .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
 }
+
+/* Entrega 6.36.72.3 · estructura estable del modo show en móvil
+   La página deja de desplazar el body: solo la lista de canciones hace scroll. */
+body.live-mode{
+  height:100dvh!important;
+  min-height:100dvh!important;
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+body.live-mode .app-shell{
+  width:100%!important;
+  height:100dvh!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0 8px max(4px,env(safe-area-inset-bottom))!important;
+  overflow:hidden!important;
+}
+body.live-mode main{
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+body.live-mode #liveView.view.is-active{
+  display:grid!important;
+  grid-template-rows:auto auto auto minmax(0,1fr)!important;
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+body.live-mode .live-toolbar{
+  position:relative!important;
+  top:auto!important;
+  z-index:35!important;
+  flex:0 0 auto!important;
+  padding-top:max(5px,env(safe-area-inset-top))!important;
+}
+body.live-mode .live-sticky-tools{
+  position:relative!important;
+  top:auto!important;
+  z-index:30!important;
+  min-height:0!important;
+  padding-top:4px!important;
+  background:rgba(16,17,20,.98)!important;
+}
+body.live-mode .queue-panel{
+  max-height:min(31dvh,250px)!important;
+  overflow:hidden!important;
+}
+body.live-mode .queue-list{
+  max-height:min(20dvh,150px)!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important;
+  touch-action:pan-y!important;
+}
+body.live-mode .song-table-head{
+  position:relative!important;
+  z-index:20!important;
+  margin:0!important;
+  flex:0 0 auto!important;
+  background:var(--bg)!important;
+}
+body.live-mode #songList.song-list{
+  min-height:0!important;
+  height:auto!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important;
+  touch-action:pan-y!important;
+  padding-bottom:calc(18px + env(safe-area-inset-bottom))!important;
+  align-content:start!important;
+}
+@supports not (height:100dvh){
+  body.live-mode,
+  body.live-mode .app-shell{height:100vh!important;min-height:100vh!important}
+}

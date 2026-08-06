@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.72.2-reparacion-scroll-android";
+const VERSION = "egm-v6.36.72.3-scroll-interno-estable";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const CORE = [
