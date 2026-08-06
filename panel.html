@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EG Music Panel">
   <title>Panel de control</title>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.54">
+  <link rel="stylesheet" href="panel.css?v=6.36.65">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -108,7 +108,11 @@
         <div class="live-sticky-tools">
           <section id="queuePanel" class="queue-panel">
             <div class="queue-heading">
-              <div><span class="live-dot"></span><strong>Cola activa</strong></div>
+              <div class="queue-status"><span class="live-dot"></span><strong>Cola activa</strong></div>
+              <div class="show-timer" aria-label="Cronómetro del show">
+                <span id="showTimerDisplay" class="show-timer-display" aria-live="off">00:00:00</span>
+                <button id="showTimerToggle" class="show-timer-toggle" type="button" aria-label="Iniciar cronómetro" title="Doble clic o doble toque para iniciar">▶</button>
+              </div>
               <small id="queueCount">0 canciones</small>
             </div>
             <div id="queueList" class="queue-list"></div>
@@ -525,7 +529,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.54"></script>
+  <script type="module" src="panel.js?v=6.36.72.1"></script>
   <script src="./pwa.js"></script>
 </body>
 </html>

@@ -771,7 +771,7 @@ button,.song-action,.mini-btn,[role="button"]{touch-action:manipulation;-webkit-
 .image-textbox-layer{position:absolute;inset:0;z-index:4;pointer-events:none;line-height:normal}
 .image-text-box{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:auto;border:1px dashed transparent;border-radius:6px;touch-action:none}
 .image-text-box.is-selected{border-color:rgba(208,0,0,.8);background:rgba(255,255,255,.08)}
-.image-text-box textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;resize:none;overflow:hidden;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text}
+.image-text-box .text-box-editor{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border:0;outline:0;overflow:auto;background:transparent;padding:6px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;caret-color:currentColor;touch-action:manipulation;-webkit-user-select:text;user-select:text;white-space:pre-wrap;word-break:break-word}
 .image-text-box .text-box-delete,.image-text-box .text-box-resize,.image-text-box .text-box-rotate{display:none;position:absolute;z-index:2;box-sizing:border-box}
 .image-text-box.is-selected .text-box-delete,.image-text-box.is-selected .text-box-resize,.image-text-box.is-selected .text-box-rotate{display:block}
 .text-box-delete{right:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:0;background:#b00020;color:#fff;font-size:22px;line-height:24px;padding:0;box-shadow:0 2px 7px rgba(0,0,0,.35)}
@@ -842,3 +842,162 @@ body{touch-action:pan-x pan-y;}
 /* 6.36.46 · visor centrado real y pellizco táctil estable */
 .viewer-content.is-note-viewer{position:relative!important;display:block!important;overflow:hidden!important;}
 .viewer-content.is-note-viewer .note-photo{position:absolute!important;left:50%!important;top:50%!important;margin:0!important;max-width:none!important;max-height:none!important;transform-origin:center center!important;touch-action:none!important;}
+
+/* Entrega 6.36.63 · cronómetro del show */
+body.live-mode .queue-heading{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+}
+body.live-mode .queue-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+body.live-mode .show-timer{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  color:#fff;
+  white-space:nowrap;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+body.live-mode .show-timer-display{
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+  font-size:12px;
+  line-height:1;
+  font-weight:700;
+  letter-spacing:.35px;
+  min-width:58px;
+  text-align:center;
+}
+body.live-mode .show-timer-toggle{
+  appearance:none;
+  -webkit-appearance:none;
+  width:24px;
+  height:24px;
+  min-width:24px;
+  padding:0;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:50%;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font:700 11px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+body.live-mode .show-timer-toggle:active{transform:scale(.94)}
+body.live-mode .show-timer-toggle.is-running{background:rgba(255,255,255,.16)}
+body.live-mode #queueCount{justify-self:end;text-align:right}
+@media(max-width:430px){
+  body.live-mode .queue-heading{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:4px}
+  body.live-mode .show-timer{gap:3px}
+  body.live-mode .show-timer-display{font-size:11px;min-width:53px;letter-spacing:0}
+  body.live-mode .show-timer-toggle{width:22px;height:22px;min-width:22px;font-size:10px}
+}
+
+
+/* Entrega 6.36.69.2 · recuperación responsive iPhone/Android */
+html,body{max-width:100%;overflow-x:hidden!important}
+body.live-mode,.app-shell,body.live-mode .app-shell,body.live-mode main,body.live-mode #liveView,
+body.live-mode .live-toolbar,body.live-mode .live-sticky-tools,body.live-mode .queue-panel,
+body.live-mode .search-wrap,body.live-mode .song-table-head,body.live-mode .song-list{
+  width:100%!important;max-width:100%!important;min-width:0!important;
+}
+body.live-mode .app-shell{padding-left:12px!important;padding-right:12px!important;margin:0 auto!important}
+body.live-mode .song-list{overflow:visible!important}
+body.live-mode .song-card{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}
+body.live-mode .song-info,body.live-mode .song-title-row{width:100%!important;max-width:100%!important;min-width:0!important}
+body.live-mode .song-actions{width:100%!important;max-width:100%!important;min-width:0!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:6px!important;flex:0 1 auto!important}
+body.live-mode .song-action{width:100%!important;min-width:0!important;max-width:100%!important;padding:10px 3px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+body.live-mode .song-action.notes,body.live-mode .song-action.lyrics,body.live-mode .song-action.daniel{width:100%!important;min-width:0!important;padding-left:3px!important;padding-right:3px!important}
+body.live-mode .live-toolbar{overflow:hidden!important}
+body.live-mode .live-toolbar-right{min-width:0!important;max-width:100%!important}
+body.live-mode #finishShowBtn{white-space:nowrap!important}
+@media(max-width:520px){
+  body.live-mode .app-shell{padding-left:8px!important;padding-right:8px!important}
+  body.live-mode .live-toolbar{grid-template-columns:auto minmax(0,1fr) auto!important;gap:4px!important}
+  body.live-mode .live-toolbar-right{gap:3px!important}
+  body.live-mode #backConfigBtn{width:34px!important;min-width:34px!important;padding:0!important;font-size:0!important}
+  body.live-mode #backConfigBtn::first-letter{font-size:18px!important}
+  body.live-mode #finishShowBtn{min-height:38px!important;padding:0 9px!important;font-size:12px!important}
+  body.live-mode #closePanelBtn{width:38px!important;min-width:38px!important;height:38px!important;padding:0!important}
+  body.live-mode .song-card{padding:10px 9px!important}
+  body.live-mode .song-actions{gap:4px!important}
+  body.live-mode .song-action{font-size:10px!important;padding:9px 1px!important}
+}
+@media(max-width:360px){
+  body.live-mode .song-action{font-size:9px!important;letter-spacing:-.01em!important}
+  body.live-mode #finishShowBtn{padding:0 6px!important;font-size:11px!important}
+}
+
+/* 6.36.70: alineación independiente por caja de texto */
+.image-text-box .text-box-align{display:none;position:absolute;z-index:5;box-sizing:border-box;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:manipulation;-webkit-touch-callout:none;left:50%;top:-44px;transform:translateX(-50%)}
+.image-text-box.is-selected .text-box-align{display:flex}
+.image-text-box .text-box-align b{font-size:17px;line-height:15px}
+.image-text-box .text-box-align small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
+@media(max-width:480px){.image-text-box .text-box-align{min-width:42px;height:36px;top:-42px}}
+
+
+/* 6.36.70.4 · teclado móvil y bloqueo independiente por caja */
+.image-text-box .text-box-lock{display:none;position:absolute;z-index:6;box-sizing:border-box;min-width:46px;height:38px;padding:2px 5px;border:1px solid rgba(0,0,0,.25);border-radius:9px;background:#fff;color:#111;box-shadow:0 2px 8px rgba(0,0,0,.28);align-items:center;justify-content:center;flex-direction:column;line-height:1;touch-action:manipulation;-webkit-touch-callout:none;left:50%;top:-44px;transform:translateX(8%)}
+.image-text-box .text-box-lock b{font-size:15px;line-height:15px}.image-text-box .text-box-lock small{display:block;font-size:8px;font-weight:700;line-height:10px;white-space:nowrap}
+.image-text-box.is-selected:not(.is-locked) .text-box-align{transform:translateX(-108%)}
+.image-text-box.is-selected .text-box-lock,.image-text-box.is-locked .text-box-lock{display:flex}
+.image-text-box.is-locked .text-box-lock{left:50%;transform:translateX(-50%)}
+.image-text-box.is-locked{border-color:rgba(80,80,80,.55);background:transparent}
+.image-text-box.is-locked .text-box-editor{cursor:default;overflow:hidden;-webkit-user-select:none;user-select:none}
+.image-text-box.is-locked .text-box-delete,.image-text-box.is-locked .text-box-align,.image-text-box.is-locked .text-box-move,.image-text-box.is-locked .text-box-rotate,.image-text-box.is-locked .text-box-resize{display:none!important}
+@media(max-width:480px){.image-text-box .text-box-lock{min-width:42px;height:36px;top:-42px}}
+
+/* 6.36.70.5 · controles de caja separados para no tapar el texto */
+.image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-68px!important;right:auto!important}
+.image-text-box.is-selected:not(.is-locked) .text-box-move{right:-68px!important}
+@media(max-width:480px){
+  .image-text-box.is-selected:not(.is-locked) .text-box-delete{left:-58px!important}
+  .image-text-box.is-selected:not(.is-locked) .text-box-move{right:-58px!important}
+}
+
+/* Entrega 6.36.72.1 · scroll Android y barra Cola activa estable */
+html,body{
+  overscroll-behavior-y:contain;
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+}
+body.live-mode{
+  overflow-y:auto!important;
+  min-height:100%;
+}
+body.live-mode .app-shell,
+body.live-mode #liveView{
+  overflow:visible!important;
+  touch-action:pan-y;
+}
+body.live-mode .live-toolbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:90!important;
+}
+body.live-mode .live-sticky-tools{
+  position:sticky!important;
+  top:44px!important;
+  z-index:80!important;
+  align-self:start;
+  transform:none!important;
+}
+body.live-mode .song-list{
+  touch-action:pan-y!important;
+  overflow:visible!important;
+}
+@media(max-width:520px){
+  body.live-mode .live-sticky-tools{top:38px!important}
+}
