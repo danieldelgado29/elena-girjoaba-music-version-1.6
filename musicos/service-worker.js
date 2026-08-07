@@ -1,10 +1,10 @@
 "use strict";
-const CACHE = "egp-musicos-v1.1.3";
+const CACHE = "egp-musicos-v1.2.0";
 const CORE = [
   "./",
   "./index.html",
-  "./style.css?v=1.1.3",
-  "./app.js?v=1.1.3",
+  "./style.css?v=1.2.0",
+  "./app.js?v=1.2.0",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",

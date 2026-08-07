@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.75.4 · reparación regresiones Android y contenido Daniel");
-document.documentElement.dataset.egmVersion="6.36.75.2";
+console.info("Elena Girjoaba Music · 6.36.76 · reparación integral panel y músicos");
+document.documentElement.dataset.egmVersion="6.36.76";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -34,13 +34,15 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
   const PANEL_PREFS_KEY='egm-panel-device-profile-v1';
+  const isDesktopMac=/Macintosh|MacIntel/.test(navigator.platform||navigator.userAgent)&&Number(navigator.maxTouchPoints||0)===0;
+  const defaultDanielAutoOpen=isDesktopMac?'image':'none';
   let panelDevicePrefs={profile:'elena',autoOpen:'none'};
   let suppressQueueAutoOpenUntil=Date.now()+2500;
   function loadPanelDevicePrefs(){
     try{
       const saved=JSON.parse(localStorage.getItem(PANEL_PREFS_KEY)||'{}');
       const profile=saved.profile==='daniel'?'daniel':'elena';
-      const autoOpen=profile==='daniel'?(saved.autoOpen==='songbook'?'songbook':saved.autoOpen==='none'?'none':'image'):(saved.autoOpen==='image'||saved.autoOpen==='lyrics'?saved.autoOpen:'none');
+      const autoOpen=profile==='daniel'?(saved.autoOpen==='songbook'?'songbook':saved.autoOpen==='image'?'image':saved.autoOpen==='none'?'none':defaultDanielAutoOpen):(saved.autoOpen==='image'||saved.autoOpen==='lyrics'?saved.autoOpen:'none');
       panelDevicePrefs={profile,autoOpen};
     }catch(_){panelDevicePrefs={profile:'elena',autoOpen:'none'};}
   }
@@ -53,26 +55,66 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
     auto.innerHTML=panelDevicePrefs.profile==='daniel'
       ? '<option value="image">Imagen, solo si existe contenido</option><option value="songbook">Cancionero Daniel</option><option value="none">No abrir nada</option>'
       : '<option value="none">No abrir nada</option><option value="image">Imagen</option><option value="lyrics">Letra</option>';
-    if(![...auto.options].some(o=>o.value===panelDevicePrefs.autoOpen))panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?'image':'none';
+    if(![...auto.options].some(o=>o.value===panelDevicePrefs.autoOpen))panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?defaultDanielAutoOpen:'none';
     auto.value=panelDevicePrefs.autoOpen;
     const help=$('#panelAutoOpenHelp');
-    if(help)help.textContent=panelDevicePrefs.profile==='daniel'?'Daniel: Imagen es el valor predeterminado y solo se abre cuando existe foto, dibujo o caja de texto.':'Elena: por defecto no se abre nada.';
+    if(help)help.textContent=panelDevicePrefs.profile==='daniel'?'Daniel: esta preferencia se guarda solo en este dispositivo. Imagen abre únicamente cuando existe contenido real.':'Elena: esta preferencia se guarda solo en este dispositivo.';
     document.body.dataset.panelUser=panelDevicePrefs.profile;
     const profileLabel=$('#panelProfileLabel');if(profileLabel)profileLabel.textContent=panelDevicePrefs.profile==='daniel'?'Daniel':'Elena';
   }
-  function imageEditHasVisibleContent(value){
-    if(!value)return false;
-    if(typeof value==='string')return value.trim().length>0;
-    // composite/overlay son previsualizaciones generadas y pueden existir en un
-    // lienzo vacío. Solo cuentan fuentes reales, trazos visibles o texto real.
-    const hasPhoto=Boolean(String(value.originalSrc||value.original||value.dataUrl||value.src||'').trim());
+  function imageEditStructuralContent(value){
+    if(!value||typeof value!=='object')return {source:'',hasDrawing:false,hasText:false};
+    const source=String(value.originalSrc||value.original||value.dataUrl||value.src||'').trim();
     const hasDrawing=Array.isArray(value.operations)&&value.operations.some(op=>
       op&&op.tool==='pencil'&&Array.isArray(op.points)&&op.points.length>1
     );
     const hasText=Array.isArray(value.textBoxes)&&value.textBoxes.some(box=>
       String(box?.text||box?.html||'').replace(/<[^>]*>/g,'').trim().length>0
     );
-    return hasPhoto||hasDrawing||hasText;
+    return {source,hasDrawing,hasText};
+  }
+  function imageEditHasVisibleContent(value){
+    if(!value)return false;
+    if(typeof value==='string')return value.trim().length>0;
+    const {source,hasDrawing,hasText}=imageEditStructuralContent(value);
+    if(hasDrawing||hasText)return true;
+    // Un data URL puede ser un lienzo blanco residual de versiones anteriores.
+    // Se valida de forma asíncrona antes de activar bordes o apertura automática.
+    return Boolean(source&&!source.startsWith('data:image/'));
+  }
+  async function imageSourceHasVisiblePixels(source){
+    const src=String(source||'').trim();
+    if(!src)return false;
+    if(!src.startsWith('data:image/'))return true;
+    return new Promise(resolve=>{
+      const img=new Image();
+      const finish=value=>resolve(Boolean(value));
+      const timer=setTimeout(()=>finish(false),2200);
+      img.onload=()=>{
+        clearTimeout(timer);
+        try{
+          const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;
+          const ctx=canvas.getContext('2d',{willReadFrequently:true});
+          ctx.fillStyle='#fff';ctx.fillRect(0,0,32,32);ctx.drawImage(img,0,0,32,32);
+          const px=ctx.getImageData(0,0,32,32).data;
+          let meaningful=0;
+          for(let i=0;i<px.length;i+=4){
+            const a=px[i+3],r=px[i],g=px[i+1],b=px[i+2];
+            if(a>18&&(r<242||g<242||b<242||Math.max(r,g,b)-Math.min(r,g,b)>10)){meaningful++;if(meaningful>8)break;}
+          }
+          finish(meaningful>8);
+        }catch(_){finish(true);}
+      };
+      img.onerror=()=>{clearTimeout(timer);finish(false);};
+      img.src=src;
+    });
+  }
+  async function imageEditHasRealVisibleContent(value){
+    if(!value)return false;
+    if(typeof value==='string')return value.trim().length>0;
+    const {source,hasDrawing,hasText}=imageEditStructuralContent(value);
+    if(hasDrawing||hasText)return true;
+    return imageSourceHasVisiblePixels(source);
   }
   async function hasDanielImageContent(song){
     if(!song?.id)return false;
@@ -80,9 +122,9 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
     // oficial compartida imageEdits/daniel-<songId>. Esto evita que Mac decida
     // usando el campo antiguo notasDaniel antes de que Firestore/IndexedDB cargue.
     const memory=song[visualField('daniel','image')];
-    if(imageEditHasVisibleContent(memory))return true;
+    if(await imageEditHasRealVisibleContent(memory))return true;
     const edit=await loadRemoteImageEdit(song.id,'daniel','image');
-    if(imageEditHasVisibleContent(edit)){
+    if(await imageEditHasRealVisibleContent(edit)){
       song[visualField('daniel','image')]={
         original:edit.originalSrc||edit.original||'',
         canvasWidth:edit.canvasWidth||1000,
@@ -127,7 +169,8 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
     visualContentLoading.add(key);
     try{
       const remote=await loadRemoteImageEdit(song.id,owner,mode);
-      const has=imageEditHasVisibleContent(remote)||localVisualContent(song,owner,mode);
+      const remoteHas=await imageEditHasRealVisibleContent(remote);
+      const has=remoteHas||localVisualContent(song,owner,mode);
       visualContentCache.set(key,has);
       if(button.isConnected){
         button.classList.toggle('has-content',has);
@@ -511,7 +554,7 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
   $('#profileSelect').addEventListener('change',()=>sessionStorage.setItem('egm-venue-draft',$('#venueInput').value));
   $('#panelUserSelect').addEventListener('change',()=>{
     panelDevicePrefs.profile=$('#panelUserSelect').value==='daniel'?'daniel':'elena';
-    panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?'image':'none';
+    panelDevicePrefs.autoOpen=panelDevicePrefs.profile==='daniel'?defaultDanielAutoOpen:'none';
     savePanelDevicePrefs();refreshPanelProfileControls();renderSongs();
   });
   $('#panelAutoOpenSelect').addEventListener('change',()=>{panelDevicePrefs.autoOpen=$('#panelAutoOpenSelect').value;savePanelDevicePrefs();refreshPanelProfileControls();});
@@ -916,6 +959,19 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
     else if(act==='daniel-image') openViewer(song,'daniel-image');
   }
 
+  function focusSongFromQueue(songId){
+    const safeId=String(songId||'');
+    let card=[...document.querySelectorAll('.song-card[data-song-id]')].find(el=>String(el.dataset.songId)===safeId);
+    if(!card){
+      const search=$('#searchInput');
+      if(search&&search.value){search.value='';filterSongs();card=[...document.querySelectorAll('.song-card[data-song-id]')].find(el=>String(el.dataset.songId)===safeId);}
+    }
+    if(!card){toast('La canción no está en el repertorio visible.');return;}
+    card.scrollIntoView({behavior:'smooth',block:'center'});
+    card.classList.remove('queue-focus');void card.offsetWidth;card.classList.add('queue-focus');
+    setTimeout(()=>card.classList.remove('queue-focus'),1600);
+  }
+
   function renderQueue(){
     const panel=$('#queuePanel'),list=$('#queueList');
     panel.hidden=false;list.innerHTML='';
@@ -945,7 +1001,12 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
         const button=e.target.closest('[data-q]');
         if(button&&button._egmTouchHandledUntil>Date.now()) return;
         handleQueueControl(e);
-      });list.append(item);
+      });
+      item.addEventListener('dblclick',e=>{
+        if(e.target.closest('[data-q]'))return;
+        e.preventDefault();focusSongFromQueue(song.id);
+      });
+      list.append(item);
     });
   }
 
@@ -1550,7 +1611,7 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
   $$('[data-dialog-close]').forEach(btn=>btn.addEventListener('click',()=>{
     const dialog=btn.closest('dialog');
     if(dialog.id==='confirmDialog'){dialog.close();state.pendingConfirm=null;return;}
-    if(dialog.id==='viewerDialog'){askConfirm('Cerrar visor','¿Seguro que deseas cerrar las notas?',()=>closeDialogDirect(dialog),'Cerrar');return;}
+    if(dialog.id==='viewerDialog'){closeDialogDirect(dialog);return;}
     requestDialogClose(dialog);
   }));
   $$('dialog').forEach(d=>{

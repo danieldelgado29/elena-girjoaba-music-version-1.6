@@ -7,6 +7,7 @@ const appView = $("#appView");
 const installBtn = $("#installBtn");
 const installHint = $("#installHint");
 const iosHelp = $("#iosHelp");
+const androidHelp = $("#androidHelp");
 const venueName = $("#venueName");
 const queueCount = $("#queueCount");
 const queueList = $("#queueList");
@@ -20,6 +21,7 @@ let songs = new Map();
 let unsubscribe = null;
 
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const ownPwaLaunch = new URL(location.href).searchParams.get("musicos_pwa") === "1";
 const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isAndroid = /android/i.test(navigator.userAgent);
 
@@ -75,14 +77,24 @@ installBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (standalone) {
+  if (standalone && (!isAndroid || ownPwaLaunch)) {
     showApp();
     return;
   }
 
-  installHint.textContent = isAndroid
-    ? "Abre esta dirección en Chrome y usa Instalar app en el menú del navegador."
-    : "Usa la opción Instalar aplicación del navegador.";
+  if (isAndroid) {
+    androidHelp.hidden = false;
+    installHint.textContent = "Para instalar EGP MUSICOS debe abrirse en Chrome.";
+    // Si el QR abrió esta URL dentro de la PWA del Panel, salir de ese scope y abrir Chrome.
+    if (standalone && !ownPwaLaunch) {
+      const target = location.origin + location.pathname + "?install=1";
+      const withoutScheme = target.replace(/^https?:\/\//, "");
+      location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;end`;
+    }
+    return;
+  }
+
+  installHint.textContent = "Usa la opción Instalar aplicación del navegador.";
 });
 
 $("#closeDialog")?.addEventListener("click", () => installDialog.close());
@@ -167,7 +179,7 @@ function render(data) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.1.3", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.2.0", {
         scope: "./",
         updateViaCache: "none"
       });
@@ -180,7 +192,7 @@ if ("serviceWorker" in navigator) {
 
 // Una PWA instalada siempre entra directamente a la cola.
 // No depende de localStorage ni del evento appinstalled, que iOS no garantiza.
-if (standalone) {
+if (standalone && (!isAndroid || ownPwaLaunch)) {
   showApp();
 } else {
   showInstall();
@@ -190,6 +202,12 @@ if (standalone) {
     iosHelp.hidden = false;
   } else {
     installBtn.disabled = false;
-    installHint.textContent = "";
+    if (isAndroid && standalone && !ownPwaLaunch) {
+      installBtn.textContent = "Instalar EGP MUSICOS";
+      installHint.textContent = "Pulsa para abrir Chrome e instalar esta app por separado del Panel.";
+      androidHelp.hidden = false;
+    } else {
+      installHint.textContent = "";
+    }
   }
 }

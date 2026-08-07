@@ -1140,3 +1140,15 @@ body.live-mode .song-action{min-width:0!important;min-height:42px!important;padd
   body.live-mode .song-action{font-size:9.5px!important;padding-inline:2px!important}
   body.live-mode .queue-status small{display:none}
 }
+
+
+/* Entrega 6.36.76 · reparación controlada */
+/* Configuración: scroll táctil propio en Android/iPhone, sin tocar el scroll estable del show. */
+@media(max-width:760px){
+  html:not(.live-mode),body:not(.live-mode){min-height:100%;height:auto!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch}
+  body:not(.live-mode) .app-shell{min-height:100dvh!important;height:auto!important;overflow:visible!important;padding-bottom:max(52px,env(safe-area-inset-bottom,0px))!important}
+  body:not(.live-mode) #configView.view.is-active{overflow:visible!important;touch-action:pan-y!important}
+}
+/* Doble clic desde Cola activa: hace evidente la canción encontrada. */
+body.live-mode .song-card.queue-focus{animation:egmQueueFocus 1.45s ease-out 1!important;border-color:#f2c96d!important;box-shadow:0 0 0 3px rgba(242,201,109,.22),0 0 28px rgba(242,201,109,.18)!important}
+@keyframes egmQueueFocus{0%{filter:brightness(1.7);transform:scale(1.012)}100%{filter:brightness(1);transform:scale(1)}}
