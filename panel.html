@@ -17,7 +17,7 @@
       const host = location.hostname;
       const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
       if (!isLocal || !("serviceWorker" in navigator)) return;
-      const cleanupKey = "egm-local-clean-6.36.73";
+      const cleanupKey = "egm-local-clean-6.36.74";
       window.__EGM_DISABLE_SERVICE_WORKER__ = true;
       Promise.all([
         navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(reg => reg.unregister()))),
@@ -26,14 +26,14 @@
         if (!sessionStorage.getItem(cleanupKey) && navigator.serviceWorker.controller) {
           sessionStorage.setItem(cleanupKey, "1");
           const cleanUrl = new URL(location.href);
-          cleanUrl.searchParams.set("localclean", "6.36.73");
+          cleanUrl.searchParams.set("localclean", "6.36.74");
           location.replace(cleanUrl.href);
         }
       }).catch(error => console.warn("No se pudo limpiar Live Server", error));
     })();
   </script>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=6.36.73">
+  <link rel="stylesheet" href="panel.css?v=6.36.74">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -46,8 +46,8 @@
     #panelLogin button{display:block!important;width:100%!important;padding:14px!important;border:0!important;border-radius:12px!important;background:#fff!important;color:#111!important;font-weight:800!important;font-size:17px!important;opacity:1!important}
   </style>
 </head>
-<body data-build="6.36.73">
-  <div id="buildVersionBadge" class="build-version-badge" aria-label="Versión ejecutada">v6.36.73</div>
+<body data-build="6.36.74">
+  <div id="buildVersionBadge" class="build-version-badge" aria-label="Versión ejecutada">v6.36.74</div>
   <section id="panelLogin" class="panel-login" aria-label="Acceso al panel">
     <form id="panelLoginForm" class="panel-login__card" autocomplete="off">
       <strong class="panel-login__brand">EGM</strong>
@@ -570,7 +570,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=6.36.73"></script>
-  <script src="./pwa.js?v=6.36.73"></script>
+  <script type="module" src="panel.js?v=6.36.74"></script>
+  <script src="./pwa.js?v=6.36.74"></script>
 </body>
 </html>

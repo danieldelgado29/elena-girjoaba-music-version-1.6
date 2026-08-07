@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.73 · perfiles Elena y Daniel");
-document.documentElement.dataset.egmVersion="6.36.73";
+console.info("Elena Girjoaba Music · 6.36.74 · apertura automática Daniel multiplataforma");
+document.documentElement.dataset.egmVersion="6.36.74";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -59,13 +59,39 @@ document.documentElement.dataset.egmVersion="6.36.73";
     if(help)help.textContent=panelDevicePrefs.profile==='daniel'?'Daniel: Imagen es el valor predeterminado y solo se abre cuando existe foto, dibujo o caja de texto.':'Elena: por defecto no se abre nada.';
     document.body.dataset.panelUser=panelDevicePrefs.profile;
   }
-  function hasDanielImageContent(song){
-    const value=song?.notasDaniel;
+  function imageEditHasVisibleContent(value){
     if(!value)return false;
     if(typeof value==='string')return value.trim().length>0;
-    return Boolean(value.originalSrc||value.original||value.dataUrl||value.src||value.composite||(Array.isArray(value.operations)&&value.operations.length)||(Array.isArray(value.textBoxes)&&value.textBoxes.length));
+    return Boolean(
+      value.originalSrc||value.original||value.dataUrl||value.src||value.composite||value.overlay||
+      (Array.isArray(value.operations)&&value.operations.length)||
+      (Array.isArray(value.textBoxes)&&value.textBoxes.some(box=>String(box?.text||box?.html||'').trim().length))
+    );
   }
-  function maybeAutoOpenQueuedSong(song){
+  async function hasDanielImageContent(song){
+    if(!song?.id)return false;
+    // Primero revisar la copia actual en memoria. Después consultar la fuente
+    // oficial compartida imageEdits/daniel-<songId>. Esto evita que Mac decida
+    // usando el campo antiguo notasDaniel antes de que Firestore/IndexedDB cargue.
+    const memory=song[visualField('daniel','image')];
+    if(imageEditHasVisibleContent(memory))return true;
+    const edit=await loadRemoteImageEdit(song.id,'daniel','image');
+    if(imageEditHasVisibleContent(edit)){
+      song[visualField('daniel','image')]={
+        original:edit.originalSrc||edit.original||'',
+        canvasWidth:edit.canvasWidth||1000,
+        canvasHeight:edit.canvasHeight||1300,
+        operations:Array.isArray(edit.operations)?edit.operations:[],
+        textBoxes:Array.isArray(edit.textBoxes)?edit.textBoxes:[],
+        updatedAt:edit.updatedAt||Date.now(),
+        remote:true
+      };
+      return true;
+    }
+    // Compatibilidad temporal con canciones que aún no fueron migradas.
+    return imageEditHasVisibleContent(song.notasDaniel);
+  }
+  async function maybeAutoOpenQueuedSong(song){
     if(!song||Date.now()<suppressQueueAutoOpenUntil||!document.body.classList.contains('live-mode'))return;
     const pref=panelDevicePrefs.autoOpen;
     if(pref==='none')return;
@@ -73,8 +99,9 @@ document.documentElement.dataset.egmVersion="6.36.73";
       if(pref==='image')openViewer(song,'notes');
       else if(pref==='lyrics')openViewer(song,'lyrics');
     }else{
-      if(pref==='image'){if(hasDanielImageContent(song))openViewer(song,'daniel-image');}
-      else if(pref==='songbook')openViewer(song,'daniel');
+      if(pref==='image'){
+        if(await hasDanielImageContent(song))openViewer(song,'daniel-image');
+      }else if(pref==='songbook')openViewer(song,'daniel');
     }
   }
   function processQueueAdditions(previous,next){
