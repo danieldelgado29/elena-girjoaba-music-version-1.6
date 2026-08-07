@@ -167,7 +167,7 @@ function render(data) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.1.2", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.1.3", {
         scope: "./",
         updateViaCache: "none"
       });

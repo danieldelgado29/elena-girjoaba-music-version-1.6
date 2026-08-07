@@ -1,141 +1,64 @@
 (() => {
   "use strict";
-
-  const APP_VERSION = "6.36.74";
+  const APP_VERSION = "6.36.75.4";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
   let registrationRef = null;
   let reloading = false;
+  const panelScope = new URL("./", location.href).href;
 
-
+  function isPanelRegistration(registration) {
+    return registration && registration.scope === panelScope;
+  }
   function showConnectionStatus() {
     let banner = document.getElementById("pwaConnectionStatus");
     if (!banner) {
-      banner = document.createElement("div");
-      banner.id = "pwaConnectionStatus";
-      banner.setAttribute("role", "status");
-      banner.setAttribute("aria-live", "polite");
-      Object.assign(banner.style, {
-        position: "fixed", left: "50%", bottom: "14px", zIndex: "99999",
-        transform: "translateX(-50%)", padding: "8px 13px", borderRadius: "999px",
-        font: "600 12px/1.2 system-ui, sans-serif", color: "#fff",
-        background: "rgba(15,16,19,.94)", border: "1px solid rgba(255,255,255,.18)",
-        boxShadow: "0 8px 30px rgba(0,0,0,.35)", transition: "opacity .25s ease",
-        pointerEvents: "none"
-      });
+      banner = document.createElement("div"); banner.id = "pwaConnectionStatus";
+      banner.setAttribute("role", "status"); banner.setAttribute("aria-live", "polite");
+      Object.assign(banner.style,{position:"fixed",left:"50%",bottom:"14px",zIndex:"99999",transform:"translateX(-50%)",padding:"8px 13px",borderRadius:"999px",font:"600 12px/1.2 system-ui, sans-serif",color:"#fff",background:"rgba(15,16,19,.94)",border:"1px solid rgba(255,255,255,.18)",boxShadow:"0 8px 30px rgba(0,0,0,.35)",transition:"opacity .25s ease",pointerEvents:"none"});
       document.body.appendChild(banner);
     }
     banner.textContent = navigator.onLine ? "Conexión restablecida" : "Sin conexión · modo offline";
-    banner.style.opacity = "1";
-    clearTimeout(showConnectionStatus.timer);
-    if (navigator.onLine) showConnectionStatus.timer = setTimeout(() => banner.style.opacity = "0", 2400);
+    banner.style.opacity="1"; clearTimeout(showConnectionStatus.timer);
+    if(navigator.onLine) showConnectionStatus.timer=setTimeout(()=>banner.style.opacity="0",2400);
   }
-
-  function requestActivation(worker) {
-    if (!worker) return;
-    worker.postMessage({ type: "SKIP_WAITING" });
+  function requestActivation(worker){ if(worker) worker.postMessage({type:"SKIP_WAITING"}); }
+  async function readRemoteVersion(){
+    if(!navigator.onLine)return APP_VERSION;
+    const response=await fetch(`${VERSION_URL}?t=${Date.now()}`,{cache:"no-store",headers:{"Cache-Control":"no-cache"}});
+    if(!response.ok)throw new Error(`Version HTTP ${response.status}`);
+    const info=await response.json(); return String(info.version||APP_VERSION);
   }
-
-  async function readRemoteVersion() {
-    if (!navigator.onLine) return APP_VERSION;
-    const response = await fetch(`${VERSION_URL}?t=${Date.now()}`, {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" }
-    });
-    if (!response.ok) throw new Error(`Version HTTP ${response.status}`);
-    const info = await response.json();
-    return String(info.version || APP_VERSION);
+  async function checkForUpdate(){
+    if(!registrationRef||!navigator.onLine)return;
+    try{targetVersion=await readRemoteVersion();await registrationRef.update();if(registrationRef.waiting)requestActivation(registrationRef.waiting);}catch(error){console.warn("No se pudo comprobar la actualización",error);}
   }
-
-  async function checkForUpdate() {
-    if (!registrationRef || !navigator.onLine) return;
-    try {
-      targetVersion = await readRemoteVersion();
-      await registrationRef.update();
-      if (registrationRef.waiting) requestActivation(registrationRef.waiting);
-    } catch (error) {
-      console.warn("No se pudo comprobar la actualización", error);
-    }
-  }
-
-  const host = location.hostname;
-  const isLocalDevelopment = host === "localhost" || host === "127.0.0.1" || host === "::1";
-  if (isLocalDevelopment || window.__EGM_DISABLE_SERVICE_WORKER__) {
-    // Live Server debe cargar siempre los archivos de la carpeta abierta.
-    // No registra PWA ni conserva cachés entre proyectos locales.
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations()
-        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
-        .catch(error => console.warn("No se pudo desregistrar el Service Worker local", error));
-    }
-    if ("caches" in window) {
-      caches.keys()
-        .then(names => Promise.all(names.filter(name => name.startsWith("egm-")).map(name => caches.delete(name))))
-        .catch(error => console.warn("No se pudo limpiar la caché local", error));
-    }
+  const host=location.hostname;
+  const isLocalDevelopment=host==="localhost"||host==="127.0.0.1"||host==="::1";
+  if(isLocalDevelopment||window.__EGM_DISABLE_SERVICE_WORKER__){
+    if("serviceWorker" in navigator){navigator.serviceWorker.getRegistrations().then(regs=>Promise.all(regs.filter(isPanelRegistration).map(r=>r.unregister()))).catch(()=>{});}
+    if("caches" in window){caches.keys().then(names=>Promise.all(names.filter(n=>n.startsWith("egm-panel-")||n.startsWith("egm-v")).map(n=>caches.delete(n)))).catch(()=>{});}
     return;
   }
-
-  window.addEventListener("offline", showConnectionStatus);
-  window.addEventListener("online", () => {
-    showConnectionStatus();
-    checkForUpdate();
-  });
-  if (!navigator.onLine) window.addEventListener("DOMContentLoaded", showConnectionStatus, { once: true });
-
-  if (!("serviceWorker" in navigator)) return;
-
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
-    reloading = true;
-    const url = new URL(location.href);
-    url.searchParams.set("appv", targetVersion || Date.now().toString());
-    location.replace(url.href);
-  });
-
-  window.addEventListener("load", async () => {
-    try {
-      const resetKey = "egm-cache-reset-6.36.74";
-      if (!localStorage.getItem(resetKey)) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map(registration => registration.unregister()));
-        if ("caches" in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(cacheNames.filter(name => name.startsWith("egm-")).map(name => caches.delete(name)));
-        }
-        localStorage.setItem(resetKey, "1");
-        const cleanUrl = new URL(location.href);
-        cleanUrl.searchParams.set("cachefix", APP_VERSION);
-        location.replace(cleanUrl.href);
-        return;
+  window.addEventListener("offline",showConnectionStatus);
+  window.addEventListener("online",()=>{showConnectionStatus();checkForUpdate();});
+  if(!navigator.onLine)window.addEventListener("DOMContentLoaded",showConnectionStatus,{once:true});
+  if(!("serviceWorker" in navigator))return;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{if(reloading)return;reloading=true;const url=new URL(location.href);url.searchParams.set("appv",targetVersion||Date.now().toString());location.replace(url.href);});
+  window.addEventListener("load",async()=>{
+    try{
+      const resetKey="egm-panel-cache-reset-6.36.75.4";
+      if(!localStorage.getItem(resetKey)){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.filter(isPanelRegistration).map(r=>r.unregister()));
+        if("caches" in window){const names=await caches.keys();await Promise.all(names.filter(n=>n.startsWith("egm-panel-")||n.startsWith("egm-v")).map(n=>caches.delete(n)));}
+        localStorage.setItem(resetKey,"1");
       }
-      const registration = await navigator.serviceWorker.register("./service-worker-6.36.74.js", {
-        scope: "./",
-        updateViaCache: "none"
-      });
-      registrationRef = registration;
-
-      if (registration.waiting) requestActivation(registration.waiting);
-
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        if (!worker) return;
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            requestActivation(worker);
-          }
-        });
-      });
-
-      await checkForUpdate();
-      window.addEventListener("focus", checkForUpdate);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") checkForUpdate();
-      });
-      setInterval(checkForUpdate, UPDATE_INTERVAL);
-    } catch (error) {
-      console.warn("No se pudo activar el modo offline", error);
-    }
+      const registration=await navigator.serviceWorker.register("./service-worker-6.36.75.4.js",{scope:"./",updateViaCache:"none"});
+      registrationRef=registration;if(registration.waiting)requestActivation(registration.waiting);
+      registration.addEventListener("updatefound",()=>{const worker=registration.installing;if(worker)worker.addEventListener("statechange",()=>{if(worker.state==="installed"&&navigator.serviceWorker.controller)requestActivation(worker);});});
+      await checkForUpdate();window.addEventListener("focus",checkForUpdate);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkForUpdate();});setInterval(checkForUpdate,UPDATE_INTERVAL);
+    }catch(error){console.warn("No se pudo activar el modo offline",error);}
   });
 })();

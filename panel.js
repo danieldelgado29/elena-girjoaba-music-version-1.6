@@ -1,5 +1,5 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.75.2 · apertura automática Daniel multiplataforma");
+console.info("Elena Girjoaba Music · 6.36.75.4 · reparación regresiones Android y contenido Daniel");
 document.documentElement.dataset.egmVersion="6.36.75.2";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
@@ -63,11 +63,16 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
   function imageEditHasVisibleContent(value){
     if(!value)return false;
     if(typeof value==='string')return value.trim().length>0;
-    return Boolean(
-      value.originalSrc||value.original||value.dataUrl||value.src||value.composite||value.overlay||
-      (Array.isArray(value.operations)&&value.operations.length)||
-      (Array.isArray(value.textBoxes)&&value.textBoxes.some(box=>String(box?.text||box?.html||'').trim().length))
+    // composite/overlay son previsualizaciones generadas y pueden existir en un
+    // lienzo vacío. Solo cuentan fuentes reales, trazos visibles o texto real.
+    const hasPhoto=Boolean(String(value.originalSrc||value.original||value.dataUrl||value.src||'').trim());
+    const hasDrawing=Array.isArray(value.operations)&&value.operations.some(op=>
+      op&&op.tool==='pencil'&&Array.isArray(op.points)&&op.points.length>1
     );
+    const hasText=Array.isArray(value.textBoxes)&&value.textBoxes.some(box=>
+      String(box?.text||box?.html||'').replace(/<[^>]*>/g,'').trim().length>0
+    );
+    return hasPhoto||hasDrawing||hasText;
   }
   async function hasDanielImageContent(song){
     if(!song?.id)return false;
@@ -89,8 +94,9 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
       };
       return true;
     }
-    // Compatibilidad temporal con canciones que aún no fueron migradas.
-    return imageEditHasVisibleContent(song.notasDaniel);
+    // No usar composite/overlay ni el campo legado para decidir la apertura:
+    // la fuente oficial del editor actual es imageEdits/daniel-<songId>.
+    return false;
   }
   const visualContentCache=new Map();
   const visualContentLoading=new Set();
@@ -105,7 +111,7 @@ document.documentElement.dataset.egmVersion="6.36.75.2";
         : (song.cancioneroElena||song.elenaLyrics||song.letraElena);
       return hasMeaningfulContent(text);
     }
-    if(owner==='daniel')return imageEditHasVisibleContent(song.notasDaniel);
+    if(owner==='daniel')return false;
     const noteFile=state.notes?.[slug(song.titulo)];
     return Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||imageEditHasVisibleContent(song.notasElena));
   }
