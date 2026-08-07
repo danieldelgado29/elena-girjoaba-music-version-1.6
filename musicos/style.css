@@ -32,3 +32,13 @@ button{font:inherit}
 .install-dialog{border:1px solid #343a47;border-radius:22px;background:#151820;color:#fff;max-width:360px;padding:28px;box-shadow:0 24px 70px rgba(0,0,0,.65)}.install-dialog::backdrop{background:rgba(0,0,0,.72)}.install-dialog h2{margin-top:0}.dialog-close{position:absolute;right:12px;top:10px;border:0;background:transparent;color:#fff;font-size:30px}
 [hidden]{display:none!important}
 @media (min-width:760px){.queue-section{padding-left:max(24px,calc((100vw - 900px)/2));padding-right:max(24px,calc((100vw - 900px)/2))}.song-card{min-height:126px}.song-card.next{min-height:170px}}
+
+/* EGP MUSICOS 1.1.0 */
+.add-home-icon{display:inline-grid;place-items:center;width:24px;height:24px;border:2px solid currentColor;border-radius:7px;font-size:18px;font-weight:900;line-height:1;vertical-align:-4px}
+.song-card.next{animation:musicosNextBlink 1.45s ease-in-out infinite}
+.song-card.played{order:99;opacity:.55;filter:grayscale(1);background:linear-gradient(180deg,#24262b,#191b1f);border-color:#4a4d54;box-shadow:none;animation:none}
+.song-card.played .song-number{background:#5a5d63;color:#ddd}
+.song-card.played .song-title,.song-card.played .song-artist{color:#a3a5aa}
+.played-label{color:#b8bbc1}
+@keyframes musicosNextBlink{0%,100%{filter:brightness(1);transform:scale(1)}50%{filter:brightness(1.18);transform:scale(1.008)}}
+@media(prefers-reduced-motion:reduce){.song-card.next{animation:none}}

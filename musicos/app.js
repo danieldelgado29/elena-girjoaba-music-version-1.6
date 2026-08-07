@@ -34,6 +34,7 @@ window.addEventListener("beforeinstallprompt", event => {
 });
 
 window.addEventListener("appinstalled", () => {
+  localStorage.setItem(MUSICOS_INSTALLED_KEY,"1");
   deferredPrompt = null;
   installBtn.textContent = "App instalada";
   installHint.textContent = "Ábrela desde el icono EGP MUSICOS.";
@@ -90,14 +91,19 @@ function render(data){
   const venue = String(data.lugar||"").trim();
   venueName.textContent = active ? (venue || "Show activo") : "No hay show activo";
   const ids = active && Array.isArray(data.cola) ? data.cola.map(String) : [];
-  const items = ids.map(id=>songs.get(id)).filter(Boolean);
+  const playedIds = new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
+  const queueItems = ids.map((id,originalIndex)=>({id,song:songs.get(id),originalIndex,played:playedIds.has(id)})).filter(item=>item.song);
+  const items = [...queueItems.filter(item=>!item.played),...queueItems.filter(item=>item.played)];
   queueCount.textContent = `${items.length} ${items.length===1?"canción":"canciones"}`;
-  queueList.innerHTML = items.map((song,index)=>{
-    const number = String(song.numero || song.n || index+1).padStart(2,"0");
-    return `<article class="song-card ${index===0?"next":""}">
+  const firstActiveIndex=items.findIndex(item=>!item.played);
+  queueList.innerHTML = items.map((item,index)=>{
+    const song=item.song;
+    const number = String(song.numero || song.n || item.originalIndex+1).padStart(2,"0");
+    const isNext=index===firstActiveIndex&&!item.played;
+    return `<article class="song-card ${isNext?"next":""} ${item.played?"played":""}">
       <div class="song-number">${esc(number)}</div>
       <div>
-        ${index===0?'<div class="song-label">Sigue</div>':''}
+        ${isNext?'<div class="song-label">Sigue</div>':item.played?'<div class="song-label played-label">Tocada</div>':''}
         <div class="song-title">${esc(song.titulo||"Sin título")}</div>
         <div class="song-artist">${esc(song.artista||"")}</div>
       </div>
@@ -112,8 +118,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js",{scope:"./",updateViaCache:"none"}).catch(console.warn));
 }
 
-if (standalone) showApp(); else {
+if (standalone && localStorage.getItem(MUSICOS_INSTALLED_KEY)==="1") showApp(); else {
   showInstall();
-  if (isiOS) { installBtn.textContent="Cómo instalar"; installHint.textContent="Instálala desde Safari."; }
+  if (isiOS) { installBtn.textContent="Cómo instalar"; installHint.textContent="Sigue los tres pasos mostrados abajo."; iosHelp.hidden=false; }
+  else if(standalone){ installBtn.textContent="Abrir en navegador para instalar"; installBtn.disabled=false; installHint.textContent="La abrió la app del panel. Ábrela en el navegador para instalar EGP MUSICOS con su propio icono."; installBtn.addEventListener("click",()=>window.open(location.href.replace(/[?&]source=pwa/,""),"_blank"),{once:true}); }
   else { installBtn.disabled=false; installHint.textContent=""; }
 }

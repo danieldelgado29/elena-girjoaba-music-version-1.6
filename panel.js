@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.74 · apertura automática Daniel multiplataforma");
-document.documentElement.dataset.egmVersion="6.36.74";
+console.info("Elena Girjoaba Music · 6.36.75 · apertura automática Daniel multiplataforma");
+document.documentElement.dataset.egmVersion="6.36.75";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -58,6 +58,7 @@ document.documentElement.dataset.egmVersion="6.36.74";
     const help=$('#panelAutoOpenHelp');
     if(help)help.textContent=panelDevicePrefs.profile==='daniel'?'Daniel: Imagen es el valor predeterminado y solo se abre cuando existe foto, dibujo o caja de texto.':'Elena: por defecto no se abre nada.';
     document.body.dataset.panelUser=panelDevicePrefs.profile;
+    const profileLabel=$('#panelProfileLabel');if(profileLabel)profileLabel.textContent=panelDevicePrefs.profile==='daniel'?'Daniel':'Elena';
   }
   function imageEditHasVisibleContent(value){
     if(!value)return false;
