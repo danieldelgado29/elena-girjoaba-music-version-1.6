@@ -1040,6 +1040,38 @@ function obtenerVisibles() {
   });
 }
 
+function asegurarEstiloColaCliente() {
+  if (document.getElementById("egm-cola-cliente-pulse-style")) return;
+  const estilo = document.createElement("style");
+  estilo.id = "egm-cola-cliente-pulse-style";
+  estilo.textContent = `
+    .cancion.is-cola-activa-cliente {
+      animation: egmClienteColaPulseRuntime 1.65s ease-in-out infinite !important;
+      will-change: box-shadow, border-color, background-color;
+    }
+    @keyframes egmClienteColaPulseRuntime {
+      0%,100% {
+        border-color: rgba(213,178,104,.54);
+        box-shadow: 0 0 0 0 rgba(213,178,104,0), 0 10px 28px rgba(0,0,0,.16);
+        background-color: rgba(213,178,104,.025);
+      }
+      50% {
+        border-color: rgba(244,215,151,.98);
+        box-shadow: 0 0 0 2px rgba(213,178,104,.16), 0 0 22px rgba(213,178,104,.30), 0 10px 28px rgba(0,0,0,.16);
+        background-color: rgba(213,178,104,.075);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cancion.is-cola-activa-cliente {
+        animation: egmClienteColaPulseRuntime 1.65s ease-in-out infinite !important;
+      }
+    }
+  `;
+  document.head.appendChild(estilo);
+}
+
+asegurarEstiloColaCliente();
+
 function actualizarControles() {
   const cantidad = estado.base.length;
 
@@ -1068,6 +1100,7 @@ function crearTarjeta(cancion, indice) {
   const articulo = document.createElement("article");
 
   articulo.className = "cancion cancion-enter";
+  if (situacion === "cola") articulo.classList.add("is-cola-activa-cliente");
   if (estado.cancionGritaActivaId === cancion.id) {
     articulo.classList.add("is-grita-activa");
   }

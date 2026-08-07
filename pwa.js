@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "6.36.79";
+  const APP_VERSION = "6.36.81";
   const VERSION_URL = "./version.json";
   const UPDATE_INTERVAL = 5 * 60 * 1000;
   let targetVersion = APP_VERSION;
@@ -48,14 +48,14 @@
   navigator.serviceWorker.addEventListener("controllerchange",()=>{if(reloading)return;reloading=true;const url=new URL(location.href);url.searchParams.set("appv",targetVersion||Date.now().toString());location.replace(url.href);});
   window.addEventListener("load",async()=>{
     try{
-      const resetKey="egm-panel-cache-reset-6.36.79";
+      const resetKey="egm-panel-cache-reset-6.36.81";
       if(!localStorage.getItem(resetKey)){
         const regs=await navigator.serviceWorker.getRegistrations();
         await Promise.all(regs.filter(isPanelRegistration).map(r=>r.unregister()));
         if("caches" in window){const names=await caches.keys();await Promise.all(names.filter(n=>n.startsWith("egm-panel-")||n.startsWith("egm-v")).map(n=>caches.delete(n)));}
         localStorage.setItem(resetKey,"1");
       }
-      const registration=await navigator.serviceWorker.register("./service-worker-6.36.79.js",{scope:"./",updateViaCache:"none"});
+      const registration=await navigator.serviceWorker.register("./service-worker-6.36.81.js",{scope:"./",updateViaCache:"none"});
       registrationRef=registration;if(registration.waiting)requestActivation(registration.waiting);
       registration.addEventListener("updatefound",()=>{const worker=registration.installing;if(worker)worker.addEventListener("statechange",()=>{if(worker.state==="installed"&&navigator.serviceWorker.controller)requestActivation(worker);});});
       await checkForUpdate();window.addEventListener("focus",checkForUpdate);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkForUpdate();});setInterval(checkForUpdate,UPDATE_INTERVAL);
