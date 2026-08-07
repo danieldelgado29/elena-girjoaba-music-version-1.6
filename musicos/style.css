@@ -42,3 +42,6 @@ button{font:inherit}
 .played-label{color:#b8bbc1}
 @keyframes musicosNextBlink{0%,100%{filter:brightness(1);transform:scale(1)}50%{filter:brightness(1.18);transform:scale(1.008)}}
 @media(prefers-reduced-motion:reduce){.song-card.next{animation:none}}
+
+/* EGP MUSICOS 1.1.2 - inicio seguro */
+.app-error{margin:12px 0 0;padding:10px 12px;border:1px solid #6f3d45;border-radius:12px;background:#2a171b;color:#ffd9de;font-size:14px;font-weight:700;line-height:1.35}

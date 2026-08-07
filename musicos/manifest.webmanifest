@@ -2,7 +2,7 @@
   "name": "EGP MUSICOS",
   "short_name": "EGP MUSICOS",
   "description": "Cola activa del show para músicos.",
-  "start_url": "./?source=pwa",
+  "start_url": "./?musicos_pwa=1",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -22,5 +22,5 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "./"
+  "id": "./?app=egp-musicos"
 }

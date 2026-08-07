@@ -11,10 +11,10 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <link rel="icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./style.css?v=1.1.1">
+  <link rel="stylesheet" href="./style.css?v=1.1.2">
 </head>
 <body>
-  <main id="installView" class="install-view" hidden>
+  <main id="installView" class="install-view">
     <div class="brand" aria-label="EGP Músicos">
       <div class="brand-egp">EGP</div>
       <div class="brand-musicos">MUSICOS</div>
@@ -33,6 +33,7 @@
       <div class="mini-brand">EGP <span>MUSICOS</span></div>
       <h1 id="venueName">No hay show activo</h1>
       <div id="connectionDot" class="connection-dot" aria-label="Estado de conexión"></div>
+      <p id="appError" class="app-error" hidden></p>
     </header>
 
     <section class="queue-section" aria-live="polite">
@@ -51,6 +52,17 @@
     <p><b>1.</b> Pulsa el menú de los <b>3 puntos</b>.<br><b>2.</b> Pulsa <b>Compartir</b>.<br><b>3.</b> Pulsa <span class="add-home-icon">＋</span> <b>Agregar a inicio</b>.</p>
   </dialog>
 
-  <script type="module" src="./app.js?v=1.1.1"></script>
+  <script>
+    // Decide la vista antes de cargar Firebase. Así la app nunca queda negra
+    // aunque falle un módulo externo o haya una versión antigua en caché.
+    (function () {
+      var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+      if (standalone) {
+        document.getElementById("installView").hidden = true;
+        document.getElementById("appView").hidden = false;
+      }
+    }());
+  </script>
+  <script type="module" src="./app.js?v=1.1.2"></script>
 </body>
 </html>
