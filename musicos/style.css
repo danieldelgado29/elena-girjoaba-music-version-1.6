@@ -83,3 +83,5 @@ button{font:inherit}
 @keyframes musicosNextStrong120{0%,100%{filter:brightness(.92);transform:scale(1);box-shadow:0 12px 34px rgba(67,43,91,.24)}50%{filter:brightness(1.62);transform:scale(1.025);box-shadow:0 0 0 5px rgba(240,184,74,.30),0 18px 58px rgba(240,184,74,.42)}}
 @keyframes musicosNumberPulse120{0%,100%{box-shadow:0 0 0 0 rgba(240,184,74,.12)}50%{box-shadow:0 0 0 10px rgba(240,184,74,.28)}}
 @media(prefers-reduced-motion:reduce){.song-card.next,.song-card.next .song-number{animation:none!important}}
+
+#openChromeBtn{text-decoration:none;text-align:center;display:block}#openChromeBtn[hidden]{display:none!important}

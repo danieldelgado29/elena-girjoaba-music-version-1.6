@@ -15,6 +15,7 @@ const emptyState = $("#emptyState");
 const connectionDot = $("#connectionDot");
 const appError = $("#appError");
 const installDialog = $("#installDialog");
+const openChromeBtn = $("#openChromeBtn");
 
 let deferredPrompt = null;
 let songs = new Map();
@@ -24,6 +25,12 @@ const standalone = matchMedia("(display-mode: standalone)").matches || navigator
 const ownPwaLaunch = new URL(location.href).searchParams.get("musicos_pwa") === "1";
 const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isAndroid = /android/i.test(navigator.userAgent);
+
+function chromeIntentUrl() {
+  const target = location.origin + location.pathname + "?install=1";
+  return `intent://${target.replace(/^https?:\/\//, "")}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(target)};end`;
+}
+if (openChromeBtn && isAndroid) openChromeBtn.href = chromeIntentUrl();
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -87,9 +94,9 @@ installBtn.addEventListener("click", async () => {
     installHint.textContent = "Para instalar EGP MUSICOS debe abrirse en Chrome.";
     // Si el QR abrió esta URL dentro de la PWA del Panel, salir de ese scope y abrir Chrome.
     if (standalone && !ownPwaLaunch) {
-      const target = location.origin + location.pathname + "?install=1";
-      const withoutScheme = target.replace(/^https?:\/\//, "");
-      location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;end`;
+      openChromeBtn.hidden = false;
+      installBtn.hidden = true;
+      installHint.textContent = "Abre esta página en Chrome y allí instala EGP MUSICOS.";
     }
     return;
   }
@@ -179,7 +186,7 @@ function render(data) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.2.0", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.3.0", {
         scope: "./",
         updateViaCache: "none"
       });
@@ -203,8 +210,9 @@ if (standalone && (!isAndroid || ownPwaLaunch)) {
   } else {
     installBtn.disabled = false;
     if (isAndroid && standalone && !ownPwaLaunch) {
-      installBtn.textContent = "Instalar EGP MUSICOS";
-      installHint.textContent = "Pulsa para abrir Chrome e instalar esta app por separado del Panel.";
+      installBtn.hidden = true;
+      openChromeBtn.hidden = false;
+      installHint.textContent = "Abre Chrome para instalar EGP MUSICOS como una app independiente.";
       androidHelp.hidden = false;
     } else {
       installHint.textContent = "";

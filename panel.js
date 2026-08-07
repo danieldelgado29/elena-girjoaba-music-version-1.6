@@ -121,8 +121,6 @@ document.documentElement.dataset.egmVersion="6.36.76";
     // Primero revisar la copia actual en memoria. Después consultar la fuente
     // oficial compartida imageEdits/daniel-<songId>. Esto evita que Mac decida
     // usando el campo antiguo notasDaniel antes de que Firestore/IndexedDB cargue.
-    const memory=song[visualField('daniel','image')];
-    if(await imageEditHasRealVisibleContent(memory))return true;
     const edit=await loadRemoteImageEdit(song.id,'daniel','image');
     if(await imageEditHasRealVisibleContent(edit)){
       song[visualField('daniel','image')]={
@@ -170,7 +168,9 @@ document.documentElement.dataset.egmVersion="6.36.76";
     try{
       const remote=await loadRemoteImageEdit(song.id,owner,mode);
       const remoteHas=await imageEditHasRealVisibleContent(remote);
-      const has=remoteHas||localVisualContent(song,owner,mode);
+      // Si existe un documento imageEdits actual, éste manda. No reactivar el borde
+      // por restos antiguos guardados dentro del objeto canción.
+      const has=remote!==null&&remote!==undefined ? remoteHas : localVisualContent(song,owner,mode);
       visualContentCache.set(key,has);
       if(button.isConnected){
         button.classList.toggle('has-content',has);
@@ -653,7 +653,8 @@ document.documentElement.dataset.egmVersion="6.36.76";
     $('#liveRepertoireName').textContent=state.config.repertoireName || 'Repertorio';
     $('#songSearch').value='';filterSongs();renderQueue();
   }
-  function showConfig(){ document.documentElement.classList.remove('live-mode');document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');window.scrollTo({left:0,top:0,behavior:'smooth'}); }
+  let configOpenedFromLive=false;
+  function showConfig(fromLive=false){ configOpenedFromLive=Boolean(fromLive&&state.config);document.documentElement.classList.remove('live-mode');document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');const continueBtn=$('#continueShowBtn');if(continueBtn)continueBtn.hidden=!configOpenedFromLive;window.scrollTo({left:0,top:0,behavior:'smooth'}); }
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
@@ -786,7 +787,22 @@ document.documentElement.dataset.egmVersion="6.36.76";
     saveShowTimer();
   });
 
-  $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',showConfig,'Volver'));
+  $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',()=>showConfig(true),'Volver'));
+
+  $('#continueShowBtn')?.addEventListener('click',async()=>{
+    if(!state.config)return showConfig(false);
+    const venue=$('#venueInput').value.trim();
+    if(!venue)return toast('Escribe el lugar del show');
+    const select=$('#repertoireSelect');
+    const repertoire=select.value;
+    const repertoireName=select.selectedOptions[0]?.dataset?.name||select.selectedOptions[0]?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire);
+    state.config={...state.config,venue,repertoire,repertoireName,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked};
+    addVenueOption(venue);invalidateRepertoireCache();saveStateLocalOnly();
+    const ids=(repertoire==='todas'?state.songs:state.songs.filter(song=>(song.listas||[]).includes(repertoire))).map(song=>song.id);
+    showLive();toast('Configuración actualizada. El show continúa.');
+    try{await publishShowPatch({show_activo:true,lugar:venue,lista_activa:repertoire,listaActiva:repertoire,repertorio_nombre:repertoireName,repertorio_activo_ids:ids,repertorioActivoIds:ids,perfil_clientes:state.config.profile,pedidos_whatsapp:state.config.whatsapp,mostrar_cola:state.config.publicQueue});}
+    catch(err){console.warn('Configuración del show pendiente de sincronizar',err);toast('Cambios guardados localmente; sincronización pendiente.');}
+  });
 
   // 6.36.69.4 · cierre global directo, independiente de colas antiguas.
   async function publishFinishedShow(){
@@ -917,31 +933,27 @@ document.documentElement.dataset.egmVersion="6.36.76";
     });
     if(!state.filtered.length) list.innerHTML='<div class="viewer-empty"><h3>No se encontraron canciones</h3><p>Prueba con otro título, artista o número.</p></div>';
   }
-  let pendingViewerTap=null;
+  const pendingActionTaps=new Map();
   function requireSecondTap(song,act,button){
     const key=`${song.id}:${act}`;
     const now=Date.now();
-    if(pendingViewerTap?.key===key && now-pendingViewerTap.time<=900){
-      clearTimeout(pendingViewerTap.timer);
-      pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
-      pendingViewerTap=null;
+    const previous=pendingActionTaps.get(key)||0;
+    if(previous&&now-previous<=1500){
+      pendingActionTaps.delete(key);
+      document.querySelectorAll('.is-awaiting-second-tap').forEach(el=>el.classList.remove('is-awaiting-second-tap'));
       handleSongAction(song,act);
       return;
     }
-    if(pendingViewerTap){
-      clearTimeout(pendingViewerTap.timer);
-      pendingViewerTap.button?.classList.remove('is-awaiting-second-tap');
-    }
+    pendingActionTaps.clear();
+    pendingActionTaps.set(key,now);
+    document.querySelectorAll('.is-awaiting-second-tap').forEach(el=>el.classList.remove('is-awaiting-second-tap'));
     button.classList.add('is-awaiting-second-tap');
-    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Cancionero', 'daniel-image':'Imagen'};
-    const label=labels[act]||'esta acción';
-    toast(`Toca otra vez: ${label}`);
-    const entry={key,time:now,button,timer:null};
-    entry.timer=setTimeout(()=>{
-      if(pendingViewerTap===entry) pendingViewerTap=null;
-      button.classList.remove('is-awaiting-second-tap');
-    },900);
-    pendingViewerTap=entry;
+    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Cancionero','daniel-image':'Imagen'};
+    toast(`Toca otra vez: ${labels[act]||'esta acción'}`);
+    setTimeout(()=>{
+      if(pendingActionTaps.get(key)===now)pendingActionTaps.delete(key);
+      if(button.isConnected)button.classList.remove('is-awaiting-second-tap');
+    },1550);
   }
 
   function handleSongAction(song,act){
