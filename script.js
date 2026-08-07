@@ -1073,15 +1073,6 @@ function crearTarjeta(cancion, indice) {
   }
   articulo.dataset.id = cancion.id;
   articulo.dataset.estado = situacion;
-
-  // Estado visual de cola para la interfaz cliente. Se calcula directamente
-  // desde la cola sincronizada y no depende de estadoCancion()/vistaClientes,
-  // para que la animación no altere ninguna otra lógica del sitio.
-  const enColaSincronizada = (estado.configRemota.cola || []).some(
-    (idCola) => String(idCola) === String(cancion.id)
-  );
-  articulo.classList.toggle("is-en-cola-publica", enColaSincronizada);
-
   articulo.setAttribute("role", "listitem");
   articulo.tabIndex = 0;
 
