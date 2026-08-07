@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.75 · apertura automática Daniel multiplataforma");
-document.documentElement.dataset.egmVersion="6.36.75";
+console.info("Elena Girjoaba Music · 6.36.75.2 · apertura automática Daniel multiplataforma");
+document.documentElement.dataset.egmVersion="6.36.75.2";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -92,6 +92,49 @@ document.documentElement.dataset.egmVersion="6.36.75";
     // Compatibilidad temporal con canciones que aún no fueron migradas.
     return imageEditHasVisibleContent(song.notasDaniel);
   }
+  const visualContentCache=new Map();
+  const visualContentLoading=new Set();
+  function visualCacheKey(songId,owner,mode){return `${owner}-${songId}-${mode}`;}
+  function localVisualContent(song,owner,mode){
+    if(!song)return false;
+    const memory=song[visualField(owner,mode)];
+    if(imageEditHasVisibleContent(memory))return true;
+    if(mode==='songbook'){
+      const text=owner==='daniel'
+        ? (song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)
+        : (song.cancioneroElena||song.elenaLyrics||song.letraElena);
+      return hasMeaningfulContent(text);
+    }
+    if(owner==='daniel')return imageEditHasVisibleContent(song.notasDaniel);
+    const noteFile=state.notes?.[slug(song.titulo)];
+    return Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||imageEditHasVisibleContent(song.notasElena));
+  }
+  function visualContentNow(song,owner,mode){
+    const key=visualCacheKey(song.id,owner,mode);
+    if(visualContentCache.has(key))return visualContentCache.get(key);
+    return localVisualContent(song,owner,mode);
+  }
+  async function hydrateVisualContentButton(song,owner,mode,button){
+    if(!song?.id||!button)return;
+    const key=visualCacheKey(song.id,owner,mode);
+    if(visualContentLoading.has(key))return;
+    visualContentLoading.add(key);
+    try{
+      const remote=await loadRemoteImageEdit(song.id,owner,mode);
+      const has=imageEditHasVisibleContent(remote)||localVisualContent(song,owner,mode);
+      visualContentCache.set(key,has);
+      if(button.isConnected){
+        button.classList.toggle('has-content',has);
+        const label=mode==='songbook'?(owner==='daniel'?'Cancionero Daniel':'Letra'):(owner==='daniel'?'Imagen de Daniel':'Imagen');
+        button.title=has?`${label} con contenido`:`${label} sin contenido`;
+      }
+    }catch(err){
+      const has=localVisualContent(song,owner,mode);
+      visualContentCache.set(key,has);
+      if(button.isConnected)button.classList.toggle('has-content',has);
+    }finally{visualContentLoading.delete(key);}
+  }
+
   async function maybeAutoOpenQueuedSong(song){
     if(!song||Date.now()<suppressQueueAutoOpenUntil||!document.body.classList.contains('live-mode'))return;
     const pref=panelDevicePrefs.autoOpen;
@@ -792,18 +835,16 @@ document.documentElement.dataset.egmVersion="6.36.75";
     $('#songCount').textContent=`${state.filtered.length} temas`;
     state.filtered.forEach((song,index)=>{
       const queued=state.queue.includes(song.id), played=state.played.has(song.id);
-      const noteFile=state.notes[slug(song.titulo)];
-      const storedLyrics=state.lyrics[song.id]||{};
-      const hasNotes=Boolean((Array.isArray(noteFile)?noteFile.length:noteFile)||song.notasElena);
-      const elenaVisual=song.notasElena&&typeof song.notasElena==='object'&&Array.isArray(song.notasElena.textBoxes)&&song.notasElena.textBoxes.some(box=>box.importSource==='cancioneroElena'||String(box.id||'').startsWith('import-elena-'));
-      const hasElena=elenaVisual||hasMeaningfulContent(song.elenaLyrics||song.cancioneroElena||song.letraElena||storedLyrics.escenarioHtml||storedLyrics.publicaHtml);
-      const danielVisual=song.cancioneroDanielVisual&&typeof song.cancioneroDanielVisual==='object'&&Array.isArray(song.cancioneroDanielVisual.textBoxes)&&song.cancioneroDanielVisual.textBoxes.some(box=>box.importSource==='cancioneroDaniel'||String(box.id||'').startsWith('import-daniel-'));
-      const hasDaniel=danielVisual||hasMeaningfulContent(song.cancioneroDaniel||song.danielLyrics||song.letraDaniel)||hasMeaningfulContent(song.notasDaniel);
+      const hasElenaImage=visualContentNow(song,'elena','image');
+      const hasElenaSongbook=visualContentNow(song,'elena','songbook');
+      const hasDanielImage=visualContentNow(song,'daniel','image');
+      const hasDanielSongbook=visualContentNow(song,'daniel','songbook');
       const card=document.createElement('article');card.dataset.songId=song.id;card.className=`song-card${queued?' is-queued':''}${played?' is-played':''}`;
       const profileActions=panelDevicePrefs.profile==='daniel'
-        ? `<button class="song-action notes ${hasDanielImageContent(song)?'has-content':''}" data-act="daniel-image" title="${hasDanielImageContent(song)?'Contiene imagen o anotaciones de Daniel':'Imagen de Daniel sin contenido'}">Imagen</button><button class="song-action daniel ${hasDaniel?'has-content':''}" data-act="daniel" title="${hasDaniel?'Contiene cancionero de Daniel':'Cancionero Daniel sin contenido'}">Cancionero</button>`
-        : `<button class="song-action lyrics ${hasElena?'has-content':''}" data-act="lyrics" title="${hasElena?'Contiene letra':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasNotes?'has-content':''}" data-act="notes" title="${hasNotes?'Contiene imagen JPEG':'Imagen sin contenido'}">Imagen</button>`;
+        ? `<button class="song-action notes ${hasDanielImage?'has-content':''}" data-act="daniel-image" data-visual-owner="daniel" data-visual-mode="image" title="${hasDanielImage?'Imagen de Daniel con contenido':'Imagen de Daniel sin contenido'}">Imagen</button><button class="song-action daniel ${hasDanielSongbook?'has-content':''}" data-act="daniel" data-visual-owner="daniel" data-visual-mode="songbook" title="${hasDanielSongbook?'Cancionero Daniel con contenido':'Cancionero Daniel sin contenido'}">Cancionero</button>`
+        : `<button class="song-action lyrics ${hasElenaSongbook?'has-content':''}" data-act="lyrics" data-visual-owner="elena" data-visual-mode="songbook" title="${hasElenaSongbook?'Letra con contenido':'Letra sin contenido'}">Letra</button><button class="song-action notes ${hasElenaImage?'has-content':''}" data-act="notes" data-visual-owner="elena" data-visual-mode="image" title="${hasElenaImage?'Imagen con contenido':'Imagen sin contenido'}">Imagen</button>`;
       card.innerHTML=`<div class="song-info"><div class="song-title-row"><span class="song-number">${String(activeRepertoireNumber(song.id)||index+1).padStart(2,'0')}</span><span class="song-title">${esc(song.titulo)}</span><span class="song-artist">${esc(song.artista||'Artista no indicado')}</span></div></div><div class="song-actions"><button class="song-action queue ${queued?'is-on':''}" data-act="queue">${queued?'En cola':'A la cola'}</button><button class="song-action played ${played?'is-on':''}" data-act="played">Tocada</button>${profileActions}</div>`;
+      card.querySelectorAll('[data-visual-owner][data-visual-mode]').forEach(button=>hydrateVisualContentButton(song,button.dataset.visualOwner,button.dataset.visualMode,button));
       const handleCardControl=e=>{
         const button=e.target.closest('[data-act]');
         if(!button) return;
@@ -2300,9 +2341,21 @@ document.documentElement.dataset.egmVersion="6.36.75";
     if(!imageUploadMenu.hidden){imageUploadMenu.hidden=true;return;}
     positionPopover(imageUploadMenu,$('#imageUploadTrigger'));
   });
-  $('#imageChoosePhotoBtn').addEventListener('click',()=>{
+  $('#imageChoosePhotoBtn').addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    if(activeImageMode==='songbook')return;
+    const input=$('#imageSourceInput');
+    input.disabled=false;
+    input.value='';
+    // Mantener la apertura dentro del gesto real del usuario. En Firefox/macOS
+    // showPicker es más fiable que un click programático sobre un input oculto.
+    try{
+      if(typeof input.showPicker==='function')input.showPicker();
+      else input.click();
+    }catch(err){
+      try{input.click();}catch(_){toast('No se pudo abrir el selector de archivos');}
+    }
     imageUploadMenu.hidden=true;
-    const input=$('#imageSourceInput');input.value='';input.click();
   });
   $('#imageDeletePhotoBtn').addEventListener('click',()=>{
     imageUploadMenu.hidden=true;
@@ -2806,6 +2859,7 @@ document.documentElement.dataset.egmVersion="6.36.75";
           updatedAt:immediateEdit.updatedAt||Date.now(),
           remote:!immediateEdit.pendingSync
         };
+        visualContentCache.set(visualCacheKey(saveSongId,saveOwner,activeImageMode),imageEditHasVisibleContent(immediateEdit));
         // 6.36.54: no refrescar mientras el editor todavía está por encima.
         // Guardamos una orden pendiente y el evento real `close` del dialog redibuja
         // exactamente el visor que queda visible debajo. Esto también cubre el caso
