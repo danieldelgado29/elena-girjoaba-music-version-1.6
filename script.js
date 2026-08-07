@@ -1046,7 +1046,7 @@ function asegurarEstiloColaCliente() {
   estilo.id = "egm-cola-cliente-pulse-style";
   estilo.textContent = `
     .cancion.is-cola-activa-cliente {
-      animation: egmClienteColaPulseRuntime 1.65s ease-in-out infinite !important;
+      animation: egmClienteColaPulseRuntime 1.35s ease-in-out infinite !important;
       will-change: box-shadow, border-color, background-color;
     }
     @keyframes egmClienteColaPulseRuntime {
@@ -1056,14 +1056,14 @@ function asegurarEstiloColaCliente() {
         background-color: rgba(213,178,104,.025);
       }
       50% {
-        border-color: rgba(244,215,151,.98);
-        box-shadow: 0 0 0 2px rgba(213,178,104,.16), 0 0 22px rgba(213,178,104,.30), 0 10px 28px rgba(0,0,0,.16);
+        border-color: rgba(255,224,151,1);
+        box-shadow: 0 0 0 2px rgba(213,178,104,.16), 0 0 28px rgba(213,178,104,.42), 0 10px 28px rgba(0,0,0,.16);
         background-color: rgba(213,178,104,.075);
       }
     }
     @media (prefers-reduced-motion: reduce) {
       .cancion.is-cola-activa-cliente {
-        animation: egmClienteColaPulseRuntime 1.65s ease-in-out infinite !important;
+        animation: egmClienteColaPulseRuntime 1.35s ease-in-out infinite !important;
       }
     }
   `;
@@ -1089,9 +1089,20 @@ function actualizarControles() {
 }
 
 function estadoCancion(id) {
-  if (estado.vistaClientes) return "disponible";
-  if (estado.configRemota.tocadas.includes(id)) return "tocada";
-  if (estado.configRemota.cola.includes(id)) return "cola";
+  // La interfaz cliente también debe reflejar el estado real de la cola.
+  // Normalizamos IDs porque Firestore puede entregar números o strings según
+  // el origen del dato; `includes()` estricto hacía que algunas tarjetas no
+  // recibieran el estado "cola" y por eso nunca arrancaba el titileo.
+  const idNormalizado = String(id);
+  const tocadas = Array.isArray(estado.configRemota.tocadas)
+    ? estado.configRemota.tocadas.map(String)
+    : [];
+  const cola = Array.isArray(estado.configRemota.cola)
+    ? estado.configRemota.cola.map(String)
+    : [];
+
+  if (tocadas.includes(idNormalizado)) return "tocada";
+  if (cola.includes(idNormalizado)) return "cola";
   return "disponible";
 }
 

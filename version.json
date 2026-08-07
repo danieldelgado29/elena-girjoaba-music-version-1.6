@@ -1,4 +1,4 @@
 {
-  "version": "6.36.81",
-  "build": "client-queue-pulse-runtime"
+  "version": "6.36.82",
+  "build": "client-queue-state-normalized"
 }
