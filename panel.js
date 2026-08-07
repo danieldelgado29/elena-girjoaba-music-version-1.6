@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.76 · reparación integral panel y músicos");
-document.documentElement.dataset.egmVersion="6.36.76";
+console.info("Elena Girjoaba Music · 6.36.78 · regreso directo y limpieza de residuos visuales");
+document.documentElement.dataset.egmVersion="6.36.78";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -82,6 +82,16 @@ document.documentElement.dataset.egmVersion="6.36.76";
     // Se valida de forma asíncrona antes de activar bordes o apertura automática.
     return Boolean(source&&!source.startsWith('data:image/'));
   }
+  // 6.36.78 · A la la Long y Afuera conservaban residuos de imageEdits de
+  // versiones anteriores. Se ignoran únicamente los residuos anteriores a esta
+  // migración; cualquier edición nueva vuelve a considerarse contenido real.
+  const LEGACY_EMPTY_DANIEL_IMAGE_IDS=new Set(['c001','c002']);
+  const LEGACY_EMPTY_DANIEL_IMAGE_CUTOFF=1786124100000;
+  function isKnownLegacyEmptyDanielImage(song,value){
+    if(!song||!LEGACY_EMPTY_DANIEL_IMAGE_IDS.has(String(song.id)))return false;
+    const updated=Number(value?.updatedAt||value?.savedAt||0);
+    return !updated||updated<=LEGACY_EMPTY_DANIEL_IMAGE_CUTOFF;
+  }
   async function imageSourceHasVisiblePixels(source){
     const src=String(source||'').trim();
     if(!src)return false;
@@ -122,6 +132,7 @@ document.documentElement.dataset.egmVersion="6.36.76";
     // oficial compartida imageEdits/daniel-<songId>. Esto evita que Mac decida
     // usando el campo antiguo notasDaniel antes de que Firestore/IndexedDB cargue.
     const edit=await loadRemoteImageEdit(song.id,'daniel','image');
+    if(isKnownLegacyEmptyDanielImage(song,edit))return false;
     if(await imageEditHasRealVisibleContent(edit)){
       song[visualField('daniel','image')]={
         original:edit.originalSrc||edit.original||'',
@@ -144,6 +155,7 @@ document.documentElement.dataset.egmVersion="6.36.76";
   function localVisualContent(song,owner,mode){
     if(!song)return false;
     const memory=song[visualField(owner,mode)];
+    if(owner==='daniel'&&mode==='image'&&isKnownLegacyEmptyDanielImage(song,memory))return false;
     if(imageEditHasVisibleContent(memory))return true;
     if(mode==='songbook'){
       const text=owner==='daniel'
@@ -167,7 +179,7 @@ document.documentElement.dataset.egmVersion="6.36.76";
     visualContentLoading.add(key);
     try{
       const remote=await loadRemoteImageEdit(song.id,owner,mode);
-      const remoteHas=await imageEditHasRealVisibleContent(remote);
+      const remoteHas=(owner==='daniel'&&mode==='image'&&isKnownLegacyEmptyDanielImage(song,remote))?false:await imageEditHasRealVisibleContent(remote);
       // Si existe un documento imageEdits actual, éste manda. No reactivar el borde
       // por restos antiguos guardados dentro del objeto canción.
       const has=remote!==null&&remote!==undefined ? remoteHas : localVisualContent(song,owner,mode);
@@ -787,7 +799,7 @@ document.documentElement.dataset.egmVersion="6.36.76";
     saveShowTimer();
   });
 
-  $('#backConfigBtn').addEventListener('click',()=>askConfirm('Volver a configuración','El show continuará activo. ¿Deseas salir de esta pantalla?',()=>showConfig(true),'Volver'));
+  $('#backConfigBtn').addEventListener('click',()=>showConfig(true));
 
   $('#continueShowBtn')?.addEventListener('click',async()=>{
     if(!state.config)return showConfig(false);
