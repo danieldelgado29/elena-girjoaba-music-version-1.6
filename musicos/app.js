@@ -3,6 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebas
 import { initializeFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const $ = s => document.querySelector(s);
+const MUSICOS_INSTALLED_KEY = "egp-musicos-installed";
 const installView = $("#installView");
 const appView = $("#appView");
 const installBtn = $("#installBtn");
