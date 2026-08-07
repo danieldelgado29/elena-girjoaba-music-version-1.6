@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.78 · regreso directo y limpieza de residuos visuales");
-document.documentElement.dataset.egmVersion="6.36.78";
+console.info("Elena Girjoaba Music · 6.36.79 · Cancionero Daniel directo");
+document.documentElement.dataset.egmVersion="6.36.79";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -2984,15 +2984,9 @@ document.documentElement.dataset.egmVersion="6.36.78";
   bindImageInput('#newSongDanielNotes',v=>state.newSongDanielNotes=v);
   bindImageInput('#editSongDanielNotes',v=>state.editSongDanielNotes=v);
 
-  function showDanielChoice(button,song){
-    document.querySelector('.daniel-choice')?.remove();
-    const box=document.createElement('div');box.className='daniel-choice';box.innerHTML='<button type="button" data-daniel-choice="text">Cancionero Daniel</button><button type="button" data-daniel-choice="image">Imagen</button>';document.body.append(box);
-    const r=button.getBoundingClientRect();box.style.left=Math.max(8,Math.min(r.left,innerWidth-box.offsetWidth-8))+'px';box.style.top=Math.max(8,r.top-box.offsetHeight-8)+'px';
-    box.addEventListener('click',e=>{const c=e.target.closest('[data-daniel-choice]')?.dataset.danielChoice;if(c==='text')openViewer(song,'daniel');if(c==='image')openViewer(song,'daniel-image');box.remove();});
-    setTimeout(()=>document.addEventListener('pointerdown',e=>{if(!box.contains(e.target))box.remove()},{once:true}),0);
-  }
-  document.addEventListener('pointerdown',e=>{const b=e.target.closest('[data-act="daniel"]');if(!b)return;const card=b.closest('.song-card');const id=card?.dataset?.songId;const song=state.songs.find(s=>s.id===id);if(!song)return;b._danielHold=setTimeout(()=>{b._danielHeld=true;showDanielChoice(b,song)},650);});
-  document.addEventListener('pointerup',e=>{const b=e.target.closest('[data-act="daniel"]');if(!b)return;clearTimeout(b._danielHold);if(b._danielHeld){e.preventDefault();e.stopImmediatePropagation();b._danielHeld=false;}},true);
+  // 6.36.79 · Cancionero Daniel abre directamente con un toque/clic.
+  // Se eliminó por completo el menú por pulsación sostenida Cancionero/Imagen.
+
 
   // El zoom por doble toque se bloquea con touch-action: manipulation en CSS.
   // No cancelamos touchend: Android necesita completar ambos pointerup para detectar el doble toque.
