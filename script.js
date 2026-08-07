@@ -1040,38 +1040,6 @@ function obtenerVisibles() {
   });
 }
 
-function asegurarEstiloColaCliente() {
-  if (document.getElementById("egm-cola-cliente-pulse-style")) return;
-  const estilo = document.createElement("style");
-  estilo.id = "egm-cola-cliente-pulse-style";
-  estilo.textContent = `
-    .cancion.is-cola-activa-cliente {
-      animation: egmClienteColaPulseRuntime 1.35s ease-in-out infinite !important;
-      will-change: box-shadow, border-color, background-color;
-    }
-    @keyframes egmClienteColaPulseRuntime {
-      0%,100% {
-        border-color: rgba(213,178,104,.54);
-        box-shadow: 0 0 0 0 rgba(213,178,104,0), 0 10px 28px rgba(0,0,0,.16);
-        background-color: rgba(213,178,104,.025);
-      }
-      50% {
-        border-color: rgba(255,224,151,1);
-        box-shadow: 0 0 0 2px rgba(213,178,104,.16), 0 0 28px rgba(213,178,104,.42), 0 10px 28px rgba(0,0,0,.16);
-        background-color: rgba(213,178,104,.075);
-      }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .cancion.is-cola-activa-cliente {
-        animation: egmClienteColaPulseRuntime 1.35s ease-in-out infinite !important;
-      }
-    }
-  `;
-  document.head.appendChild(estilo);
-}
-
-asegurarEstiloColaCliente();
-
 function actualizarControles() {
   const cantidad = estado.base.length;
 
@@ -1089,20 +1057,9 @@ function actualizarControles() {
 }
 
 function estadoCancion(id) {
-  // La interfaz cliente también debe reflejar el estado real de la cola.
-  // Normalizamos IDs porque Firestore puede entregar números o strings según
-  // el origen del dato; `includes()` estricto hacía que algunas tarjetas no
-  // recibieran el estado "cola" y por eso nunca arrancaba el titileo.
-  const idNormalizado = String(id);
-  const tocadas = Array.isArray(estado.configRemota.tocadas)
-    ? estado.configRemota.tocadas.map(String)
-    : [];
-  const cola = Array.isArray(estado.configRemota.cola)
-    ? estado.configRemota.cola.map(String)
-    : [];
-
-  if (tocadas.includes(idNormalizado)) return "tocada";
-  if (cola.includes(idNormalizado)) return "cola";
+  if (estado.vistaClientes) return "disponible";
+  if (estado.configRemota.tocadas.includes(id)) return "tocada";
+  if (estado.configRemota.cola.includes(id)) return "cola";
   return "disponible";
 }
 
@@ -1111,12 +1068,20 @@ function crearTarjeta(cancion, indice) {
   const articulo = document.createElement("article");
 
   articulo.className = "cancion cancion-enter";
-  if (situacion === "cola") articulo.classList.add("is-cola-activa-cliente");
   if (estado.cancionGritaActivaId === cancion.id) {
     articulo.classList.add("is-grita-activa");
   }
   articulo.dataset.id = cancion.id;
   articulo.dataset.estado = situacion;
+
+  // Estado visual de cola para la interfaz cliente. Se calcula directamente
+  // desde la cola sincronizada y no depende de estadoCancion()/vistaClientes,
+  // para que la animación no altere ninguna otra lógica del sitio.
+  const enColaSincronizada = (estado.configRemota.cola || []).some(
+    (idCola) => String(idCola) === String(cancion.id)
+  );
+  articulo.classList.toggle("is-en-cola-publica", enColaSincronizada);
+
   articulo.setAttribute("role", "listitem");
   articulo.tabIndex = 0;
 
