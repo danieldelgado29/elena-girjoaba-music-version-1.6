@@ -972,6 +972,11 @@ document.documentElement.dataset.egmVersion="6.36.79";
     if(act==='queue'){
       const wasQueued=state.queue.includes(song.id);
       state.queue=wasQueued?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
+
+      // Bridge: volver a poner una canción en cola significa rehabilitarla.
+      // Debe salir también de `tocadas` para que Firebase/Bridge la vea como pendiente.
+      if(!wasQueued) state.played.delete(song.id);
+
       saveState();renderQueue();renderSongs();toast(state.queue.includes(song.id)?'Canción agregada a la cola':'Canción retirada de la cola');
       if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
     } else if(act==='played'){
