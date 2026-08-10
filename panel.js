@@ -386,7 +386,8 @@ document.documentElement.dataset.egmVersion="6.36.87";
       repertorio_nombre:cfg.repertoireName||'',
       show_activo:active,
       inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
-      cronometro_elapsed_ms:active&&typeof showTimerTotalMs==='function'?showTimerTotalMs():0,
+      cronometro_schema:2,
+      cronometro_elapsed_ms:active&&typeof showTimer!=='undefined'?Math.max(0,Number(showTimer.elapsedMs)||0):0,
       cronometro_running:active&&typeof showTimer!=='undefined'&&showTimer.running===true,
       cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
       cola:active?[...state.queue]:[],
@@ -631,14 +632,19 @@ document.documentElement.dataset.egmVersion="6.36.87";
         $('#liveRepertoireName').textContent=state.config.repertoireName;
         invalidateRepertoireCache();
         setStatus(true);
-        applyRemoteShowTimer({elapsedMs:Number(data.cronometro_elapsed_ms)||0,running:data.cronometro_running===true,startedAt:Number(data.cronometro_started_at)||0});
+        applyRemoteShowTimer({
+          schema:Number(data.cronometro_schema)||0,
+          elapsedMs:Number(data.cronometro_elapsed_ms)||0,
+          running:data.cronometro_running===true,
+          startedAt:Number(data.cronometro_started_at)||0
+        });
         saveStateLocalOnly();
         // Tras autenticar, un show remoto activo lleva directamente a Control en vivo.
         if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('#imageEditorDialog[open],#songbookEditorDialog[open]'))showLive();
       }else if(data.show_activo===false){
         state.config=null;state.queue=[];state.played.clear();
         setStatus(false);
-        applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
+        applyRemoteShowTimer({schema:SHOW_TIMER_SCHEMA,elapsedMs:0,running:false,startedAt:0});
         saveStateLocalOnly();
         // El cierre remoto es global: ningún modal puede impedir volver a Configuración.
         if(panelAuthValid()&&$('#panelLogin').hidden){closeDialogsForRemoteShowEnd();showConfig();toast('El show fue finalizado desde otro dispositivo.');}
@@ -687,19 +693,53 @@ document.documentElement.dataset.egmVersion="6.36.87";
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
+  const SHOW_TIMER_SCHEMA=2;
   let showTimer={elapsedMs:0,running:false,startedAt:0};
   let showTimerFrame=0;
+  let legacyRemoteTimerResetPublished=false;
+
+  function resetTimerStateOnly(keepRunning=false){
+    showTimer={
+      elapsedMs:0,
+      running:keepRunning===true,
+      startedAt:keepRunning===true?Date.now():0
+    };
+    saveShowTimer();
+    showTimerLoop();
+  }
+
   function loadShowTimer(){
     try{
       const saved=JSON.parse(localStorage.getItem(SHOW_TIMER_KEY)||'null');
-      if(saved&&Number.isFinite(saved.elapsedMs)){
-        showTimer={elapsedMs:Math.max(0,saved.elapsedMs),running:!!saved.running,startedAt:Number(saved.startedAt)||0};
+      if(!saved||Number(saved.schema)!==SHOW_TIMER_SCHEMA){
+        // 6.36.89: nunca heredar un reloj local del formato antiguo, porque pudo
+        // quedar inflado por el doble conteo. Solo se sanea el cronómetro.
+        showTimer={elapsedMs:0,running:false,startedAt:0};
+        saveShowTimer();
+        return;
+      }
+      if(Number.isFinite(saved.elapsedMs)){
+        showTimer={
+          elapsedMs:Math.max(0,Number(saved.elapsedMs)||0),
+          running:saved.running===true,
+          startedAt:Number(saved.startedAt)||0
+        };
         if(showTimer.running&&!showTimer.startedAt)showTimer.startedAt=Date.now();
       }
-    }catch(_){showTimer={elapsedMs:0,running:false,startedAt:0};}
+    }catch(_){
+      showTimer={elapsedMs:0,running:false,startedAt:0};
+      saveShowTimer();
+    }
   }
   function saveShowTimer(){
-    try{localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify(showTimer));}catch(_){}
+    try{
+      localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify({
+        schema:SHOW_TIMER_SCHEMA,
+        elapsedMs:Math.max(0,Number(showTimer.elapsedMs)||0),
+        running:showTimer.running===true,
+        startedAt:showTimer.running?Number(showTimer.startedAt)||Date.now():0
+      }));
+    }catch(_){}
   }
   function showTimerTotalMs(){
     return showTimer.elapsedMs+(showTimer.running?Math.max(0,Date.now()-showTimer.startedAt):0);
@@ -731,6 +771,32 @@ document.documentElement.dataset.egmVersion="6.36.87";
   }
   function applyRemoteShowTimer(remote){
     if(!remote||applyingRemoteShowState===false&&remote===showTimer)return;
+
+    const remoteSchema=Number(remote.schema)||0;
+
+    // 6.36.89: cualquier show activo que todavía venga del formato antiguo
+    // puede contener tiempo duplicado. No se intenta "adivinar" el tiempo real:
+    // se reinicia SOLO el cronómetro y se migra una sola vez a schema 2.
+    if(remoteSchema!==SHOW_TIMER_SCHEMA){
+      const keepRunning=remote.running===true;
+      resetTimerStateOnly(keepRunning);
+      if(state.config&&!legacyRemoteTimerResetPublished){
+        legacyRemoteTimerResetPublished=true;
+        const patch={
+          show_activo:true,
+          cronometro_schema:SHOW_TIMER_SCHEMA,
+          cronometro_elapsed_ms:0,
+          cronometro_running:keepRunning,
+          cronometro_started_at:keepRunning?showTimer.startedAt:0
+        };
+        setTimeout(()=>{
+          publishShowPatch(patch).catch(err=>console.warn('No se pudo migrar el cronómetro antiguo',err));
+        },0);
+      }
+      return;
+    }
+
+    legacyRemoteTimerResetPublished=true;
     const next={
       elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
       running:remote.running===true,
@@ -754,13 +820,25 @@ document.documentElement.dataset.egmVersion="6.36.87";
     }
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:showTimerTotalMs(),cronometro_running:showTimer.running,cronometro_started_at:showTimer.running?showTimer.startedAt:0}).catch(err=>console.warn('No se sincronizó el cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({
+      show_activo:true,
+      cronometro_schema:SHOW_TIMER_SCHEMA,
+      cronometro_elapsed_ms:Math.max(0,Number(showTimer.elapsedMs)||0),
+      cronometro_running:showTimer.running,
+      cronometro_started_at:showTimer.running?showTimer.startedAt:0
+    }).catch(err=>console.warn('No se sincronizó el cronómetro',err));
   }
   function resetShowTimer(){
     showTimer={elapsedMs:0,running:false,startedAt:0};
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0}).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({
+      show_activo:true,
+      cronometro_schema:SHOW_TIMER_SCHEMA,
+      cronometro_elapsed_ms:0,
+      cronometro_running:false,
+      cronometro_started_at:0
+    }).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
   }
   function startNewShowTimer(){
     showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
