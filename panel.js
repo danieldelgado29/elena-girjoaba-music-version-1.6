@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.79 · Cancionero Daniel directo");
-document.documentElement.dataset.egmVersion="6.36.79";
+console.info("Elena Girjoaba Music · 6.36.87 · Reordenamiento seguro de Cola activa");
+document.documentElement.dataset.egmVersion="6.36.87";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -30,6 +30,12 @@ document.documentElement.dataset.egmVersion="6.36.79";
     songs: [], filtered: [], queue: [], played: new Set(), notes: {}, lyrics: {},
     config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, newSongDanielNotes: null, songEdits: {}, editSongElenaNotes: null, editSongDanielNotes: null
   };
+  const queueDragState={
+    active:false,saving:false,pointerId:null,item:null,handle:null,ghost:null,timer:0,
+    startX:0,startY:0,lastX:0,lastY:0,movedId:'',initialOrder:[],pendingRemoteQueue:null,
+    suppressClickUntil:0
+  };
+  let remoteRunTransaction=null;
   const dialogBaselines = new WeakMap();
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
@@ -301,7 +307,7 @@ document.documentElement.dataset.egmVersion="6.36.79";
     remoteInitPromise=(async()=>{
     if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc }] = await Promise.all([
+      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc, runTransaction }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
       ]);
@@ -317,15 +323,16 @@ document.documentElement.dataset.egmVersion="6.36.79";
       remoteDoc=doc;
       remoteSetDoc=firebaseSetDoc;
       window.__egmUpdateDoc=updateDoc;
+      remoteRunTransaction=runTransaction;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
         const queueBeforeSnapshot=[...state.queue];
-        if(Array.isArray(data.cola)) state.queue=[...data.cola];
+        const queueSnapshotApplied=applyRemoteQueueSnapshot(data.cola);
         if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
 
         latestRemoteState=data;
-        applyRemotePanelState(data);
+        applyRemotePanelState(data,{skipQueue:true});
 
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
@@ -351,7 +358,7 @@ document.documentElement.dataset.egmVersion="6.36.79";
         remoteReady=true;
         renderQueue();
         if(document.body.classList.contains('live-mode')) renderSongs();
-        if(wasRemoteReady)processQueueAdditions(queueBeforeSnapshot,state.queue);
+        if(wasRemoteReady&&queueSnapshotApplied)processQueueAdditions(queueBeforeSnapshot,state.queue);
       },err=>console.warn('Sincronización remota no disponible',err));
     }catch(err){ console.warn('No se pudo iniciar la sincronización remota',err); throw err; }
     return remoteStateRef;
@@ -584,14 +591,24 @@ document.documentElement.dataset.egmVersion="6.36.79";
     });
   }
 
-  function applyRemotePanelState(data){
+  function applyRemoteQueueSnapshot(queue){
+    if(!Array.isArray(queue))return false;
+    if(queueDragState.active||queueDragState.saving){
+      queueDragState.pendingRemoteQueue=[...queue];
+      return false;
+    }
+    state.queue=[...queue];
+    return true;
+  }
+
+  function applyRemotePanelState(data,options={}){
     if(!data||typeof data!=='object')return;
     const revision=Number(data.show_revision||data.updated_at||0);
     if(revision&&revision<lastAppliedRemoteRevision)return;
     if(revision)lastAppliedRemoteRevision=revision;
     applyingRemoteShowState=true;
     try{
-      if(Array.isArray(data.cola)) state.queue=[...data.cola];
+      if(!options.skipQueue)applyRemoteQueueSnapshot(data.cola);
       if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
       const remoteActive=data.show_activo===true;
       if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
@@ -996,7 +1013,175 @@ document.documentElement.dataset.egmVersion="6.36.79";
     setTimeout(()=>card.classList.remove('queue-focus'),1600);
   }
 
+  function queueOrderFromDom(){
+    return [...document.querySelectorAll('#queueList .queue-item[data-song-id]')].map(el=>String(el.dataset.songId||'')).filter(Boolean);
+  }
+
+  function queueMoveAnchors(order,movedId){
+    const index=order.indexOf(movedId);
+    return {
+      beforeId:index>0?order[index-1]:null,
+      afterId:index>=0&&index<order.length-1?order[index+1]:null,
+      intendedFirst:index===0
+    };
+  }
+
+  async function persistQueueReorder(movedId,localOrder){
+    if(!movedId||!Array.isArray(localOrder)||!localOrder.includes(movedId))return;
+    const {beforeId,afterId,intendedFirst}=queueMoveAnchors(localOrder,movedId);
+    queueDragState.saving=true;
+    queueDragState.pendingRemoteQueue=null;
+    state.queue=[...localOrder];
+    saveStateLocalOnly();
+    renderSongs();
+    try{
+      if(!navigator.onLine)throw new Error('OFFLINE');
+      if(!remoteStateRef)await initRemoteSync();
+      if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
+      const result=await remoteRunTransaction(remoteDb,async transaction=>{
+        const snap=await transaction.get(remoteStateRef);
+        const data=snap.exists()?(snap.data()||{}):{};
+        const remoteQueue=Array.isArray(data.cola)?data.cola.map(String):[];
+        if(data.show_activo===false)return {status:'show-ended',queue:[]};
+        if(!remoteQueue.includes(movedId))return {status:'removed',queue:remoteQueue};
+        const next=remoteQueue.filter(id=>id!==movedId);
+        let insertAt=-1;
+        if(afterId&&next.includes(afterId))insertAt=next.indexOf(afterId);
+        else if(beforeId&&next.includes(beforeId))insertAt=next.indexOf(beforeId)+1;
+        else if(intendedFirst)insertAt=0;
+        else insertAt=next.length;
+        next.splice(Math.max(0,Math.min(insertAt,next.length)),0,movedId);
+        const revision=Date.now();
+        transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
+        return {status:'ok',queue:next};
+      });
+      state.queue=[...(result?.queue||localOrder)];
+      queueDragState.pendingRemoteQueue=null;
+      saveStateLocalOnly();
+      toast(result?.status==='show-ended'?'El show terminó; no se cambió la cola.':result?.status==='removed'?'La canción fue retirada desde otro dispositivo.':'Orden de cola guardado');
+    }catch(err){
+      console.warn('No se pudo guardar el nuevo orden de la cola',err);
+      if(queueDragState.pendingRemoteQueue)state.queue=[...queueDragState.pendingRemoteQueue];
+      else state.queue=[...queueDragState.initialOrder];
+      saveStateLocalOnly();
+      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió el orden remoto.':'No se pudo guardar el orden; se restauró la cola.');
+    }finally{
+      queueDragState.saving=false;
+      queueDragState.pendingRemoteQueue=null;
+      renderQueue();
+      renderSongs();
+    }
+  }
+
+  function cleanupQueueDragVisuals(){
+    clearTimeout(queueDragState.timer);queueDragState.timer=0;
+    queueDragState.ghost?.remove();
+    queueDragState.item?.classList.remove('is-dragging');
+    $('#queueList')?.classList.remove('is-reordering');
+    document.body.classList.remove('queue-drag-active');
+    if(queueDragState.handle){
+      queueDragState.handle.setAttribute('aria-grabbed','false');
+      try{if(queueDragState.pointerId!==null&&queueDragState.handle.hasPointerCapture(queueDragState.pointerId))queueDragState.handle.releasePointerCapture(queueDragState.pointerId);}catch(_){ }
+    }
+    queueDragState.ghost=null;
+  }
+
+  function beginQueueDrag(item,handle,e){
+    if(queueDragState.active||queueDragState.saving||!item?.isConnected)return;
+    queueDragState.active=true;
+    queueDragState.item=item;
+    queueDragState.handle=handle;
+    queueDragState.pointerId=e.pointerId;
+    queueDragState.movedId=String(item.dataset.songId||'');
+    queueDragState.initialOrder=[...state.queue];
+    queueDragState.pendingRemoteQueue=null;
+    item.classList.add('is-dragging');
+    $('#queueList')?.classList.add('is-reordering');
+    document.body.classList.add('queue-drag-active');
+    handle.setAttribute('aria-grabbed','true');
+    try{handle.setPointerCapture(e.pointerId);}catch(_){ }
+    const rect=item.getBoundingClientRect();
+    const ghost=item.cloneNode(true);
+    ghost.classList.remove('is-dragging');ghost.classList.add('queue-drag-ghost');
+    ghost.style.width=`${rect.width}px`;ghost.style.left=`${rect.left}px`;ghost.style.top=`${rect.top}px`;
+    ghost.querySelectorAll('button').forEach(b=>b.tabIndex=-1);
+    document.body.appendChild(ghost);queueDragState.ghost=ghost;
+    if(navigator.vibrate)try{navigator.vibrate(18);}catch(_){ }
+  }
+
+  function moveQueueDrag(e){
+    if(!queueDragState.active||e.pointerId!==queueDragState.pointerId)return;
+    e.preventDefault();
+    queueDragState.lastX=e.clientX;queueDragState.lastY=e.clientY;
+    const ghost=queueDragState.ghost;
+    if(ghost){const r=ghost.getBoundingClientRect();ghost.style.top=`${e.clientY-r.height/2}px`;}
+    const list=$('#queueList'),item=queueDragState.item;
+    if(!list||!item)return;
+    const candidates=[...list.querySelectorAll('.queue-item[data-song-id]:not(.is-dragging)')];
+    let placed=false;
+    for(const target of candidates){
+      const r=target.getBoundingClientRect();
+      if(e.clientY<r.top+r.height/2){list.insertBefore(item,target);placed=true;break;}
+    }
+    if(!placed)list.appendChild(item);
+  }
+
+  function finishQueueDrag(e,cancel=false){
+    clearTimeout(queueDragState.timer);queueDragState.timer=0;
+    if(!queueDragState.active){queueDragState.pointerId=null;return;}
+    if(e&&e.pointerId!==queueDragState.pointerId)return;
+    const movedId=queueDragState.movedId;
+    const initial=[...queueDragState.initialOrder];
+    const finalOrder=cancel?initial:queueOrderFromDom();
+    queueDragState.suppressClickUntil=Date.now()+800;
+    cleanupQueueDragVisuals();
+    queueDragState.active=false;
+    queueDragState.pointerId=null;queueDragState.item=null;queueDragState.handle=null;queueDragState.movedId='';
+    if(cancel||finalOrder.join('|')===initial.join('|')){state.queue=initial;renderQueue();return;}
+    state.queue=[...finalOrder];
+    renderQueue();
+    persistQueueReorder(movedId,finalOrder);
+  }
+
+  function setupQueueDrag(item,song){
+    const handle=item.querySelector('.queue-name');
+    if(!handle)return;
+    handle.tabIndex=0;
+    handle.setAttribute('role','button');
+    handle.setAttribute('aria-grabbed','false');
+    handle.setAttribute('aria-label',`${song.titulo}. Mantén presionado para cambiar su posición. Con teclado usa Alt más flecha arriba o abajo.`);
+    handle.addEventListener('contextmenu',e=>e.preventDefault());
+    handle.addEventListener('pointerdown',e=>{
+      if(e.button!==undefined&&e.button!==0)return;
+      if(queueDragState.saving)return;
+      clearTimeout(queueDragState.timer);
+      queueDragState.pointerId=e.pointerId;queueDragState.startX=e.clientX;queueDragState.startY=e.clientY;
+      queueDragState.lastX=e.clientX;queueDragState.lastY=e.clientY;
+      queueDragState.item=item;queueDragState.handle=handle;
+      queueDragState.timer=setTimeout(()=>beginQueueDrag(item,handle,e),500);
+    });
+    handle.addEventListener('pointermove',e=>{
+      if(queueDragState.active){moveQueueDrag(e);return;}
+      if(e.pointerId!==queueDragState.pointerId)return;
+      if(Math.hypot(e.clientX-queueDragState.startX,e.clientY-queueDragState.startY)>10){clearTimeout(queueDragState.timer);queueDragState.timer=0;}
+    });
+    handle.addEventListener('pointerup',e=>finishQueueDrag(e,false));
+    handle.addEventListener('pointercancel',e=>finishQueueDrag(e,true));
+    handle.addEventListener('keydown',e=>{
+      if(!e.altKey||!(e.key==='ArrowUp'||e.key==='ArrowDown')||queueDragState.saving)return;
+      e.preventDefault();
+      const order=[...state.queue],i=order.indexOf(song.id),delta=e.key==='ArrowUp'?-1:1,j=i+delta;
+      if(i<0||j<0||j>=order.length)return;
+      [order[i],order[j]]=[order[j],order[i]];
+      queueDragState.initialOrder=[...state.queue];
+      state.queue=[...order];renderQueue();
+      requestAnimationFrame(()=>document.querySelector(`#queueList .queue-item[data-song-id="${CSS.escape(song.id)}"] .queue-name`)?.focus());
+      persistQueueReorder(song.id,order);
+    });
+  }
+
   function renderQueue(){
+    if(queueDragState.active||queueDragState.saving)return;
     const panel=$('#queuePanel'),list=$('#queueList');
     panel.hidden=false;list.innerHTML='';
     $('#queueCount').textContent=`${state.queue.length} ${state.queue.length===1?'canción':'canciones'}`;
@@ -1006,7 +1191,7 @@ document.documentElement.dataset.egmVersion="6.36.79";
       return;
     }
     state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
-      const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;
+      const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;item.dataset.songId=song.id;
       item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
       const handleQueueControl=e=>{
         const button=e.target.closest('[data-q]');
@@ -1022,14 +1207,17 @@ document.documentElement.dataset.egmVersion="6.36.79";
         handleQueueControl(e);
       });
       item.addEventListener('click',e=>{
+        if(queueDragState.suppressClickUntil>Date.now()){e.preventDefault();e.stopPropagation();return;}
         const button=e.target.closest('[data-q]');
         if(button&&button._egmTouchHandledUntil>Date.now()) return;
         handleQueueControl(e);
       });
       item.addEventListener('dblclick',e=>{
+        if(queueDragState.suppressClickUntil>Date.now())return;
         if(e.target.closest('[data-q]'))return;
         e.preventDefault();focusSongFromQueue(song.id);
       });
+      setupQueueDrag(item,song);
       list.append(item);
     });
   }
