@@ -386,7 +386,7 @@ document.documentElement.dataset.egmVersion="6.36.87";
       repertorio_nombre:cfg.repertoireName||'',
       show_activo:active,
       inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
-      cronometro_schema:2,
+      cronometro_schema:SHOW_TIMER_SCHEMA,
       cronometro_elapsed_ms:active&&typeof showTimer!=='undefined'?Math.max(0,Number(showTimer.elapsedMs)||0):0,
       cronometro_running:active&&typeof showTimer!=='undefined'&&showTimer.running===true,
       cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
@@ -609,8 +609,13 @@ document.documentElement.dataset.egmVersion="6.36.87";
     if(revision)lastAppliedRemoteRevision=revision;
     applyingRemoteShowState=true;
     try{
-      if(!options.skipQueue)applyRemoteQueueSnapshot(data.cola);
-      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+      const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
+      if(!options.skipQueue)applyRemoteQueueSnapshot(incomingQueue);
+      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas.map(String));
+      if(!queueDragState.active&&!queueDragState.saving){
+        state.queue=canonicalQueueOrder(state.queue,state.played);
+        if(!options.skipQueue)normalizeRemoteQueueIfNeeded(incomingQueue);
+      }
       const remoteActive=data.show_activo===true;
       if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
       if(remoteActive){
@@ -693,7 +698,7 @@ document.documentElement.dataset.egmVersion="6.36.87";
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
-  const SHOW_TIMER_SCHEMA=2;
+  const SHOW_TIMER_SCHEMA=3;
   let showTimer={elapsedMs:0,running:false,startedAt:0};
   let showTimerFrame=0;
   let legacyRemoteTimerResetPublished=false;
@@ -797,12 +802,31 @@ document.documentElement.dataset.egmVersion="6.36.87";
     }
 
     legacyRemoteTimerResetPublished=true;
-    const next={
+    let next={
       elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
       running:remote.running===true,
       startedAt:Number(remote.startedAt)||0
     };
     if(next.running&&!next.startedAt)next.startedAt=Date.now();
+
+    // 6.36.90: saneamiento físico independiente del schema.
+    // El cronómetro jamás puede ser mayor que el tiempo transcurrido desde inicio_show.
+    // Si una versión anterior dejó horas infladas, reiniciar SOLO el reloj.
+    const showStartedAt=state.config?.startedAt?new Date(state.config.startedAt).getTime():0;
+    const physicalMax=showStartedAt>0?Math.max(0,Date.now()-showStartedAt):null;
+    const incomingTotal=next.elapsedMs+(next.running?Math.max(0,Date.now()-next.startedAt):0);
+    if(physicalMax!==null && incomingTotal>physicalMax+30000){
+      next={elapsedMs:0,running:next.running,startedAt:next.running?Date.now():0};
+      if(state.config){
+        setTimeout(()=>publishShowPatch({
+          show_activo:true,
+          cronometro_schema:SHOW_TIMER_SCHEMA,
+          cronometro_elapsed_ms:0,
+          cronometro_running:next.running,
+          cronometro_started_at:next.running?next.startedAt:0
+        }).catch(err=>console.warn('No se pudo sanear el cronómetro remoto',err)),0);
+      }
+    }
     const same=showTimer.elapsedMs===next.elapsedMs&&showTimer.running===next.running&&showTimer.startedAt===next.startedAt;
     if(same)return;
     showTimer=next;
@@ -1066,12 +1090,15 @@ document.documentElement.dataset.egmVersion="6.36.87";
   function handleSongAction(song,act){
     if(act==='queue'){
       const wasQueued=state.queue.includes(song.id);
-      state.queue=wasQueued?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
-      saveState();renderQueue();renderSongs();toast(state.queue.includes(song.id)?'Canción agregada a la cola':'Canción retirada de la cola');
-      if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
+      persistQueueStateMutation(song.id,wasQueued?'remove':'add').then(()=>{
+        toast(wasQueued?'Canción retirada de la cola':'Canción agregada a la cola');
+        if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
+      }).catch(()=>{});
     } else if(act==='played'){
-      state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
-      saveState();renderQueue();renderSongs();toast(state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
+      const wasPlayed=state.played.has(song.id);
+      persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>{
+        toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada');
+      }).catch(()=>{});
     } else if(act==='lyrics') openViewer(song,'lyrics');
     else if(act==='notes') openViewer(song,'notes');
     else if(act==='daniel') openViewer(song,'daniel');
@@ -1091,6 +1118,126 @@ document.documentElement.dataset.egmVersion="6.36.87";
     setTimeout(()=>card.classList.remove('queue-focus'),1600);
   }
 
+  function canonicalQueueOrder(queue=state.queue,played=state.played){
+    const source=[...new Set((Array.isArray(queue)?queue:[]).map(String))];
+    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
+    const pending=source.filter(id=>!playedSet.has(id));
+    const done=source.filter(id=>playedSet.has(id));
+    return [...pending,...done];
+  }
+
+  function protectedQueueId(queue=state.queue,played=state.played){
+    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
+    return (Array.isArray(queue)?queue:[]).map(String).find(id=>!playedSet.has(id))||'';
+  }
+
+  function insertAtEndOfPending(queue,id,played){
+    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
+    const clean=(Array.isArray(queue)?queue:[]).map(String).filter(x=>x!==String(id));
+    const firstPlayed=clean.findIndex(x=>playedSet.has(x));
+    const at=firstPlayed<0?clean.length:firstPlayed;
+    clean.splice(at,0,String(id));
+    return canonicalQueueOrder(clean,playedSet);
+  }
+
+  async function persistQueueStateMutation(songId,kind){
+    const id=String(songId||'');
+    if(!id)return;
+    const originalQueue=[...state.queue],originalPlayed=new Set(state.played);
+
+    // Optimistic local state using the exact same invariant as Firestore.
+    if(kind==='add'){
+      state.played.delete(id);
+      state.queue=insertAtEndOfPending(state.queue,id,state.played);
+    }else if(kind==='remove'){
+      state.queue=state.queue.filter(x=>String(x)!==id);
+    }else if(kind==='play'){
+      state.played.add(id);
+      state.queue=canonicalQueueOrder(state.queue,state.played).filter(x=>x!==id).concat(state.queue.includes(id)?[id]:[]);
+    }else if(kind==='unplay'){
+      state.played.delete(id);
+      if(state.queue.includes(id))state.queue=insertAtEndOfPending(state.queue,id,state.played);
+    }
+    state.queue=canonicalQueueOrder(state.queue,state.played);
+    saveStateLocalOnly();renderQueue();renderSongs();
+
+    try{
+      if(!navigator.onLine)throw new Error('OFFLINE');
+      if(!remoteStateRef)await initRemoteSync();
+      if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
+
+      const result=await remoteRunTransaction(remoteDb,async transaction=>{
+        const snap=await transaction.get(remoteStateRef);
+        const data=snap.exists()?(snap.data()||{}):{};
+        if(data.show_activo===false)return {status:'show-ended',queue:[],played:[]};
+
+        let q=Array.isArray(data.cola)?[...new Set(data.cola.map(String))]:[];
+        let p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
+
+        if(kind==='add'){
+          p.delete(id);
+          q=insertAtEndOfPending(q,id,p);
+        }else if(kind==='remove'){
+          q=q.filter(x=>x!==id);
+        }else if(kind==='play'){
+          p.add(id);
+          q=canonicalQueueOrder(q,p);
+          if(q.includes(id))q=q.filter(x=>x!==id).concat(id);
+        }else if(kind==='unplay'){
+          p.delete(id);
+          if(q.includes(id))q=insertAtEndOfPending(q,id,p);
+        }
+
+        q=canonicalQueueOrder(q,p);
+        const revision=Date.now();
+        transaction.update(remoteStateRef,{
+          cola:q,tocadas:[...p],
+          show_revision:revision,show_writer:DEVICE_ID,updated_at:revision
+        });
+        return {status:'ok',queue:q,played:[...p]};
+      });
+
+      if(result?.status==='show-ended'){
+        toast('El show terminó; no se cambió la cola.');
+        return;
+      }
+      state.queue=[...(result?.queue||state.queue)];
+      state.played=new Set(result?.played||[...state.played]);
+      saveStateLocalOnly();renderQueue();renderSongs();
+    }catch(err){
+      console.warn('No se pudo guardar el cambio de cola',err);
+      state.queue=originalQueue;state.played=originalPlayed;
+      saveStateLocalOnly();renderQueue();renderSongs();
+      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió la cola remota.':'No se pudo guardar el cambio; se restauró la cola.');
+      throw err;
+    }
+  }
+
+  let queueNormalizeTimer=0;
+  function normalizeRemoteQueueIfNeeded(remoteQueue){
+    const canonical=canonicalQueueOrder(remoteQueue,state.played);
+    if(canonical.join('|')===(Array.isArray(remoteQueue)?remoteQueue.map(String):[]).join('|'))return;
+    clearTimeout(queueNormalizeTimer);
+    queueNormalizeTimer=setTimeout(async()=>{
+      try{
+        if(!navigator.onLine)return;
+        if(!remoteStateRef)await initRemoteSync();
+        if(!remoteStateRef||!remoteRunTransaction)return;
+        await remoteRunTransaction(remoteDb,async transaction=>{
+          const snap=await transaction.get(remoteStateRef);
+          const data=snap.exists()?(snap.data()||{}):{};
+          if(data.show_activo===false)return;
+          const q=Array.isArray(data.cola)?data.cola.map(String):[];
+          const p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
+          const next=canonicalQueueOrder(q,p);
+          if(next.join('|')===q.join('|'))return;
+          const revision=Date.now();
+          transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
+        });
+      }catch(err){console.warn('No se pudo normalizar la cola remota',err);}
+    },180);
+  }
+
   function queueOrderFromDom(){
     return [...document.querySelectorAll('#queueList .queue-item[data-song-id]')].map(el=>String(el.dataset.songId||'')).filter(Boolean);
   }
@@ -1106,48 +1253,70 @@ document.documentElement.dataset.egmVersion="6.36.87";
 
   async function persistQueueReorder(movedId,localOrder){
     if(!movedId||!Array.isArray(localOrder)||!localOrder.includes(movedId))return;
-    const {beforeId,afterId,intendedFirst}=queueMoveAnchors(localOrder,movedId);
+    const desiredPending=localOrder.map(String).filter(id=>!state.played.has(id));
+    const movedIndex=desiredPending.indexOf(String(movedId));
+    const beforeId=movedIndex>0?desiredPending[movedIndex-1]:null;
+    const afterId=movedIndex>=0&&movedIndex<desiredPending.length-1?desiredPending[movedIndex+1]:null;
+
     queueDragState.saving=true;
     queueDragState.pendingRemoteQueue=null;
-    state.queue=[...localOrder];
-    saveStateLocalOnly();
-    renderSongs();
+    state.queue=canonicalQueueOrder(localOrder,state.played);
+    saveStateLocalOnly();renderSongs();
+
     try{
       if(!navigator.onLine)throw new Error('OFFLINE');
       if(!remoteStateRef)await initRemoteSync();
       if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
+
       const result=await remoteRunTransaction(remoteDb,async transaction=>{
         const snap=await transaction.get(remoteStateRef);
         const data=snap.exists()?(snap.data()||{}):{};
-        const remoteQueue=Array.isArray(data.cola)?data.cola.map(String):[];
         if(data.show_activo===false)return {status:'show-ended',queue:[]};
-        if(!remoteQueue.includes(movedId))return {status:'removed',queue:remoteQueue};
-        const next=remoteQueue.filter(id=>id!==movedId);
-        let insertAt=-1;
-        if(afterId&&next.includes(afterId))insertAt=next.indexOf(afterId);
-        else if(beforeId&&next.includes(beforeId))insertAt=next.indexOf(beforeId)+1;
-        else if(intendedFirst)insertAt=0;
-        else insertAt=next.length;
-        next.splice(Math.max(0,Math.min(insertAt,next.length)),0,movedId);
+
+        const p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
+        let q=canonicalQueueOrder(Array.isArray(data.cola)?data.cola.map(String):[],p);
+        const protectedId=protectedQueueId(q,p);
+
+        if(!q.includes(movedId))return {status:'removed',queue:q};
+        if(p.has(movedId)||movedId===protectedId)return {status:'protected',queue:q};
+
+        const pending=q.filter(id=>!p.has(id));
+        const done=q.filter(id=>p.has(id));
+        const nextPending=pending.filter(id=>id!==movedId);
+
+        let insertAt=nextPending.length;
+        if(afterId&&nextPending.includes(afterId))insertAt=nextPending.indexOf(afterId);
+        else if(beforeId&&nextPending.includes(beforeId))insertAt=nextPending.indexOf(beforeId)+1;
+
+        // La posición 0 pertenece exclusivamente a la primera pendiente protegida.
+        const minIndex=protectedId&&nextPending.includes(protectedId)?nextPending.indexOf(protectedId)+1:0;
+        insertAt=Math.max(minIndex,Math.min(insertAt,nextPending.length));
+        nextPending.splice(insertAt,0,movedId);
+
+        const next=[...nextPending,...done];
         const revision=Date.now();
         transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
         return {status:'ok',queue:next};
       });
-      state.queue=[...(result?.queue||localOrder)];
+
+      state.queue=[...(result?.queue||state.queue)];
       queueDragState.pendingRemoteQueue=null;
       saveStateLocalOnly();
-      toast(result?.status==='show-ended'?'El show terminó; no se cambió la cola.':result?.status==='removed'?'La canción fue retirada desde otro dispositivo.':'Orden de cola guardado');
+      const status=result?.status;
+      toast(status==='show-ended'?'El show terminó; no se cambió la cola.':
+            status==='removed'?'La canción fue retirada desde otro dispositivo.':
+            status==='protected'?'La canción actual está protegida.':
+            'Orden de cola guardado');
     }catch(err){
       console.warn('No se pudo guardar el nuevo orden de la cola',err);
-      if(queueDragState.pendingRemoteQueue)state.queue=[...queueDragState.pendingRemoteQueue];
-      else state.queue=[...queueDragState.initialOrder];
+      if(queueDragState.pendingRemoteQueue)state.queue=canonicalQueueOrder(queueDragState.pendingRemoteQueue,state.played);
+      else state.queue=canonicalQueueOrder(queueDragState.initialOrder,state.played);
       saveStateLocalOnly();
       toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió el orden remoto.':'No se pudo guardar el orden; se restauró la cola.');
     }finally{
       queueDragState.saving=false;
       queueDragState.pendingRemoteQueue=null;
-      renderQueue();
-      renderSongs();
+      renderQueue();renderSongs();
     }
   }
 
@@ -1198,15 +1367,31 @@ document.documentElement.dataset.egmVersion="6.36.87";
     queueDragState.lastX=e.clientX;queueDragState.lastY=e.clientY;
     const ghost=queueDragState.ghost;
     if(ghost){const r=ghost.getBoundingClientRect();ghost.style.top=`${e.clientY-r.height/2}px`;}
+
     const list=$('#queueList'),item=queueDragState.item;
     if(!list||!item)return;
-    const candidates=[...list.querySelectorAll('.queue-item[data-song-id]:not(.is-dragging)')];
-    let placed=false;
+
+    const protectedId=protectedQueueId();
+    const protectedEl=protectedId?list.querySelector(`.queue-item[data-song-id="${CSS.escape(protectedId)}"]`):null;
+    const firstPlayed=[...list.querySelectorAll('.queue-item.played[data-song-id]:not(.is-dragging)')][0]||null;
+    const candidates=[...list.querySelectorAll('.queue-item[data-song-id]:not(.played):not(.is-dragging)')]
+      .filter(el=>String(el.dataset.songId)!==protectedId);
+
+    if(protectedEl){
+      const r=protectedEl.getBoundingClientRect();
+      if(e.clientY<r.bottom){
+        protectedEl.after(item);
+        return;
+      }
+    }
+
     for(const target of candidates){
       const r=target.getBoundingClientRect();
-      if(e.clientY<r.top+r.height/2){list.insertBefore(item,target);placed=true;break;}
+      if(e.clientY<r.top+r.height/2){list.insertBefore(item,target);return;}
     }
-    if(!placed)list.appendChild(item);
+
+    if(firstPlayed)list.insertBefore(item,firstPlayed);
+    else list.appendChild(item);
   }
 
   function finishQueueDrag(e,cancel=false){
@@ -1229,6 +1414,14 @@ document.documentElement.dataset.egmVersion="6.36.87";
   function setupQueueDrag(item,song){
     const handle=item.querySelector('.queue-name');
     if(!handle)return;
+    const protectedId=protectedQueueId();
+    if(state.played.has(song.id)||String(song.id)===protectedId){
+      handle.tabIndex=-1;
+      handle.removeAttribute('role');
+      handle.removeAttribute('aria-grabbed');
+      handle.setAttribute('aria-label',state.played.has(song.id)?`${song.titulo}. Canción tocada.`:`${song.titulo}. Canción actual protegida.`);
+      return;
+    }
     handle.tabIndex=0;
     handle.setAttribute('role','button');
     handle.setAttribute('aria-grabbed','false');
@@ -1253,11 +1446,16 @@ document.documentElement.dataset.egmVersion="6.36.87";
     handle.addEventListener('keydown',e=>{
       if(!e.altKey||!(e.key==='ArrowUp'||e.key==='ArrowDown')||queueDragState.saving)return;
       e.preventDefault();
-      const order=[...state.queue],i=order.indexOf(song.id),delta=e.key==='ArrowUp'?-1:1,j=i+delta;
-      if(i<0||j<0||j>=order.length)return;
-      [order[i],order[j]]=[order[j],order[i]];
+      const protectedId=protectedQueueId();
+      const pending=state.queue.filter(id=>!state.played.has(id));
+      const done=state.queue.filter(id=>state.played.has(id));
+      const i=pending.indexOf(song.id),delta=e.key==='ArrowUp'?-1:1,j=i+delta;
+      if(i<0||j<0||j>=pending.length)return;
+      if(pending[j]===protectedId||song.id===protectedId)return;
+      [pending[i],pending[j]]=[pending[j],pending[i]];
+      const order=[...pending,...done];
       queueDragState.initialOrder=[...state.queue];
-      state.queue=[...order];renderQueue();
+      state.queue=order;renderQueue();
       requestAnimationFrame(()=>document.querySelector(`#queueList .queue-item[data-song-id="${CSS.escape(song.id)}"] .queue-name`)?.focus());
       persistQueueReorder(song.id,order);
     });
@@ -1265,6 +1463,8 @@ document.documentElement.dataset.egmVersion="6.36.87";
 
   function renderQueue(){
     if(queueDragState.active||queueDragState.saving)return;
+    state.queue=canonicalQueueOrder(state.queue,state.played);
+    const currentProtectedId=protectedQueueId();
     const panel=$('#queuePanel'),list=$('#queueList');
     panel.hidden=false;list.innerHTML='';
     $('#queueCount').textContent=`${state.queue.length} ${state.queue.length===1?'canción':'canciones'}`;
@@ -1274,8 +1474,11 @@ document.documentElement.dataset.egmVersion="6.36.87";
       return;
     }
     state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
-      const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;item.dataset.songId=song.id;
-      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
+      const item=document.createElement('div');
+      const isPlayed=state.played.has(song.id),isProtected=String(song.id)===currentProtectedId;
+      item.className=`queue-item${isPlayed?' played':''}${isProtected?' protected-current':''}`;
+      item.dataset.songId=song.id;
+      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}${isProtected?'<em class="queue-current-label">Actual</em>':''}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${isPlayed?'is-on':''}" data-q="played">${isPlayed?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
       const handleQueueControl=e=>{
         const button=e.target.closest('[data-q]');
         if(!button)return;
@@ -1313,10 +1516,12 @@ document.documentElement.dataset.egmVersion="6.36.87";
       clearTimeout(pendingQueueTap.timer);
       pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
       pendingQueueTap=null;
-      if(act==='played') state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
-      if(act==='remove') state.queue=state.queue.filter(id=>id!==song.id);
-      saveState();renderQueue();renderSongs();
-      toast(act==='remove'?'Canción retirada de la cola':state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
+      if(act==='played'){
+        const wasPlayed=state.played.has(song.id);
+        persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada')).catch(()=>{});
+      }else if(act==='remove'){
+        persistQueueStateMutation(song.id,'remove').then(()=>toast('Canción retirada de la cola')).catch(()=>{});
+      }
       return;
     }
     if(pendingQueueTap){

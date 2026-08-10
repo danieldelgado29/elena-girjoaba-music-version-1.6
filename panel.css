@@ -1204,3 +1204,28 @@ body.queue-drag-active{cursor:grabbing}
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+
+/* 6.36.90 · cabeza protegida de Cola activa */
+.queue-item.protected-current{
+  position:relative;
+}
+.queue-item.protected-current .queue-name{
+  cursor:default;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.queue-current-label{
+  display:inline-block;
+  margin-left:.55rem;
+  font-size:.68em;
+  font-style:normal;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  opacity:.72;
+  vertical-align:middle;
+}
+.queue-item.played .queue-name{
+  cursor:default;
+}
