@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.87 · Reordenamiento seguro de Cola activa");
-document.documentElement.dataset.egmVersion="6.36.87";
+console.info("Elena Girjoaba Music · 6.36.91 · Cola protegida + reactivación transaccional");
+document.documentElement.dataset.egmVersion="6.36.91";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -328,11 +328,27 @@ document.documentElement.dataset.egmVersion="6.36.87";
         if(!snap.exists()) return;
         const data=snap.data()||{};
         const queueBeforeSnapshot=[...state.queue];
-        const queueSnapshotApplied=applyRemoteQueueSnapshot(data.cola);
-        if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
+        const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
+        const incomingPlayedOrder=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
+        const oldPlayedOrder=[...state.played].map(String);
+        const playedChanged=incomingPlayedOrder.join('|')!==oldPlayedOrder.join('|');
+
+        let queueSnapshotApplied=false;
+        if(queueDragState.active&&playedChanged){
+          abortQueueDragForRemoteSemanticChange(incomingQueue,incomingPlayedOrder);
+          queueSnapshotApplied=true;
+        }else{
+          state.played=new Set(incomingPlayedOrder);
+          queueSnapshotApplied=applyRemoteQueueSnapshot(incomingQueue);
+          if(queueSnapshotApplied)state.queue=canonicalQueueOrder(incomingQueue,incomingPlayedOrder);
+        }
 
         latestRemoteState=data;
-        applyRemotePanelState(data,{skipQueue:true});
+        applyRemotePanelState(data,{skipQueue:true,skipPlayed:true});
+
+        if(!queueDragState.active&&!queueDragState.saving){
+          normalizeRemoteQueueIfNeeded(incomingQueue,incomingPlayedOrder);
+        }
 
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
@@ -592,6 +608,26 @@ document.documentElement.dataset.egmVersion="6.36.87";
     });
   }
 
+  function abortQueueDragForRemoteSemanticChange(queue,playedOrder){
+    if(!queueDragState.active)return false;
+    clearTimeout(queueDragState.timer);queueDragState.timer=0;
+    cleanupQueueDragVisuals();
+    queueDragState.active=false;
+    queueDragState.pointerId=null;
+    queueDragState.item=null;
+    queueDragState.handle=null;
+    queueDragState.movedId='';
+    queueDragState.initialOrder=[];
+    queueDragState.pendingRemoteQueue=null;
+    state.played=new Set(playedOrder);
+    state.queue=canonicalQueueOrder(queue,playedOrder);
+    saveStateLocalOnly();
+    renderQueue();
+    renderSongs();
+    toast('La cola cambió desde otro dispositivo; se actualizó el orden.');
+    return true;
+  }
+
   function applyRemoteQueueSnapshot(queue){
     if(!Array.isArray(queue))return false;
     if(queueDragState.active||queueDragState.saving){
@@ -611,10 +647,10 @@ document.documentElement.dataset.egmVersion="6.36.87";
     try{
       const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
       if(!options.skipQueue)applyRemoteQueueSnapshot(incomingQueue);
-      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas.map(String));
+      if(!options.skipPlayed&&Array.isArray(data.tocadas)) state.played=new Set(data.tocadas.map(String));
       if(!queueDragState.active&&!queueDragState.saving){
         state.queue=canonicalQueueOrder(state.queue,state.played);
-        if(!options.skipQueue)normalizeRemoteQueueIfNeeded(incomingQueue);
+        if(!options.skipQueue)normalizeRemoteQueueIfNeeded(incomingQueue,state.played);
       }
       const remoteActive=data.show_activo===true;
       if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
@@ -1120,9 +1156,11 @@ document.documentElement.dataset.egmVersion="6.36.87";
 
   function canonicalQueueOrder(queue=state.queue,played=state.played){
     const source=[...new Set((Array.isArray(queue)?queue:[]).map(String))];
-    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
+    const playedOrder=played instanceof Set?[...played].map(String):Array.isArray(played)?[...new Set(played.map(String))]:[];
+    const playedSet=new Set(playedOrder);
+    const sourceSet=new Set(source);
     const pending=source.filter(id=>!playedSet.has(id));
-    const done=source.filter(id=>playedSet.has(id));
+    const done=playedOrder.filter(id=>sourceSet.has(id));
     return [...pending,...done];
   }
 
@@ -1132,12 +1170,13 @@ document.documentElement.dataset.egmVersion="6.36.87";
   }
 
   function insertAtEndOfPending(queue,id,played){
-    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
-    const clean=(Array.isArray(queue)?queue:[]).map(String).filter(x=>x!==String(id));
-    const firstPlayed=clean.findIndex(x=>playedSet.has(x));
-    const at=firstPlayed<0?clean.length:firstPlayed;
-    clean.splice(at,0,String(id));
-    return canonicalQueueOrder(clean,playedSet);
+    const target=String(id);
+    const playedOrder=played instanceof Set?[...played].map(String):Array.isArray(played)?[...new Set(played.map(String))]:[];
+    const playedSet=new Set(playedOrder);
+    const canonical=canonicalQueueOrder(queue,playedOrder).filter(x=>x!==target);
+    const pending=canonical.filter(x=>!playedSet.has(x));
+    const done=canonical.filter(x=>playedSet.has(x));
+    return [...pending,target,...done];
   }
 
   async function persistQueueStateMutation(songId,kind){
@@ -1153,7 +1192,7 @@ document.documentElement.dataset.egmVersion="6.36.87";
       state.queue=state.queue.filter(x=>String(x)!==id);
     }else if(kind==='play'){
       state.played.add(id);
-      state.queue=canonicalQueueOrder(state.queue,state.played).filter(x=>x!==id).concat(state.queue.includes(id)?[id]:[]);
+      state.queue=canonicalQueueOrder(state.queue,state.played);
     }else if(kind==='unplay'){
       state.played.delete(id);
       if(state.queue.includes(id))state.queue=insertAtEndOfPending(state.queue,id,state.played);
@@ -1182,7 +1221,6 @@ document.documentElement.dataset.egmVersion="6.36.87";
         }else if(kind==='play'){
           p.add(id);
           q=canonicalQueueOrder(q,p);
-          if(q.includes(id))q=q.filter(x=>x!==id).concat(id);
         }else if(kind==='unplay'){
           p.delete(id);
           if(q.includes(id))q=insertAtEndOfPending(q,id,p);
@@ -1214,9 +1252,10 @@ document.documentElement.dataset.egmVersion="6.36.87";
   }
 
   let queueNormalizeTimer=0;
-  function normalizeRemoteQueueIfNeeded(remoteQueue){
-    const canonical=canonicalQueueOrder(remoteQueue,state.played);
-    if(canonical.join('|')===(Array.isArray(remoteQueue)?remoteQueue.map(String):[]).join('|'))return;
+  function normalizeRemoteQueueIfNeeded(remoteQueue,playedOrder=state.played){
+    const raw=Array.isArray(remoteQueue)?remoteQueue.map(String):[];
+    const canonical=canonicalQueueOrder(raw,playedOrder);
+    if(canonical.join('|')===raw.join('|'))return;
     clearTimeout(queueNormalizeTimer);
     queueNormalizeTimer=setTimeout(async()=>{
       try{
@@ -1228,14 +1267,14 @@ document.documentElement.dataset.egmVersion="6.36.87";
           const data=snap.exists()?(snap.data()||{}):{};
           if(data.show_activo===false)return;
           const q=Array.isArray(data.cola)?data.cola.map(String):[];
-          const p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
-          const next=canonicalQueueOrder(q,p);
+          const pOrder=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
+          const next=canonicalQueueOrder(q,pOrder);
           if(next.join('|')===q.join('|'))return;
           const revision=Date.now();
           transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
         });
       }catch(err){console.warn('No se pudo normalizar la cola remota',err);}
-    },180);
+    },80);
   }
 
   function queueOrderFromDom(){
