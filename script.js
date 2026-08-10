@@ -2052,6 +2052,7 @@ async function mutarColaAdminLegacy(idCancion, tipo) {
       cola = reactivarAlFinalPendientesAdminLegacy(cola, id, tocadas);
     } else if (tipo === "remove") {
       cola = cola.filter((x) => x !== id);
+      tocadas = tocadas.filter((x) => x !== id);
     } else if (tipo === "play") {
       if (!tocadas.includes(id)) tocadas.push(id);
       cola = canonicalizarColaAdminLegacy(cola, tocadas);
@@ -2062,7 +2063,7 @@ async function mutarColaAdminLegacy(idCancion, tipo) {
       cola,
       tocadas,
       show_revision: revision,
-      show_writer: "panel-legacy-6.36.91",
+      show_writer: "panel-legacy-6.36.92",
       updated_at: revision
     });
   });

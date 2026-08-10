@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.91 · Cola protegida + reactivación transaccional");
-document.documentElement.dataset.egmVersion="6.36.91";
+console.info("Elena Girjoaba Music · 6.36.92 · Quitar de cola limpia Tocada + huérfanas");
+document.documentElement.dataset.egmVersion="6.36.92";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -1190,6 +1190,7 @@ document.documentElement.dataset.egmVersion="6.36.91";
       state.queue=insertAtEndOfPending(state.queue,id,state.played);
     }else if(kind==='remove'){
       state.queue=state.queue.filter(x=>String(x)!==id);
+      state.played.delete(id);
     }else if(kind==='play'){
       state.played.add(id);
       state.queue=canonicalQueueOrder(state.queue,state.played);
@@ -1218,6 +1219,7 @@ document.documentElement.dataset.egmVersion="6.36.91";
           q=insertAtEndOfPending(q,id,p);
         }else if(kind==='remove'){
           q=q.filter(x=>x!==id);
+          p.delete(id);
         }else if(kind==='play'){
           p.add(id);
           q=canonicalQueueOrder(q,p);
@@ -1253,27 +1255,54 @@ document.documentElement.dataset.egmVersion="6.36.91";
 
   let queueNormalizeTimer=0;
   function normalizeRemoteQueueIfNeeded(remoteQueue,playedOrder=state.played){
-    const raw=Array.isArray(remoteQueue)?remoteQueue.map(String):[];
-    const canonical=canonicalQueueOrder(raw,playedOrder);
-    if(canonical.join('|')===raw.join('|'))return;
+    const raw=Array.isArray(remoteQueue)?[...new Set(remoteQueue.map(String))]:[];
+    const rawSet=new Set(raw);
+    const playedRaw=playedOrder instanceof Set?[...playedOrder].map(String):Array.isArray(playedOrder)?[...new Set(playedOrder.map(String))]:[];
+
+    // 6.36.92:
+    // "Tocada" solo tiene sentido si la canción todavía pertenece a la cola.
+    // IDs Tocada que ya no existen en cola son huérfanos históricos y se limpian.
+    const playedClean=playedRaw.filter(id=>rawSet.has(id));
+    const canonical=canonicalQueueOrder(raw,playedClean);
+
+    const queueChanged=canonical.join('|')!==raw.join('|');
+    const playedChanged=playedClean.join('|')!==playedRaw.join('|');
+    if(!queueChanged&&!playedChanged)return;
+
     clearTimeout(queueNormalizeTimer);
     queueNormalizeTimer=setTimeout(async()=>{
       try{
         if(!navigator.onLine)return;
         if(!remoteStateRef)await initRemoteSync();
         if(!remoteStateRef||!remoteRunTransaction)return;
+
         await remoteRunTransaction(remoteDb,async transaction=>{
           const snap=await transaction.get(remoteStateRef);
           const data=snap.exists()?(snap.data()||{}):{};
           if(data.show_activo===false)return;
-          const q=Array.isArray(data.cola)?data.cola.map(String):[];
-          const pOrder=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
-          const next=canonicalQueueOrder(q,pOrder);
-          if(next.join('|')===q.join('|'))return;
+
+          const q=Array.isArray(data.cola)?[...new Set(data.cola.map(String))]:[];
+          const qSet=new Set(q);
+          const pRaw=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
+          const pClean=pRaw.filter(id=>qSet.has(id));
+          const next=canonicalQueueOrder(q,pClean);
+
+          const needsQueue=next.join('|')!==q.join('|');
+          const needsPlayed=pClean.join('|')!==pRaw.join('|');
+          if(!needsQueue&&!needsPlayed)return;
+
           const revision=Date.now();
-          transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
+          transaction.update(remoteStateRef,{
+            cola:next,
+            tocadas:pClean,
+            show_revision:revision,
+            show_writer:DEVICE_ID,
+            updated_at:revision
+          });
         });
-      }catch(err){console.warn('No se pudo normalizar la cola remota',err);}
+      }catch(err){
+        console.warn('No se pudo normalizar/limpiar la cola remota',err);
+      }
     },80);
   }
 
