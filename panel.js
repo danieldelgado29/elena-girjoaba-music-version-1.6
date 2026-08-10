@@ -1092,6 +1092,11 @@ document.documentElement.dataset.egmVersion="6.36.87";
     queueDragState.item=item;
     queueDragState.handle=handle;
     queueDragState.pointerId=e.pointerId;
+    try {
+      if (e.currentTarget && e.currentTarget.setPointerCapture) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    } catch (_) {}
     queueDragState.movedId=String(item.dataset.songId||'');
     queueDragState.initialOrder=[...state.queue];
     queueDragState.pendingRemoteQueue=null;
@@ -1163,7 +1168,7 @@ document.documentElement.dataset.egmVersion="6.36.87";
     handle.addEventListener('pointermove',e=>{
       if(queueDragState.active){moveQueueDrag(e);return;}
       if(e.pointerId!==queueDragState.pointerId)return;
-      if(Math.hypot(e.clientX-queueDragState.startX,e.clientY-queueDragState.startY)>10){clearTimeout(queueDragState.timer);queueDragState.timer=0;}
+      if(Math.hypot(e.clientX-queueDragState.startX,e.clientY-queueDragState.startY)>16){clearTimeout(queueDragState.timer);queueDragState.timer=0;}
     });
     handle.addEventListener('pointerup',e=>finishQueueDrag(e,false));
     handle.addEventListener('pointercancel',e=>finishQueueDrag(e,true));

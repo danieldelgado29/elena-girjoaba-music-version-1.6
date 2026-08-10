@@ -1189,3 +1189,18 @@ body.queue-drag-active{cursor:grabbing}
 @media (prefers-reduced-motion:reduce){
   #queueList.is-reordering .queue-item,.queue-drag-ghost{transition:none!important;transform:none!important}
 }
+
+
+/* 6.36.88 · Android long-press reorder stabilization
+   Scoped only to the draggable queue label area. */
+.queue-item .queue-name {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.queue-item.is-dragging,
+.queue-item.queue-dragging {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
