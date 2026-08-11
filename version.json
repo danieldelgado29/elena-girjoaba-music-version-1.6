@@ -1,3 +1,4 @@
 {
-  "version": "6.36.92"
+  "version": "6.36.79",
+  "build": "back-direct-ignore-legacy-empty-daniel-images"
 }

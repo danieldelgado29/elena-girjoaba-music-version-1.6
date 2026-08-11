@@ -1,6 +1,6 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.92 · Quitar de cola limpia Tocada + huérfanas");
-document.documentElement.dataset.egmVersion="6.36.92";
+console.info("Elena Girjoaba Music · 6.36.79 · Cancionero Daniel directo");
+document.documentElement.dataset.egmVersion="6.36.79";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
 // Evita que Safari/gestores de contraseñas clasifiquen los campos internos como formularios de credenciales.
@@ -30,12 +30,6 @@ document.documentElement.dataset.egmVersion="6.36.92";
     songs: [], filtered: [], queue: [], played: new Set(), notes: {}, lyrics: {},
     config: null, pendingConfirm: null, customSongs: [], customRepertoires: [], newSongElenaNotes: null, newSongDanielNotes: null, songEdits: {}, editSongElenaNotes: null, editSongDanielNotes: null
   };
-  const queueDragState={
-    active:false,saving:false,pointerId:null,item:null,handle:null,ghost:null,timer:0,
-    startX:0,startY:0,lastX:0,lastY:0,movedId:'',initialOrder:[],pendingRemoteQueue:null,
-    suppressClickUntil:0
-  };
-  let remoteRunTransaction=null;
   const dialogBaselines = new WeakMap();
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
@@ -307,7 +301,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
     remoteInitPromise=(async()=>{
     if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc, runTransaction }] = await Promise.all([
+      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
       ]);
@@ -323,32 +317,15 @@ document.documentElement.dataset.egmVersion="6.36.92";
       remoteDoc=doc;
       remoteSetDoc=firebaseSetDoc;
       window.__egmUpdateDoc=updateDoc;
-      remoteRunTransaction=runTransaction;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
         const queueBeforeSnapshot=[...state.queue];
-        const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
-        const incomingPlayedOrder=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
-        const oldPlayedOrder=[...state.played].map(String);
-        const playedChanged=incomingPlayedOrder.join('|')!==oldPlayedOrder.join('|');
-
-        let queueSnapshotApplied=false;
-        if(queueDragState.active&&playedChanged){
-          abortQueueDragForRemoteSemanticChange(incomingQueue,incomingPlayedOrder);
-          queueSnapshotApplied=true;
-        }else{
-          state.played=new Set(incomingPlayedOrder);
-          queueSnapshotApplied=applyRemoteQueueSnapshot(incomingQueue);
-          if(queueSnapshotApplied)state.queue=canonicalQueueOrder(incomingQueue,incomingPlayedOrder);
-        }
+        if(Array.isArray(data.cola)) state.queue=[...data.cola];
+        if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
 
         latestRemoteState=data;
-        applyRemotePanelState(data,{skipQueue:true,skipPlayed:true});
-
-        if(!queueDragState.active&&!queueDragState.saving){
-          normalizeRemoteQueueIfNeeded(incomingQueue,incomingPlayedOrder);
-        }
+        applyRemotePanelState(data);
 
         if(data.biblioteca&&typeof data.biblioteca==='object'){
           const b=data.biblioteca;
@@ -374,7 +351,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
         remoteReady=true;
         renderQueue();
         if(document.body.classList.contains('live-mode')) renderSongs();
-        if(wasRemoteReady&&queueSnapshotApplied)processQueueAdditions(queueBeforeSnapshot,state.queue);
+        if(wasRemoteReady)processQueueAdditions(queueBeforeSnapshot,state.queue);
       },err=>console.warn('Sincronización remota no disponible',err));
     }catch(err){ console.warn('No se pudo iniciar la sincronización remota',err); throw err; }
     return remoteStateRef;
@@ -402,8 +379,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
       repertorio_nombre:cfg.repertoireName||'',
       show_activo:active,
       inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
-      cronometro_schema:SHOW_TIMER_SCHEMA,
-      cronometro_elapsed_ms:active&&typeof showTimer!=='undefined'?Math.max(0,Number(showTimer.elapsedMs)||0):0,
+      cronometro_elapsed_ms:active&&typeof showTimerTotalMs==='function'?showTimerTotalMs():0,
       cronometro_running:active&&typeof showTimer!=='undefined'&&showTimer.running===true,
       cronometro_started_at:active&&typeof showTimer!=='undefined'&&showTimer.running?showTimer.startedAt:0,
       cola:active?[...state.queue]:[],
@@ -608,50 +584,15 @@ document.documentElement.dataset.egmVersion="6.36.92";
     });
   }
 
-  function abortQueueDragForRemoteSemanticChange(queue,playedOrder){
-    if(!queueDragState.active)return false;
-    clearTimeout(queueDragState.timer);queueDragState.timer=0;
-    cleanupQueueDragVisuals();
-    queueDragState.active=false;
-    queueDragState.pointerId=null;
-    queueDragState.item=null;
-    queueDragState.handle=null;
-    queueDragState.movedId='';
-    queueDragState.initialOrder=[];
-    queueDragState.pendingRemoteQueue=null;
-    state.played=new Set(playedOrder);
-    state.queue=canonicalQueueOrder(queue,playedOrder);
-    saveStateLocalOnly();
-    renderQueue();
-    renderSongs();
-    toast('La cola cambió desde otro dispositivo; se actualizó el orden.');
-    return true;
-  }
-
-  function applyRemoteQueueSnapshot(queue){
-    if(!Array.isArray(queue))return false;
-    if(queueDragState.active||queueDragState.saving){
-      queueDragState.pendingRemoteQueue=[...queue];
-      return false;
-    }
-    state.queue=[...queue];
-    return true;
-  }
-
-  function applyRemotePanelState(data,options={}){
+  function applyRemotePanelState(data){
     if(!data||typeof data!=='object')return;
     const revision=Number(data.show_revision||data.updated_at||0);
     if(revision&&revision<lastAppliedRemoteRevision)return;
     if(revision)lastAppliedRemoteRevision=revision;
     applyingRemoteShowState=true;
     try{
-      const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
-      if(!options.skipQueue)applyRemoteQueueSnapshot(incomingQueue);
-      if(!options.skipPlayed&&Array.isArray(data.tocadas)) state.played=new Set(data.tocadas.map(String));
-      if(!queueDragState.active&&!queueDragState.saving){
-        state.queue=canonicalQueueOrder(state.queue,state.played);
-        if(!options.skipQueue)normalizeRemoteQueueIfNeeded(incomingQueue,state.played);
-      }
+      if(Array.isArray(data.cola)) state.queue=[...data.cola];
+      if(Array.isArray(data.tocadas)) state.played=new Set(data.tocadas);
       const remoteActive=data.show_activo===true;
       if(Date.now()<localShowTransitionUntil && localDesiredShowActive!==null && remoteActive!==localDesiredShowActive)return;
       if(remoteActive){
@@ -673,19 +614,14 @@ document.documentElement.dataset.egmVersion="6.36.92";
         $('#liveRepertoireName').textContent=state.config.repertoireName;
         invalidateRepertoireCache();
         setStatus(true);
-        applyRemoteShowTimer({
-          schema:Number(data.cronometro_schema)||0,
-          elapsedMs:Number(data.cronometro_elapsed_ms)||0,
-          running:data.cronometro_running===true,
-          startedAt:Number(data.cronometro_started_at)||0
-        });
+        applyRemoteShowTimer({elapsedMs:Number(data.cronometro_elapsed_ms)||0,running:data.cronometro_running===true,startedAt:Number(data.cronometro_started_at)||0});
         saveStateLocalOnly();
         // Tras autenticar, un show remoto activo lleva directamente a Control en vivo.
         if(panelAuthValid()&&$('#panelLogin').hidden&&!document.querySelector('#imageEditorDialog[open],#songbookEditorDialog[open]'))showLive();
       }else if(data.show_activo===false){
         state.config=null;state.queue=[];state.played.clear();
         setStatus(false);
-        applyRemoteShowTimer({schema:SHOW_TIMER_SCHEMA,elapsedMs:0,running:false,startedAt:0});
+        applyRemoteShowTimer({elapsedMs:0,running:false,startedAt:0});
         saveStateLocalOnly();
         // El cierre remoto es global: ningún modal puede impedir volver a Configuración.
         if(panelAuthValid()&&$('#panelLogin').hidden){closeDialogsForRemoteShowEnd();showConfig();toast('El show fue finalizado desde otro dispositivo.');}
@@ -734,53 +670,19 @@ document.documentElement.dataset.egmVersion="6.36.92";
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
   const SHOW_TIMER_KEY='egm-show-timer-v1';
-  const SHOW_TIMER_SCHEMA=3;
   let showTimer={elapsedMs:0,running:false,startedAt:0};
   let showTimerFrame=0;
-  let legacyRemoteTimerResetPublished=false;
-
-  function resetTimerStateOnly(keepRunning=false){
-    showTimer={
-      elapsedMs:0,
-      running:keepRunning===true,
-      startedAt:keepRunning===true?Date.now():0
-    };
-    saveShowTimer();
-    showTimerLoop();
-  }
-
   function loadShowTimer(){
     try{
       const saved=JSON.parse(localStorage.getItem(SHOW_TIMER_KEY)||'null');
-      if(!saved||Number(saved.schema)!==SHOW_TIMER_SCHEMA){
-        // 6.36.89: nunca heredar un reloj local del formato antiguo, porque pudo
-        // quedar inflado por el doble conteo. Solo se sanea el cronómetro.
-        showTimer={elapsedMs:0,running:false,startedAt:0};
-        saveShowTimer();
-        return;
-      }
-      if(Number.isFinite(saved.elapsedMs)){
-        showTimer={
-          elapsedMs:Math.max(0,Number(saved.elapsedMs)||0),
-          running:saved.running===true,
-          startedAt:Number(saved.startedAt)||0
-        };
+      if(saved&&Number.isFinite(saved.elapsedMs)){
+        showTimer={elapsedMs:Math.max(0,saved.elapsedMs),running:!!saved.running,startedAt:Number(saved.startedAt)||0};
         if(showTimer.running&&!showTimer.startedAt)showTimer.startedAt=Date.now();
       }
-    }catch(_){
-      showTimer={elapsedMs:0,running:false,startedAt:0};
-      saveShowTimer();
-    }
+    }catch(_){showTimer={elapsedMs:0,running:false,startedAt:0};}
   }
   function saveShowTimer(){
-    try{
-      localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify({
-        schema:SHOW_TIMER_SCHEMA,
-        elapsedMs:Math.max(0,Number(showTimer.elapsedMs)||0),
-        running:showTimer.running===true,
-        startedAt:showTimer.running?Number(showTimer.startedAt)||Date.now():0
-      }));
-    }catch(_){}
+    try{localStorage.setItem(SHOW_TIMER_KEY,JSON.stringify(showTimer));}catch(_){}
   }
   function showTimerTotalMs(){
     return showTimer.elapsedMs+(showTimer.running?Math.max(0,Date.now()-showTimer.startedAt):0);
@@ -812,57 +714,12 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
   function applyRemoteShowTimer(remote){
     if(!remote||applyingRemoteShowState===false&&remote===showTimer)return;
-
-    const remoteSchema=Number(remote.schema)||0;
-
-    // 6.36.89: cualquier show activo que todavía venga del formato antiguo
-    // puede contener tiempo duplicado. No se intenta "adivinar" el tiempo real:
-    // se reinicia SOLO el cronómetro y se migra una sola vez a schema 2.
-    if(remoteSchema!==SHOW_TIMER_SCHEMA){
-      const keepRunning=remote.running===true;
-      resetTimerStateOnly(keepRunning);
-      if(state.config&&!legacyRemoteTimerResetPublished){
-        legacyRemoteTimerResetPublished=true;
-        const patch={
-          show_activo:true,
-          cronometro_schema:SHOW_TIMER_SCHEMA,
-          cronometro_elapsed_ms:0,
-          cronometro_running:keepRunning,
-          cronometro_started_at:keepRunning?showTimer.startedAt:0
-        };
-        setTimeout(()=>{
-          publishShowPatch(patch).catch(err=>console.warn('No se pudo migrar el cronómetro antiguo',err));
-        },0);
-      }
-      return;
-    }
-
-    legacyRemoteTimerResetPublished=true;
-    let next={
+    const next={
       elapsedMs:Math.max(0,Number(remote.elapsedMs)||0),
       running:remote.running===true,
       startedAt:Number(remote.startedAt)||0
     };
     if(next.running&&!next.startedAt)next.startedAt=Date.now();
-
-    // 6.36.90: saneamiento físico independiente del schema.
-    // El cronómetro jamás puede ser mayor que el tiempo transcurrido desde inicio_show.
-    // Si una versión anterior dejó horas infladas, reiniciar SOLO el reloj.
-    const showStartedAt=state.config?.startedAt?new Date(state.config.startedAt).getTime():0;
-    const physicalMax=showStartedAt>0?Math.max(0,Date.now()-showStartedAt):null;
-    const incomingTotal=next.elapsedMs+(next.running?Math.max(0,Date.now()-next.startedAt):0);
-    if(physicalMax!==null && incomingTotal>physicalMax+30000){
-      next={elapsedMs:0,running:next.running,startedAt:next.running?Date.now():0};
-      if(state.config){
-        setTimeout(()=>publishShowPatch({
-          show_activo:true,
-          cronometro_schema:SHOW_TIMER_SCHEMA,
-          cronometro_elapsed_ms:0,
-          cronometro_running:next.running,
-          cronometro_started_at:next.running?next.startedAt:0
-        }).catch(err=>console.warn('No se pudo sanear el cronómetro remoto',err)),0);
-      }
-    }
     const same=showTimer.elapsedMs===next.elapsedMs&&showTimer.running===next.running&&showTimer.startedAt===next.startedAt;
     if(same)return;
     showTimer=next;
@@ -880,25 +737,13 @@ document.documentElement.dataset.egmVersion="6.36.92";
     }
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({
-      show_activo:true,
-      cronometro_schema:SHOW_TIMER_SCHEMA,
-      cronometro_elapsed_ms:Math.max(0,Number(showTimer.elapsedMs)||0),
-      cronometro_running:showTimer.running,
-      cronometro_started_at:showTimer.running?showTimer.startedAt:0
-    }).catch(err=>console.warn('No se sincronizó el cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:showTimerTotalMs(),cronometro_running:showTimer.running,cronometro_started_at:showTimer.running?showTimer.startedAt:0}).catch(err=>console.warn('No se sincronizó el cronómetro',err));
   }
   function resetShowTimer(){
     showTimer={elapsedMs:0,running:false,startedAt:0};
     saveShowTimer();
     showTimerLoop();
-    if(state.config&&!applyingRemoteShowState)publishShowPatch({
-      show_activo:true,
-      cronometro_schema:SHOW_TIMER_SCHEMA,
-      cronometro_elapsed_ms:0,
-      cronometro_running:false,
-      cronometro_started_at:0
-    }).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
+    if(state.config&&!applyingRemoteShowState)publishShowPatch({show_activo:true,cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0}).catch(err=>console.warn('No se sincronizó el reinicio del cronómetro',err));
   }
   function startNewShowTimer(){
     showTimer={elapsedMs:0,running:true,startedAt:Date.now()};
@@ -1126,15 +971,12 @@ document.documentElement.dataset.egmVersion="6.36.92";
   function handleSongAction(song,act){
     if(act==='queue'){
       const wasQueued=state.queue.includes(song.id);
-      persistQueueStateMutation(song.id,wasQueued?'remove':'add').then(()=>{
-        toast(wasQueued?'Canción retirada de la cola':'Canción agregada a la cola');
-        if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
-      }).catch(()=>{});
+      state.queue=wasQueued?state.queue.filter(id=>id!==song.id):[...state.queue,song.id];
+      saveState();renderQueue();renderSongs();toast(state.queue.includes(song.id)?'Canción agregada a la cola':'Canción retirada de la cola');
+      if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
     } else if(act==='played'){
-      const wasPlayed=state.played.has(song.id);
-      persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>{
-        toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada');
-      }).catch(()=>{});
+      state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
+      saveState();renderQueue();renderSongs();toast(state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
     } else if(act==='lyrics') openViewer(song,'lyrics');
     else if(act==='notes') openViewer(song,'notes');
     else if(act==='daniel') openViewer(song,'daniel');
@@ -1154,385 +996,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
     setTimeout(()=>card.classList.remove('queue-focus'),1600);
   }
 
-  function canonicalQueueOrder(queue=state.queue,played=state.played){
-    const source=[...new Set((Array.isArray(queue)?queue:[]).map(String))];
-    const playedOrder=played instanceof Set?[...played].map(String):Array.isArray(played)?[...new Set(played.map(String))]:[];
-    const playedSet=new Set(playedOrder);
-    const sourceSet=new Set(source);
-    const pending=source.filter(id=>!playedSet.has(id));
-    const done=playedOrder.filter(id=>sourceSet.has(id));
-    return [...pending,...done];
-  }
-
-  function protectedQueueId(queue=state.queue,played=state.played){
-    const playedSet=played instanceof Set?played:new Set(Array.isArray(played)?played.map(String):[]);
-    return (Array.isArray(queue)?queue:[]).map(String).find(id=>!playedSet.has(id))||'';
-  }
-
-  function insertAtEndOfPending(queue,id,played){
-    const target=String(id);
-    const playedOrder=played instanceof Set?[...played].map(String):Array.isArray(played)?[...new Set(played.map(String))]:[];
-    const playedSet=new Set(playedOrder);
-    const canonical=canonicalQueueOrder(queue,playedOrder).filter(x=>x!==target);
-    const pending=canonical.filter(x=>!playedSet.has(x));
-    const done=canonical.filter(x=>playedSet.has(x));
-    return [...pending,target,...done];
-  }
-
-  async function persistQueueStateMutation(songId,kind){
-    const id=String(songId||'');
-    if(!id)return;
-    const originalQueue=[...state.queue],originalPlayed=new Set(state.played);
-
-    // Optimistic local state using the exact same invariant as Firestore.
-    if(kind==='add'){
-      state.played.delete(id);
-      state.queue=insertAtEndOfPending(state.queue,id,state.played);
-    }else if(kind==='remove'){
-      state.queue=state.queue.filter(x=>String(x)!==id);
-      state.played.delete(id);
-    }else if(kind==='play'){
-      state.played.add(id);
-      state.queue=canonicalQueueOrder(state.queue,state.played);
-    }else if(kind==='unplay'){
-      state.played.delete(id);
-      if(state.queue.includes(id))state.queue=insertAtEndOfPending(state.queue,id,state.played);
-    }
-    state.queue=canonicalQueueOrder(state.queue,state.played);
-    saveStateLocalOnly();renderQueue();renderSongs();
-
-    try{
-      if(!navigator.onLine)throw new Error('OFFLINE');
-      if(!remoteStateRef)await initRemoteSync();
-      if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
-
-      const result=await remoteRunTransaction(remoteDb,async transaction=>{
-        const snap=await transaction.get(remoteStateRef);
-        const data=snap.exists()?(snap.data()||{}):{};
-        if(data.show_activo===false)return {status:'show-ended',queue:[],played:[]};
-
-        let q=Array.isArray(data.cola)?[...new Set(data.cola.map(String))]:[];
-        let p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
-
-        if(kind==='add'){
-          p.delete(id);
-          q=insertAtEndOfPending(q,id,p);
-        }else if(kind==='remove'){
-          q=q.filter(x=>x!==id);
-          p.delete(id);
-        }else if(kind==='play'){
-          p.add(id);
-          q=canonicalQueueOrder(q,p);
-        }else if(kind==='unplay'){
-          p.delete(id);
-          if(q.includes(id))q=insertAtEndOfPending(q,id,p);
-        }
-
-        q=canonicalQueueOrder(q,p);
-        const revision=Date.now();
-        transaction.update(remoteStateRef,{
-          cola:q,tocadas:[...p],
-          show_revision:revision,show_writer:DEVICE_ID,updated_at:revision
-        });
-        return {status:'ok',queue:q,played:[...p]};
-      });
-
-      if(result?.status==='show-ended'){
-        toast('El show terminó; no se cambió la cola.');
-        return;
-      }
-      state.queue=[...(result?.queue||state.queue)];
-      state.played=new Set(result?.played||[...state.played]);
-      saveStateLocalOnly();renderQueue();renderSongs();
-    }catch(err){
-      console.warn('No se pudo guardar el cambio de cola',err);
-      state.queue=originalQueue;state.played=originalPlayed;
-      saveStateLocalOnly();renderQueue();renderSongs();
-      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió la cola remota.':'No se pudo guardar el cambio; se restauró la cola.');
-      throw err;
-    }
-  }
-
-  let queueNormalizeTimer=0;
-  function normalizeRemoteQueueIfNeeded(remoteQueue,playedOrder=state.played){
-    const raw=Array.isArray(remoteQueue)?[...new Set(remoteQueue.map(String))]:[];
-    const rawSet=new Set(raw);
-    const playedRaw=playedOrder instanceof Set?[...playedOrder].map(String):Array.isArray(playedOrder)?[...new Set(playedOrder.map(String))]:[];
-
-    // 6.36.92:
-    // "Tocada" solo tiene sentido si la canción todavía pertenece a la cola.
-    // IDs Tocada que ya no existen en cola son huérfanos históricos y se limpian.
-    const playedClean=playedRaw.filter(id=>rawSet.has(id));
-    const canonical=canonicalQueueOrder(raw,playedClean);
-
-    const queueChanged=canonical.join('|')!==raw.join('|');
-    const playedChanged=playedClean.join('|')!==playedRaw.join('|');
-    if(!queueChanged&&!playedChanged)return;
-
-    clearTimeout(queueNormalizeTimer);
-    queueNormalizeTimer=setTimeout(async()=>{
-      try{
-        if(!navigator.onLine)return;
-        if(!remoteStateRef)await initRemoteSync();
-        if(!remoteStateRef||!remoteRunTransaction)return;
-
-        await remoteRunTransaction(remoteDb,async transaction=>{
-          const snap=await transaction.get(remoteStateRef);
-          const data=snap.exists()?(snap.data()||{}):{};
-          if(data.show_activo===false)return;
-
-          const q=Array.isArray(data.cola)?[...new Set(data.cola.map(String))]:[];
-          const qSet=new Set(q);
-          const pRaw=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
-          const pClean=pRaw.filter(id=>qSet.has(id));
-          const next=canonicalQueueOrder(q,pClean);
-
-          const needsQueue=next.join('|')!==q.join('|');
-          const needsPlayed=pClean.join('|')!==pRaw.join('|');
-          if(!needsQueue&&!needsPlayed)return;
-
-          const revision=Date.now();
-          transaction.update(remoteStateRef,{
-            cola:next,
-            tocadas:pClean,
-            show_revision:revision,
-            show_writer:DEVICE_ID,
-            updated_at:revision
-          });
-        });
-      }catch(err){
-        console.warn('No se pudo normalizar/limpiar la cola remota',err);
-      }
-    },80);
-  }
-
-  function queueOrderFromDom(){
-    return [...document.querySelectorAll('#queueList .queue-item[data-song-id]')].map(el=>String(el.dataset.songId||'')).filter(Boolean);
-  }
-
-  function queueMoveAnchors(order,movedId){
-    const index=order.indexOf(movedId);
-    return {
-      beforeId:index>0?order[index-1]:null,
-      afterId:index>=0&&index<order.length-1?order[index+1]:null,
-      intendedFirst:index===0
-    };
-  }
-
-  async function persistQueueReorder(movedId,localOrder){
-    if(!movedId||!Array.isArray(localOrder)||!localOrder.includes(movedId))return;
-    const desiredPending=localOrder.map(String).filter(id=>!state.played.has(id));
-    const movedIndex=desiredPending.indexOf(String(movedId));
-    const beforeId=movedIndex>0?desiredPending[movedIndex-1]:null;
-    const afterId=movedIndex>=0&&movedIndex<desiredPending.length-1?desiredPending[movedIndex+1]:null;
-
-    queueDragState.saving=true;
-    queueDragState.pendingRemoteQueue=null;
-    state.queue=canonicalQueueOrder(localOrder,state.played);
-    saveStateLocalOnly();renderSongs();
-
-    try{
-      if(!navigator.onLine)throw new Error('OFFLINE');
-      if(!remoteStateRef)await initRemoteSync();
-      if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
-
-      const result=await remoteRunTransaction(remoteDb,async transaction=>{
-        const snap=await transaction.get(remoteStateRef);
-        const data=snap.exists()?(snap.data()||{}):{};
-        if(data.show_activo===false)return {status:'show-ended',queue:[]};
-
-        const p=new Set(Array.isArray(data.tocadas)?data.tocadas.map(String):[]);
-        let q=canonicalQueueOrder(Array.isArray(data.cola)?data.cola.map(String):[],p);
-        const protectedId=protectedQueueId(q,p);
-
-        if(!q.includes(movedId))return {status:'removed',queue:q};
-        if(p.has(movedId)||movedId===protectedId)return {status:'protected',queue:q};
-
-        const pending=q.filter(id=>!p.has(id));
-        const done=q.filter(id=>p.has(id));
-        const nextPending=pending.filter(id=>id!==movedId);
-
-        let insertAt=nextPending.length;
-        if(afterId&&nextPending.includes(afterId))insertAt=nextPending.indexOf(afterId);
-        else if(beforeId&&nextPending.includes(beforeId))insertAt=nextPending.indexOf(beforeId)+1;
-
-        // La posición 0 pertenece exclusivamente a la primera pendiente protegida.
-        const minIndex=protectedId&&nextPending.includes(protectedId)?nextPending.indexOf(protectedId)+1:0;
-        insertAt=Math.max(minIndex,Math.min(insertAt,nextPending.length));
-        nextPending.splice(insertAt,0,movedId);
-
-        const next=[...nextPending,...done];
-        const revision=Date.now();
-        transaction.update(remoteStateRef,{cola:next,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision});
-        return {status:'ok',queue:next};
-      });
-
-      state.queue=[...(result?.queue||state.queue)];
-      queueDragState.pendingRemoteQueue=null;
-      saveStateLocalOnly();
-      const status=result?.status;
-      toast(status==='show-ended'?'El show terminó; no se cambió la cola.':
-            status==='removed'?'La canción fue retirada desde otro dispositivo.':
-            status==='protected'?'La canción actual está protegida.':
-            'Orden de cola guardado');
-    }catch(err){
-      console.warn('No se pudo guardar el nuevo orden de la cola',err);
-      if(queueDragState.pendingRemoteQueue)state.queue=canonicalQueueOrder(queueDragState.pendingRemoteQueue,state.played);
-      else state.queue=canonicalQueueOrder(queueDragState.initialOrder,state.played);
-      saveStateLocalOnly();
-      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió el orden remoto.':'No se pudo guardar el orden; se restauró la cola.');
-    }finally{
-      queueDragState.saving=false;
-      queueDragState.pendingRemoteQueue=null;
-      renderQueue();renderSongs();
-    }
-  }
-
-  function cleanupQueueDragVisuals(){
-    clearTimeout(queueDragState.timer);queueDragState.timer=0;
-    queueDragState.ghost?.remove();
-    queueDragState.item?.classList.remove('is-dragging');
-    $('#queueList')?.classList.remove('is-reordering');
-    document.body.classList.remove('queue-drag-active');
-    if(queueDragState.handle){
-      queueDragState.handle.setAttribute('aria-grabbed','false');
-      try{if(queueDragState.pointerId!==null&&queueDragState.handle.hasPointerCapture(queueDragState.pointerId))queueDragState.handle.releasePointerCapture(queueDragState.pointerId);}catch(_){ }
-    }
-    queueDragState.ghost=null;
-  }
-
-  function beginQueueDrag(item,handle,e){
-    if(queueDragState.active||queueDragState.saving||!item?.isConnected)return;
-    queueDragState.active=true;
-    queueDragState.item=item;
-    queueDragState.handle=handle;
-    queueDragState.pointerId=e.pointerId;
-    try {
-      if (e.currentTarget && e.currentTarget.setPointerCapture) {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }
-    } catch (_) {}
-    queueDragState.movedId=String(item.dataset.songId||'');
-    queueDragState.initialOrder=[...state.queue];
-    queueDragState.pendingRemoteQueue=null;
-    item.classList.add('is-dragging');
-    $('#queueList')?.classList.add('is-reordering');
-    document.body.classList.add('queue-drag-active');
-    handle.setAttribute('aria-grabbed','true');
-    try{handle.setPointerCapture(e.pointerId);}catch(_){ }
-    const rect=item.getBoundingClientRect();
-    const ghost=item.cloneNode(true);
-    ghost.classList.remove('is-dragging');ghost.classList.add('queue-drag-ghost');
-    ghost.style.width=`${rect.width}px`;ghost.style.left=`${rect.left}px`;ghost.style.top=`${rect.top}px`;
-    ghost.querySelectorAll('button').forEach(b=>b.tabIndex=-1);
-    document.body.appendChild(ghost);queueDragState.ghost=ghost;
-    if(navigator.vibrate)try{navigator.vibrate(18);}catch(_){ }
-  }
-
-  function moveQueueDrag(e){
-    if(!queueDragState.active||e.pointerId!==queueDragState.pointerId)return;
-    e.preventDefault();
-    queueDragState.lastX=e.clientX;queueDragState.lastY=e.clientY;
-    const ghost=queueDragState.ghost;
-    if(ghost){const r=ghost.getBoundingClientRect();ghost.style.top=`${e.clientY-r.height/2}px`;}
-
-    const list=$('#queueList'),item=queueDragState.item;
-    if(!list||!item)return;
-
-    const protectedId=protectedQueueId();
-    const protectedEl=protectedId?list.querySelector(`.queue-item[data-song-id="${CSS.escape(protectedId)}"]`):null;
-    const firstPlayed=[...list.querySelectorAll('.queue-item.played[data-song-id]:not(.is-dragging)')][0]||null;
-    const candidates=[...list.querySelectorAll('.queue-item[data-song-id]:not(.played):not(.is-dragging)')]
-      .filter(el=>String(el.dataset.songId)!==protectedId);
-
-    if(protectedEl){
-      const r=protectedEl.getBoundingClientRect();
-      if(e.clientY<r.bottom){
-        protectedEl.after(item);
-        return;
-      }
-    }
-
-    for(const target of candidates){
-      const r=target.getBoundingClientRect();
-      if(e.clientY<r.top+r.height/2){list.insertBefore(item,target);return;}
-    }
-
-    if(firstPlayed)list.insertBefore(item,firstPlayed);
-    else list.appendChild(item);
-  }
-
-  function finishQueueDrag(e,cancel=false){
-    clearTimeout(queueDragState.timer);queueDragState.timer=0;
-    if(!queueDragState.active){queueDragState.pointerId=null;return;}
-    if(e&&e.pointerId!==queueDragState.pointerId)return;
-    const movedId=queueDragState.movedId;
-    const initial=[...queueDragState.initialOrder];
-    const finalOrder=cancel?initial:queueOrderFromDom();
-    queueDragState.suppressClickUntil=Date.now()+800;
-    cleanupQueueDragVisuals();
-    queueDragState.active=false;
-    queueDragState.pointerId=null;queueDragState.item=null;queueDragState.handle=null;queueDragState.movedId='';
-    if(cancel||finalOrder.join('|')===initial.join('|')){state.queue=initial;renderQueue();return;}
-    state.queue=[...finalOrder];
-    renderQueue();
-    persistQueueReorder(movedId,finalOrder);
-  }
-
-  function setupQueueDrag(item,song){
-    const handle=item.querySelector('.queue-name');
-    if(!handle)return;
-    const protectedId=protectedQueueId();
-    if(state.played.has(song.id)||String(song.id)===protectedId){
-      handle.tabIndex=-1;
-      handle.removeAttribute('role');
-      handle.removeAttribute('aria-grabbed');
-      handle.setAttribute('aria-label',state.played.has(song.id)?`${song.titulo}. Canción tocada.`:`${song.titulo}. Canción actual protegida.`);
-      return;
-    }
-    handle.tabIndex=0;
-    handle.setAttribute('role','button');
-    handle.setAttribute('aria-grabbed','false');
-    handle.setAttribute('aria-label',`${song.titulo}. Mantén presionado para cambiar su posición. Con teclado usa Alt más flecha arriba o abajo.`);
-    handle.addEventListener('contextmenu',e=>e.preventDefault());
-    handle.addEventListener('pointerdown',e=>{
-      if(e.button!==undefined&&e.button!==0)return;
-      if(queueDragState.saving)return;
-      clearTimeout(queueDragState.timer);
-      queueDragState.pointerId=e.pointerId;queueDragState.startX=e.clientX;queueDragState.startY=e.clientY;
-      queueDragState.lastX=e.clientX;queueDragState.lastY=e.clientY;
-      queueDragState.item=item;queueDragState.handle=handle;
-      queueDragState.timer=setTimeout(()=>beginQueueDrag(item,handle,e),500);
-    });
-    handle.addEventListener('pointermove',e=>{
-      if(queueDragState.active){moveQueueDrag(e);return;}
-      if(e.pointerId!==queueDragState.pointerId)return;
-      if(Math.hypot(e.clientX-queueDragState.startX,e.clientY-queueDragState.startY)>16){clearTimeout(queueDragState.timer);queueDragState.timer=0;}
-    });
-    handle.addEventListener('pointerup',e=>finishQueueDrag(e,false));
-    handle.addEventListener('pointercancel',e=>finishQueueDrag(e,true));
-    handle.addEventListener('keydown',e=>{
-      if(!e.altKey||!(e.key==='ArrowUp'||e.key==='ArrowDown')||queueDragState.saving)return;
-      e.preventDefault();
-      const protectedId=protectedQueueId();
-      const pending=state.queue.filter(id=>!state.played.has(id));
-      const done=state.queue.filter(id=>state.played.has(id));
-      const i=pending.indexOf(song.id),delta=e.key==='ArrowUp'?-1:1,j=i+delta;
-      if(i<0||j<0||j>=pending.length)return;
-      if(pending[j]===protectedId||song.id===protectedId)return;
-      [pending[i],pending[j]]=[pending[j],pending[i]];
-      const order=[...pending,...done];
-      queueDragState.initialOrder=[...state.queue];
-      state.queue=order;renderQueue();
-      requestAnimationFrame(()=>document.querySelector(`#queueList .queue-item[data-song-id="${CSS.escape(song.id)}"] .queue-name`)?.focus());
-      persistQueueReorder(song.id,order);
-    });
-  }
-
   function renderQueue(){
-    if(queueDragState.active||queueDragState.saving)return;
-    state.queue=canonicalQueueOrder(state.queue,state.played);
-    const currentProtectedId=protectedQueueId();
     const panel=$('#queuePanel'),list=$('#queueList');
     panel.hidden=false;list.innerHTML='';
     $('#queueCount').textContent=`${state.queue.length} ${state.queue.length===1?'canción':'canciones'}`;
@@ -1542,11 +1006,8 @@ document.documentElement.dataset.egmVersion="6.36.92";
       return;
     }
     state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
-      const item=document.createElement('div');
-      const isPlayed=state.played.has(song.id),isProtected=String(song.id)===currentProtectedId;
-      item.className=`queue-item${isPlayed?' played':''}${isProtected?' protected-current':''}`;
-      item.dataset.songId=song.id;
-      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}${isProtected?'<em class="queue-current-label">Actual</em>':''}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${isPlayed?'is-on':''}" data-q="played">${isPlayed?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
+      const item=document.createElement('div');item.className=`queue-item${state.played.has(song.id)?' played':''}`;
+      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${state.played.has(song.id)?'is-on':''}" data-q="played">${state.played.has(song.id)?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
       const handleQueueControl=e=>{
         const button=e.target.closest('[data-q]');
         if(!button)return;
@@ -1561,17 +1022,14 @@ document.documentElement.dataset.egmVersion="6.36.92";
         handleQueueControl(e);
       });
       item.addEventListener('click',e=>{
-        if(queueDragState.suppressClickUntil>Date.now()){e.preventDefault();e.stopPropagation();return;}
         const button=e.target.closest('[data-q]');
         if(button&&button._egmTouchHandledUntil>Date.now()) return;
         handleQueueControl(e);
       });
       item.addEventListener('dblclick',e=>{
-        if(queueDragState.suppressClickUntil>Date.now())return;
         if(e.target.closest('[data-q]'))return;
         e.preventDefault();focusSongFromQueue(song.id);
       });
-      setupQueueDrag(item,song);
       list.append(item);
     });
   }
@@ -1584,12 +1042,10 @@ document.documentElement.dataset.egmVersion="6.36.92";
       clearTimeout(pendingQueueTap.timer);
       pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
       pendingQueueTap=null;
-      if(act==='played'){
-        const wasPlayed=state.played.has(song.id);
-        persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada')).catch(()=>{});
-      }else if(act==='remove'){
-        persistQueueStateMutation(song.id,'remove').then(()=>toast('Canción retirada de la cola')).catch(()=>{});
-      }
+      if(act==='played') state.played.has(song.id)?state.played.delete(song.id):state.played.add(song.id);
+      if(act==='remove') state.queue=state.queue.filter(id=>id!==song.id);
+      saveState();renderQueue();renderSongs();
+      toast(act==='remove'?'Canción retirada de la cola':state.played.has(song.id)?'Marcada como tocada':'Estado Tocada retirado');
       return;
     }
     if(pendingQueueTap){
