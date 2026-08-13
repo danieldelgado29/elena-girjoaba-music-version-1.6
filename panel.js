@@ -1,5 +1,5 @@
 "use strict";
-console.info("Elena Girjoaba Music · 6.36.92 · Quitar de cola limpia Tocada + huérfanas");
+console.info("Elena Girjoaba Music · 6.36.93 · Cola activa solo pendientes");
 document.documentElement.dataset.egmVersion="6.36.92";
 
 // 6.36.30 — El panel no solicita ni utiliza datos del llavero.
@@ -1307,7 +1307,13 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
 
   function queueOrderFromDom(){
-    return [...document.querySelectorAll('#queueList .queue-item[data-song-id]')].map(el=>String(el.dataset.songId||'')).filter(Boolean);
+    // La Cola activa muestra solo pendientes. Al reordenar, conservar las Tocadas
+    // ocultas dentro del estado interno/Firebase para no alterar historial ni Bridge.
+    const visiblePending=[...document.querySelectorAll('#queueList .queue-item[data-song-id]')]
+      .map(el=>String(el.dataset.songId||''))
+      .filter(Boolean);
+    const hiddenPlayed=state.queue.map(String).filter(id=>state.played.has(id));
+    return canonicalQueueOrder([...visiblePending,...hiddenPlayed],state.played);
   }
 
   function queueMoveAnchors(order,movedId){
@@ -1532,16 +1538,20 @@ document.documentElement.dataset.egmVersion="6.36.92";
   function renderQueue(){
     if(queueDragState.active||queueDragState.saving)return;
     state.queue=canonicalQueueOrder(state.queue,state.played);
+
+    // Cola activa del Panel = pendientes solamente.
+    // Las Tocadas permanecen en state.queue/Firebase, pero desaparecen de esta lista.
+    const visibleQueue=state.queue.map(String).filter(id=>!state.played.has(id));
     const currentProtectedId=protectedQueueId();
     const panel=$('#queuePanel'),list=$('#queueList');
     panel.hidden=false;list.innerHTML='';
-    $('#queueCount').textContent=`${state.queue.length} ${state.queue.length===1?'canción':'canciones'}`;
-    panel.classList.toggle('has-items', state.queue.length > 0);
-    if(!state.queue.length){
+    $('#queueCount').textContent=`${visibleQueue.length} ${visibleQueue.length===1?'canción':'canciones'}`;
+    panel.classList.toggle('has-items', visibleQueue.length > 0);
+    if(!visibleQueue.length){
       list.innerHTML='<div class="queue-empty">La cola está vacía</div>';
       return;
     }
-    state.queue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
+    visibleQueue.map(id=>state.songs.find(s=>s.id===id)).filter(Boolean).forEach(song=>{
       const item=document.createElement('div');
       const isPlayed=state.played.has(song.id),isProtected=String(song.id)===currentProtectedId;
       item.className=`queue-item${isPlayed?' played':''}${isProtected?' protected-current':''}`;
