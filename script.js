@@ -11,6 +11,7 @@ import {
   initializeFirestore,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -1359,7 +1360,19 @@ function renderizarEstadoPublico() {
   DOM.estadoShowPublico.hidden = false;
   document.body.classList.add("cola-publica-visible");
 
+  // Cliente público: una canción ya Tocada no debe seguir apareciendo
+  // dentro de "Canciones a la cola", aunque su ID permanezca físicamente
+  // en config/estado.cola para conservar el historial/orden del show.
+  const tocadasPublicas = new Set(
+    (Array.isArray(estado.configRemota.tocadas)
+      ? estado.configRemota.tocadas
+      : []
+    ).map(String)
+  );
+
   const cancionesCola = estado.configRemota.cola
+    .map(String)
+    .filter((id) => !tocadasPublicas.has(id))
     .map(obtenerCancion)
     .filter(Boolean);
 
@@ -2014,15 +2027,65 @@ function buscarCancionesAdmin() {
   añadirBotonesNotas(resultados);
 }
 
+function canonicalizarColaAdminLegacy(cola, tocadas) {
+  const source = [...new Set((Array.isArray(cola) ? cola : []).map(String))];
+  const playedOrder = [...new Set((Array.isArray(tocadas) ? tocadas : []).map(String))];
+  const playedSet = new Set(playedOrder);
+  const sourceSet = new Set(source);
+  const pendientes = source.filter((id) => !playedSet.has(id));
+  const hechas = playedOrder.filter((id) => sourceSet.has(id));
+  return [...pendientes, ...hechas];
+}
+
+function reactivarAlFinalPendientesAdminLegacy(cola, idCancion, tocadas) {
+  const id = String(idCancion);
+  const playedOrder = [...new Set((Array.isArray(tocadas) ? tocadas : []).map(String))];
+  const playedSet = new Set(playedOrder);
+  const canonical = canonicalizarColaAdminLegacy(cola, playedOrder).filter((x) => x !== id);
+  const pendientes = canonical.filter((x) => !playedSet.has(x));
+  const hechas = canonical.filter((x) => playedSet.has(x));
+  return [...pendientes, id, ...hechas];
+}
+
+async function mutarColaAdminLegacy(idCancion, tipo) {
+  if (!estado.estadoRef || !estado.db || !idCancion) return;
+  const id = String(idCancion);
+
+  return runTransaction(estado.db, async (transaction) => {
+    const snap = await transaction.get(estado.estadoRef);
+    const data = snap.exists() ? (snap.data() || {}) : {};
+    if (data.show_activo === false) return;
+
+    let cola = Array.isArray(data.cola) ? [...new Set(data.cola.map(String))] : [];
+    let tocadas = Array.isArray(data.tocadas) ? [...new Set(data.tocadas.map(String))] : [];
+
+    if (tipo === "add") {
+      tocadas = tocadas.filter((x) => x !== id);
+      cola = reactivarAlFinalPendientesAdminLegacy(cola, id, tocadas);
+    } else if (tipo === "remove") {
+      cola = cola.filter((x) => x !== id);
+      tocadas = tocadas.filter((x) => x !== id);
+    } else if (tipo === "play") {
+      if (!tocadas.includes(id)) tocadas.push(id);
+      cola = canonicalizarColaAdminLegacy(cola, tocadas);
+    }
+
+    const revision = Date.now();
+    transaction.update(estado.estadoRef, {
+      cola,
+      tocadas,
+      show_revision: revision,
+      show_writer: "panel-legacy-6.36.92",
+      updated_at: revision
+    });
+  });
+}
+
 async function agregarACola(idCancion) {
   if (!estado.estadoRef || !idCancion) return;
 
   try {
-    await updateDoc(estado.estadoRef, {
-      cola: arrayUnion(idCancion),
-      tocadas: arrayRemove(idCancion)
-    });
-
+    await mutarColaAdminLegacy(idCancion, "add");
     DOM.adminEstado.textContent = "Canción agregada a la cola.";
   } catch (error) {
     console.error(error);
@@ -2034,9 +2097,7 @@ async function quitarDeCola(idCancion) {
   if (!estado.estadoRef || !idCancion) return;
 
   try {
-    await updateDoc(estado.estadoRef, {
-      cola: arrayRemove(idCancion)
-    });
+    await mutarColaAdminLegacy(idCancion, "remove");
   } catch (error) {
     console.error(error);
   }
@@ -2046,11 +2107,7 @@ async function marcarTocada(idCancion) {
   if (!estado.estadoRef || !idCancion) return;
 
   try {
-    await updateDoc(estado.estadoRef, {
-      cola: arrayRemove(idCancion),
-      tocadas: arrayUnion(idCancion)
-    });
-
+    await mutarColaAdminLegacy(idCancion, "play");
     DOM.adminEstado.textContent = "Canción marcada como tocada.";
   } catch (error) {
     console.error(error);
