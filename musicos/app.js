@@ -1,6 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { initializeFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-
 const $ = selector => document.querySelector(selector);
 const installView = $("#installView");
 const appView = $("#appView");
@@ -20,6 +17,9 @@ const openChromeBtn = $("#openChromeBtn");
 let deferredPrompt = null;
 let songs = new Map();
 let unsubscribe = null;
+const LAST_STATE_KEY = "egp-musicos-last-state-v1";
+function saveLastState(data){ try{ localStorage.setItem(LAST_STATE_KEY,JSON.stringify(data||{})); }catch(_){} }
+function loadLastState(){ try{ return JSON.parse(localStorage.getItem(LAST_STATE_KEY)||"null"); }catch(_){ return null; } }
 
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const ownPwaLaunch = new URL(location.href).searchParams.get("musicos_pwa") === "1";
@@ -111,42 +111,63 @@ async function startApp() {
   startApp.started = true;
   appError.hidden = true;
 
+  let cfg = null;
   try {
     const [cfgRes, songsRes] = await Promise.all([
       fetch("../configuracion.json", { cache: "no-store" }),
       fetch("../canciones.json", { cache: "no-store" })
     ]);
-
-    if (!cfgRes.ok || !songsRes.ok) {
-      throw new Error(`No se pudieron cargar los datos base (${cfgRes.status}/${songsRes.status}).`);
-    }
-
-    const cfg = await cfgRes.json();
+    if (!cfgRes.ok || !songsRes.ok) throw new Error("base no disponible");
+    cfg = await cfgRes.json();
     const list = await songsRes.json();
-    if (!cfg?.firebase || !Array.isArray(list)) throw new Error("Configuración incompleta.");
+    songs = new Map((Array.isArray(list) ? list : []).map(song => [String(song.id), song]));
+  } catch (error) {
+    // El Service Worker debe resolver estos archivos desde caché. Si todavía no controla
+    // esta apertura, mantenemos la última vista disponible en el dispositivo.
+    console.warn("Base offline músicos:", error);
+  }
 
-    songs = new Map(list.map(song => [String(song.id), song]));
+  const cachedState = loadLastState();
+  if (cachedState) {
+    render(cachedState);
+    venueName.textContent = String(cachedState?.lugar || cachedState?.show?.venue || venueName.textContent || "Último estado guardado");
+  }
+
+  // Sin Internet la app NO falla: conserva la última cola guardada.
+  // Firebase se carga dinámicamente únicamente cuando está disponible.
+  try {
+    if (!cfg?.firebase) throw new Error("Firebase no disponible");
+    const [{ initializeApp }, { initializeFirestore, doc, onSnapshot }] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js")
+    ]);
     const firebase = initializeApp(cfg.firebase, "egp-musicos");
     const db = initializeFirestore(firebase, {
       experimentalAutoDetectLongPolling: true,
       useFetchStreams: false
     });
-
     unsubscribe?.();
     unsubscribe = onSnapshot(doc(db, "config", "estado"), snapshot => {
       connectionDot.classList.add("online");
       appError.hidden = true;
-      render(snapshot.exists() ? snapshot.data() : {});
+      const data = snapshot.exists() ? snapshot.data() : {};
+      saveLastState(data);
+      render(data);
     }, error => {
-      console.error(error);
-      showError("No se pudo conectar con la cola. Revisa el internet y vuelve a abrir la app.");
+      console.warn("Firebase músicos offline:", error);
+      connectionDot.classList.remove("online");
+      if (!cachedState) {
+        emptyState.hidden = false;
+        emptyState.textContent = "Sin conexión · esperando último estado guardado";
+      }
     });
   } catch (error) {
-    console.error(error);
-    venueName.textContent = "Sin conexión";
-    emptyState.hidden = false;
-    emptyState.textContent = "No se pudo cargar la app";
-    showError("No se pudo iniciar EGP MUSICOS. Recarga la página cuando tengas conexión.");
+    console.warn("EGP MÚSICOS en modo offline:", error);
+    connectionDot.classList.remove("online");
+    if (!cachedState) {
+      emptyState.hidden = false;
+      emptyState.textContent = "Sin conexión · abre una vez con datos para guardar el estado inicial";
+    }
   }
 }
 
@@ -160,7 +181,7 @@ function render(data) {
   const queueItems = ids
     .map((id, originalIndex) => ({ id, song: songs.get(id), originalIndex, played: playedIds.has(id) }))
     .filter(item => item.song);
-  const items = [...queueItems.filter(item => !item.played), ...queueItems.filter(item => item.played)];
+  const items = queueItems.filter(item => !item.played);
 
   queueCount.textContent = `${items.length} ${items.length === 1 ? "canción" : "canciones"}`;
   const firstActiveIndex = items.findIndex(item => !item.played);
@@ -186,7 +207,7 @@ function render(data) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.3.0", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.4.0", {
         scope: "./",
         updateViaCache: "none"
       });

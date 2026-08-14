@@ -1,55 +1,34 @@
 "use strict";
-const CACHE = "egp-musicos-v1.3.0";
+const CACHE = "egp-musicos-v1.4.0-offline-real";
 const CORE = [
-  "./",
-  "./index.html",
-  "./style.css?v=1.2.0",
-  "./app.js?v=1.2.0",
-  "./manifest.webmanifest",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./apple-touch-icon.png"
+  "./", "./index.html", "./style.css?v=1.2.0", "./app.js?v=1.2.0",
+  "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
+  "../canciones.json", "../configuracion.json"
 ];
-
-self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key.startsWith("egp-musicos-") && key !== CACHE).map(key => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request, { cache: "no-store" })
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put("./index.html", copy));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"))
-    );
-    return;
-  }
-
-  const isOwnStatic = url.origin === self.location.origin && url.pathname.includes("/musicos/");
-  if (isOwnStatic) {
-    event.respondWith(
-      fetch(event.request, { cache: "no-store" })
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-  }
+async function cacheOne(cache,url){
+  try{ const r=await fetch(new Request(url,{cache:"reload"})); if(r && (r.ok||r.type==="opaque")) await cache.put(url,r); }catch(_){}
+}
+self.addEventListener("install",event=>event.waitUntil((async()=>{
+  const cache=await caches.open(CACHE);
+  await Promise.allSettled(CORE.map(url=>cacheOne(cache,url)));
+  await self.skipWaiting();
+})()));
+self.addEventListener("activate",event=>event.waitUntil((async()=>{
+  const keys=await caches.keys();
+  await Promise.all(keys.filter(k=>k.startsWith("egp-musicos-")&&k!==CACHE).map(k=>caches.delete(k)));
+  await self.clients.claim();
+})()));
+async function networkFirst(request,fallback){
+  try{ const r=await fetch(new Request(request,{cache:"no-store"})); if(r&&r.ok){const c=await caches.open(CACHE);await c.put(request,r.clone());} return r; }
+  catch(_){ return (await caches.match(request,{ignoreSearch:true})) || (fallback ? await caches.match(fallback,{ignoreSearch:true}) : null) || Response.error(); }
+}
+async function cacheFirst(request){
+  const c=await caches.match(request,{ignoreSearch:true}); if(c)return c;
+  try{const r=await fetch(request);if(r&&r.ok){const cache=await caches.open(CACHE);await cache.put(request,r.clone());}return r;}catch(_){return Response.error();}
+}
+self.addEventListener("fetch",event=>{
+  if(event.request.method!=="GET")return;
+  const u=new URL(event.request.url);
+  if(event.request.mode==="navigate"){ event.respondWith(networkFirst(event.request,"./index.html")); return; }
+  if(u.origin===self.location.origin){ event.respondWith(/\.(?:js|css|json|webmanifest)$/.test(u.pathname)?networkFirst(event.request):cacheFirst(event.request)); }
 });
