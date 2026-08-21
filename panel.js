@@ -242,10 +242,22 @@ document.documentElement.dataset.egmVersion="6.36.92";
   let activeViewerSongId=null, activeViewerType=null, activeImageOwner='elena', activeImageSongId=null, activeImageMode='image', returnToImageViewer=false, viewerRenderGeneration=0, pendingViewerRefresh=null;
   let applyingRemoteShowState=false;
   let latestRemoteState=null;
+  let egpPedidosPendientes=[];
+  let egpPedidosFirebase=[];
+  let egpPedidosLan=[];
   let remoteShowGeneration=0;
   let lastAppliedRemoteRevision=0;
   const DEVICE_ID=sessionStorage.getItem('egm-device-id')||(`dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   sessionStorage.setItem('egm-device-id',DEVICE_ID);
+
+  const EGP_AUDIT_LOCAL=new URL(location.href).searchParams.get('audit_local')==='1';
+  const LOCAL_CORE_URL=EGP_AUDIT_LOCAL?'http://10.10.10.2:8796':'https://core.elenagirjoaba.com';
+  const CORE_TEST_MODE=new URL(location.href).searchParams.get('core_test')==='1';
+  let LOCAL_QUEUE_MODE=false;
+  let localQueueTimer=0;
+  let localQueueBusy=false;
+  let localQueueMutationChain=Promise.resolve();
+  let localQueueMutationPending=0;
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
@@ -302,12 +314,13 @@ document.documentElement.dataset.egmVersion="6.36.92";
   setTimeout(()=>flushPendingImageEdits(),1500);
 
   async function initRemoteSync(){
+    if(EGP_AUDIT_LOCAL){ remoteReady=true; return null; }
     if(remoteStateRef) return remoteStateRef;
     if(remoteInitPromise) return remoteInitPromise;
     remoteInitPromise=(async()=>{
     if(!navigator.onLine) throw new Error('Sin conexión a internet');
     try{
-      const [{ initializeApp }, { doc, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc, runTransaction }] = await Promise.all([
+      const [{ initializeApp }, { doc, collection, query, where, getDocs, initializeFirestore, onSnapshot, setDoc: firebaseSetDoc, getDoc, updateDoc, runTransaction }] = await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js')
       ]);
@@ -323,13 +336,14 @@ document.documentElement.dataset.egmVersion="6.36.92";
       remoteDoc=doc;
       remoteSetDoc=firebaseSetDoc;
       window.__egmUpdateDoc=updateDoc;
+      window.__egmPedidosFns={collection,query,where,onSnapshot,getDocs};
       remoteRunTransaction=runTransaction;
       onSnapshot(remoteStateRef,snap=>{
         if(!snap.exists()) return;
         const data=snap.data()||{};
         const queueBeforeSnapshot=[...state.queue];
-        const incomingQueue=Array.isArray(data.cola)?data.cola.map(String):[];
-        const incomingPlayedOrder=Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[];
+        const incomingQueue=LOCAL_QUEUE_MODE?[...state.queue]:(Array.isArray(data.cola)?data.cola.map(String):[]);
+        const incomingPlayedOrder=LOCAL_QUEUE_MODE?[...state.played]:(Array.isArray(data.tocadas)?[...new Set(data.tocadas.map(String))]:[]);
         const oldPlayedOrder=[...state.played].map(String);
         const playedChanged=incomingPlayedOrder.join('|')!==oldPlayedOrder.join('|');
 
@@ -344,9 +358,13 @@ document.documentElement.dataset.egmVersion="6.36.92";
         }
 
         latestRemoteState=data;
-        applyRemotePanelState(data,{skipQueue:true,skipPlayed:true});
 
-        if(!queueDragState.active&&!queueDragState.saving){
+        egpSyncPedidosFromRemote(data);
+
+        const egpRemoteDesdeCache=snap?.metadata?.fromCache===true;
+        applyRemotePanelState(data,{skipQueue:true,skipPlayed:true,preserveLocalRequests:egpRemoteDesdeCache});
+
+        if(!LOCAL_QUEUE_MODE&&!queueDragState.active&&!queueDragState.saving){
           normalizeRemoteQueueIfNeeded(incomingQueue,incomingPlayedOrder);
         }
 
@@ -366,9 +384,16 @@ document.documentElement.dataset.egmVersion="6.36.92";
         // La única fuente oficial es imageEdits/{owner-songId}.
         if(state.config){
           state.config.whatsapp=data.pedidos_whatsapp!==false;
+          if(!egpRemoteDesdeCache) state.config.requests=data.pedidos_panel===true;
+          state.config.requestsMode=data.pedidos_modo==='uno_por_turno'?'uno_por_turno':'libre';
           state.config.publicQueue=data.mostrar_cola!==false;
           $('#whatsappToggle').checked=state.config.whatsapp;
           $('#publicQueueToggle').checked=state.config.publicQueue;
+          const requestsToggle=document.getElementById('requestsToggle');
+          if(requestsToggle) requestsToggle.checked=state.config.requests===true;
+          const requestsMode=document.getElementById('requestsModeSelect');
+          if(requestsMode) requestsMode.value=state.config.requestsMode==='uno_por_turno'?'uno_por_turno':'libre';
+        $('#advertisingToggle').checked=state.config.advertising===true;
         }
         const wasRemoteReady=remoteReady;
         remoteReady=true;
@@ -396,10 +421,13 @@ document.documentElement.dataset.egmVersion="6.36.92";
       repertorio_activo_ids:activeSongIds,
       repertorioActivoIds:activeSongIds,
       pedidos_whatsapp:cfg.whatsapp!==false,
+      pedidos_panel:cfg.requests===true,
+      pedidos_modo:cfg.requestsMode==='uno_por_turno'?'uno_por_turno':'libre',
       mostrar_cola:cfg.publicQueue!==false,
       lugar:cfg.venue||'',
       perfil_clientes:cfg.profile||'medio',
       repertorio_nombre:cfg.repertoireName||'',
+      uso_publicidad:cfg.advertising===true,
       show_activo:active,
       inicio_show:active&&cfg.startedAt?new Date(cfg.startedAt).getTime():0,
       cronometro_schema:SHOW_TIMER_SCHEMA,
@@ -415,6 +443,15 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
 
   async function performRemoteShowWrite(expectedGeneration=remoteShowGeneration){
+    // AUDITORÍA: nunca toca Firebase. Publica únicamente en el servicio aislado 8796.
+    if(EGP_AUDIT_LOCAL){
+      const payload=buildRemoteShowPayload();
+      if(expectedGeneration!==remoteShowGeneration)return payload;
+      await localQueueRequest('/api/show',{active:payload.show_activo===true,venue:String(payload.lugar||'')});
+      await egpPublicarConfigLan({show_activo:payload.show_activo===true,inicio_show:payload.inicio_show,pedidos_panel:payload.pedidos_panel,pedidos_modo:payload.pedidos_modo});
+      remoteReady=true;
+      return payload;
+    }
     if(!remoteStateRef) await initRemoteSync();
     if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
     // Siempre construir el payload justo antes de escribir. Así una tarea antigua
@@ -441,10 +478,39 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
 
   async function publishShowPatch(patch){
+    const revision=Date.now();
+
+    if(EGP_AUDIT_LOCAL){
+      const active=('show_activo' in patch)?patch.show_activo===true:Boolean(state.config);
+      const venue=('lugar' in patch)?patch.lugar:(state.config?.venue||'');
+      await localQueueRequest('/api/show',{active,venue:String(venue||'')});
+      await egpPublicarConfigLan({
+        show_activo:active,
+        inicio_show:('inicio_show' in patch)?patch.inicio_show:(state.config?.startedAt?new Date(state.config.startedAt).getTime():0),
+        pedidos_panel:('pedidos_panel' in patch)?patch.pedidos_panel:(state.config?.requests===true),
+        pedidos_modo:('pedidos_modo' in patch)?patch.pedidos_modo:(state.config?.requestsMode||'libre')
+      });
+      return revision;
+    }
+
+    if(LOCAL_QUEUE_MODE){
+      const active=('show_activo' in patch)?patch.show_activo:Boolean(state.config);
+      const venue=('lugar' in patch)?patch.lugar:(state.config?.venue||'');
+      await localQueueRequest('/api/show',{
+        active:Boolean(active),
+        venue:String(venue||'')
+      });
+
+      if(EGP_AUDIT_LOCAL||!navigator.onLine)return revision;
+    }
+
     if(!remoteStateRef) await initRemoteSync();
     if(!remoteStateRef||!window.__egmSetDoc) throw new Error('Firebase todavía no está listo');
-    const revision=Date.now();
-    await window.__egmSetDoc(remoteStateRef,{...patch,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision},{merge:true});
+    await window.__egmSetDoc(
+      remoteStateRef,
+      {...patch,show_revision:revision,show_writer:DEVICE_ID,updated_at:revision},
+      {merge:true}
+    );
     return revision;
   }
 
@@ -530,6 +596,10 @@ document.documentElement.dataset.egmVersion="6.36.92";
       $('#venueInput').value = state.config.venue || '';
       $('#profileSelect').value = state.config.profile || 'alto';
       $('#whatsappToggle').checked = state.config.whatsapp !== false;
+      const requestsToggle=document.getElementById('requestsToggle');
+      if(requestsToggle)requestsToggle.checked=state.config.requests===true;
+      const requestsMode=document.getElementById('requestsModeSelect');
+      if(requestsMode)requestsMode.value=state.config.requestsMode==='uno_por_turno'?'uno_por_turno':'libre';
       $('#publicQueueToggle').checked = state.config.publicQueue !== false;
       setStatus(true);
     }
@@ -540,6 +610,118 @@ document.documentElement.dataset.egmVersion="6.36.92";
     const venues = $$('#venueHistory option').map(o=>o.value);
     localStorage.setItem('egm-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
   }
+
+  async function localQueueRequest(path,body){
+    const controller=new AbortController();
+    const timeoutMs=body===undefined?2500:8000;
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{
+      const options={
+        method:body===undefined?'GET':'POST',
+        cache:'no-store',
+        signal:controller.signal
+      };
+
+      if(body!==undefined){
+        options.body=JSON.stringify(body);
+      }
+
+      const response=await fetch(LOCAL_CORE_URL+path,options);
+      const data=await response.json();
+      if(!response.ok||data?.ok===false)throw new Error(data?.error||'Local Core no respondió');
+      return data;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  function applyLocalQueueSnapshot(snapshot,{force=false}={}){
+    if(!snapshot||!Array.isArray(snapshot.queue))return false;
+    if(!force&&(queueDragState.active||queueDragState.saving))return false;
+
+    const before=[...state.queue];
+    const beforePlayed=[...state.played];
+
+    state.currentId=String(snapshot.currentId||'');
+
+    const rows=snapshot.queue.slice().sort(
+      (a,b)=>(Number(a.position)||0)-(Number(b.position)||0)
+    );
+
+    const ids=rows.map(x=>String(x.id||'')).filter(Boolean);
+    const played=rows
+      .filter(x=>x.played===true)
+      .map(x=>String(x.id||''))
+      .filter(Boolean);
+
+    state.queue=ids;
+    state.played=new Set(played);
+
+    saveStateLocalOnly();
+    remoteReady=true;
+
+    if(before.join('|')!==ids.join('|') ||
+       beforePlayed.join('|')!==played.join('|') ||
+       force){
+      renderQueue();
+      renderSongs();
+    }
+
+    if(before.join('|')!==ids.join('|')){
+      processQueueAdditions(before,ids);
+    }
+
+    return true;
+  }
+
+  async function refreshLocalQueue(){
+    if(localQueueBusy||localQueueMutationPending>0||queueDragState.active||queueDragState.saving)return;
+
+    localQueueBusy=true;
+
+    try{
+      let snap=null;
+
+      try{
+        snap=await localQueueRequest('/api/state');
+      }catch(err){
+        const wasLocal=LOCAL_QUEUE_MODE;
+        LOCAL_QUEUE_MODE=false;
+
+        if(wasLocal&&latestRemoteState){
+          const q=Array.isArray(latestRemoteState.cola)?latestRemoteState.cola.map(String):[];
+          const p=Array.isArray(latestRemoteState.tocadas)?[...new Set(latestRemoteState.tocadas.map(String))]:[];
+
+          state.played=new Set(p);
+          applyRemoteQueueSnapshot(q);
+          state.queue=canonicalQueueOrder(q,p);
+          saveStateLocalOnly();
+          renderQueue();
+          renderSongs();
+        }
+
+        return;
+      }
+
+      LOCAL_QUEUE_MODE=true;
+
+      try{
+        applyLocalQueueSnapshot(snap);
+      }catch(err){
+        console.warn('Local Core conectado; error aplicando estado local:',err);
+      }
+    }finally{
+      localQueueBusy=false;
+    }
+  }
+
+  function startLocalQueueSync(){
+    if(localQueueTimer)return;
+    refreshLocalQueue();
+    localQueueTimer=setInterval(refreshLocalQueue,550);
+  }
+
+  setTimeout(startLocalQueueSync,500);
   function saveState(immediate=false){ saveStateLocalOnly(); return syncRemoteState(immediate); }
 
   function buildRepertoires(){
@@ -662,12 +844,19 @@ document.documentElement.dataset.egmVersion="6.36.92";
           venue:data.lugar||'', repertoire,
           repertoireName:data.repertorio_nombre||option?.dataset?.name||option?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire),
           profile:data.perfil_clientes||'medio', whatsapp:data.pedidos_whatsapp!==false,
+          requests:options.preserveLocalRequests&&state.config?state.config.requests===true:data.pedidos_panel===true,
+          requestsMode:data.pedidos_modo==='uno_por_turno'?'uno_por_turno':'libre',
           publicQueue:data.mostrar_cola!==false,
+          advertising:data.uso_publicidad===true,
           startedAt:new Date(Number(data.inicio_show)||Date.now()).toISOString()
         };
         $('#venueInput').value=state.config.venue;
         $('#profileSelect').value=state.config.profile;
         $('#whatsappToggle').checked=state.config.whatsapp;
+        const requestsToggle=document.getElementById('requestsToggle');
+        if(requestsToggle)requestsToggle.checked=state.config.requests===true;
+        const requestsMode=document.getElementById('requestsModeSelect');
+        if(requestsMode)requestsMode.value=state.config.requestsMode==='uno_por_turno'?'uno_por_turno':'libre';
         $('#publicQueueToggle').checked=state.config.publicQueue;
         if(select&&select.querySelector(`option[value="${CSS.escape(repertoire)}"]`))select.value=repertoire;
         $('#liveRepertoireName').textContent=state.config.repertoireName;
@@ -701,14 +890,14 @@ document.documentElement.dataset.egmVersion="6.36.92";
     e.preventDefault();
     const venue=$('#venueInput').value.trim();
     if(!venue) return toast('Escribe el lugar del show');
-    const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked,startedAt:new Date().toISOString()};
+    const config={venue,repertoire:$('#repertoireSelect').value,repertoireName:$('#repertoireSelect').selectedOptions[0].dataset.name||$('#repertoireSelect').selectedOptions[0].textContent,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,requests:$('#requestsToggle')?.checked===true,requestsMode:$('#requestsModeSelect')?.value==='uno_por_turno'?'uno_por_turno':'libre',publicQueue:$('#publicQueueToggle').checked,advertising:$('#advertisingToggle').checked,startedAt:new Date().toISOString()};
     askConfirm('Comenzar nuevo show','Se guardará esta configuración y se reiniciará la cola del show anterior.',()=>{
       // Entrada inmediata: no esperar una lectura de verificación para mostrar Control en vivo.
       remoteShowGeneration++;localDesiredShowActive=true;localShowTransitionUntil=Date.now()+10000;
       state.config=config;state.queue=[];state.played.clear();addVenueOption(venue);
       startNewShowTimer();
       saveStateLocalOnly();
-      setStatus(true);showLive();
+      setStatus(true);showLive();egpPublicarConfigLan({show_activo:true,inicio_show:new Date(config.startedAt).getTime(),pedidos_panel:config.requests===true,pedidos_modo:config.requestsMode});
       toast(`Show iniciado. Repertorio activo: ${config.repertoireName}.`);
 
       // Publicación en segundo plano. Los demás dispositivos reciben el show por onSnapshot.
@@ -963,11 +1152,12 @@ document.documentElement.dataset.egmVersion="6.36.92";
     const select=$('#repertoireSelect');
     const repertoire=select.value;
     const repertoireName=select.selectedOptions[0]?.dataset?.name||select.selectedOptions[0]?.textContent?.replace(/ · .*$/,'')||titleFromId(repertoire);
-    state.config={...state.config,venue,repertoire,repertoireName,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,publicQueue:$('#publicQueueToggle').checked};
+    state.config={...state.config,venue,repertoire,repertoireName,profile:$('#profileSelect').value,whatsapp:$('#whatsappToggle').checked,requests:$('#requestsToggle')?.checked===true,requestsMode:$('#requestsModeSelect')?.value==='uno_por_turno'?'uno_por_turno':'libre',publicQueue:$('#publicQueueToggle').checked,advertising:$('#advertisingToggle').checked};
     addVenueOption(venue);invalidateRepertoireCache();saveStateLocalOnly();
     const ids=(repertoire==='todas'?state.songs:state.songs.filter(song=>(song.listas||[]).includes(repertoire))).map(song=>song.id);
     showLive();toast('Configuración actualizada. El show continúa.');
-    try{await publishShowPatch({show_activo:true,lugar:venue,lista_activa:repertoire,listaActiva:repertoire,repertorio_nombre:repertoireName,repertorio_activo_ids:ids,repertorioActivoIds:ids,perfil_clientes:state.config.profile,pedidos_whatsapp:state.config.whatsapp,mostrar_cola:state.config.publicQueue});}
+    await egpPublicarConfigLan({show_activo:true,inicio_show:new Date(state.config.startedAt).getTime(),pedidos_panel:state.config.requests===true,pedidos_modo:state.config.requestsMode});
+    try{await publishShowPatch({show_activo:true,lugar:venue,lista_activa:repertoire,listaActiva:repertoire,repertorio_nombre:repertoireName,repertorio_activo_ids:ids,repertorioActivoIds:ids,perfil_clientes:state.config.profile,pedidos_whatsapp:state.config.whatsapp,pedidos_panel:state.config.requests===true,pedidos_modo:state.config.requestsMode==='uno_por_turno'?'uno_por_turno':'libre',mostrar_cola:state.config.publicQueue,uso_publicidad:state.config.advertising===true});}
     catch(err){console.warn('Configuración del show pendiente de sincronizar',err);toast('Cambios guardados localmente; sincronización pendiente.');}
   });
 
@@ -976,7 +1166,14 @@ document.documentElement.dataset.egmVersion="6.36.92";
     clearTimeout(remoteShowWriteTimer);
     remoteShowGeneration++;
     remoteShowWriteChain=Promise.resolve();
-    const finishPayload={show_activo:false,cola:[],tocadas:[],cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0,inicio_show:0};
+    const finishPayload={show_activo:false,cola:[],tocadas:[],pedidos_panel_lista:[],cronometro_elapsed_ms:0,cronometro_running:false,cronometro_started_at:0,inicio_show:0};
+
+    if(LOCAL_QUEUE_MODE){
+      const cleared=await localQueueRequest('/api/queue/clear',{});
+      applyLocalQueueSnapshot(cleared,{force:true});
+    }
+
+    await egpCerrarPedidosPendientes();
     await publishShowPatch(finishPayload);
     // Segunda publicación corta para ganar ante una pestaña con una escritura vieja en vuelo.
     await new Promise(resolve=>setTimeout(resolve,180));
@@ -988,7 +1185,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
     localDesiredShowActive=false;localShowTransitionUntil=Date.now()+15000;
     state.config=null;state.queue=[];state.played.clear();
     showTimer={elapsedMs:0,running:false,startedAt:0};saveShowTimer();showTimerLoop();
-    saveStateLocalOnly();setStatus(false);showConfig();toast('Finalizando show en todos los dispositivos…');
+    saveStateLocalOnly();setStatus(false);showConfig();egpPublicarConfigLan({show_activo:false,inicio_show:0,pedidos_panel:false,pedidos_modo:'libre'});toast('Finalizando show en todos los dispositivos…');
     try{
       await publishFinishedShow();
       localDesiredShowActive=null;localShowTransitionUntil=0;
@@ -1105,36 +1302,32 @@ document.documentElement.dataset.egmVersion="6.36.92";
     const key=`${song.id}:${act}`;
     const now=Date.now();
     const previous=pendingActionTaps.get(key)||0;
-    if(previous&&now-previous<=1500){
-      pendingActionTaps.delete(key);
-      document.querySelectorAll('.is-awaiting-second-tap').forEach(el=>el.classList.remove('is-awaiting-second-tap'));
+
+    if(previous && now-previous<=500){
+      pendingActionTaps.clear();
       handleSongAction(song,act);
       return;
     }
+
     pendingActionTaps.clear();
     pendingActionTaps.set(key,now);
-    document.querySelectorAll('.is-awaiting-second-tap').forEach(el=>el.classList.remove('is-awaiting-second-tap'));
-    button.classList.add('is-awaiting-second-tap');
-    const labels={queue:'A la cola',played:'Tocada',lyrics:'Letra',notes:'Imagen',daniel:'Cancionero','daniel-image':'Imagen'};
-    toast(`Toca otra vez: ${labels[act]||'esta acción'}`);
+
     setTimeout(()=>{
-      if(pendingActionTaps.get(key)===now)pendingActionTaps.delete(key);
-      if(button.isConnected)button.classList.remove('is-awaiting-second-tap');
-    },1550);
+      if(pendingActionTaps.get(key)===now){
+        pendingActionTaps.delete(key);
+      }
+    },520);
   }
 
   function handleSongAction(song,act){
     if(act==='queue'){
       const wasQueued=state.queue.includes(song.id);
       persistQueueStateMutation(song.id,wasQueued?'remove':'add').then(()=>{
-        toast(wasQueued?'Canción retirada de la cola':'Canción agregada a la cola');
         if(!wasQueued)setTimeout(()=>maybeAutoOpenQueuedSong(song),100);
       }).catch(()=>{});
     } else if(act==='played'){
       const wasPlayed=state.played.has(song.id);
-      persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>{
-        toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada');
-      }).catch(()=>{});
+      persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').catch(()=>{});
     } else if(act==='lyrics') openViewer(song,'lyrics');
     else if(act==='notes') openViewer(song,'notes');
     else if(act==='daniel') openViewer(song,'daniel');
@@ -1179,7 +1372,24 @@ document.documentElement.dataset.egmVersion="6.36.92";
     return [...pending,target,...done];
   }
 
-  async function persistQueueStateMutation(songId,kind){
+  function persistQueueStateMutation(songId,kind){
+    const id=String(songId||'');
+    if(!id)return Promise.resolve();
+
+    localQueueMutationPending++;
+
+    const run=()=>persistQueueStateMutationNow(id,kind);
+    const task=localQueueMutationChain.then(run,run);
+
+    localQueueMutationChain=task.catch(()=>{});
+
+    return task.finally(()=>{
+      localQueueMutationPending=Math.max(0,localQueueMutationPending-1);
+      if(localQueueMutationPending===0)setTimeout(refreshLocalQueue,0);
+    });
+  }
+
+  async function persistQueueStateMutationNow(songId,kind){
     const id=String(songId||'');
     if(!id)return;
     const originalQueue=[...state.queue],originalPlayed=new Set(state.played);
@@ -1196,12 +1406,50 @@ document.documentElement.dataset.egmVersion="6.36.92";
       state.queue=canonicalQueueOrder(state.queue,state.played);
     }else if(kind==='unplay'){
       state.played.delete(id);
-      if(state.queue.includes(id))state.queue=insertAtEndOfPending(state.queue,id,state.played);
+      state.queue=state.queue.filter(x=>String(x)!==id);
     }
     state.queue=canonicalQueueOrder(state.queue,state.played);
     saveStateLocalOnly();renderQueue();renderSongs();
 
     try{
+      if(LOCAL_QUEUE_MODE){
+        const song=state.songs.find(x=>String(x.id)===id);
+        let path='',body=null;
+
+        if(kind==='add'){
+          path='/api/queue/add';
+          body={
+            id,
+            title:song?.titulo||id,
+            number:String(song?.numero||song?.n||'')
+          };
+        }else if(kind==='remove'){
+          path='/api/queue/remove';
+          body={id};
+        }else if(kind==='play'){
+          path='/api/queue/played';
+          body={id,played:true};
+        }else if(kind==='unplay'){
+          path='/api/queue/remove';
+          body={id};
+        }
+
+        let result;
+        try{
+          result=await localQueueRequest(path,body);
+        }catch(err){
+          throw new Error('LAN REQUEST | '+(err?.name||'Error')+' | '+(err?.message||String(err)));
+        }
+
+        try{
+          applyLocalQueueSnapshot(result,{force:true});
+        }catch(err){
+          throw new Error('LAN APPLY | '+(err?.name||'Error')+' | '+(err?.message||String(err)));
+        }
+
+        return result;
+      }
+
       if(!navigator.onLine)throw new Error('OFFLINE');
       if(!remoteStateRef)await initRemoteSync();
       if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
@@ -1225,7 +1473,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
           q=canonicalQueueOrder(q,p);
         }else if(kind==='unplay'){
           p.delete(id);
-          if(q.includes(id))q=insertAtEndOfPending(q,id,p);
+          q=q.filter(x=>x!==id);
         }
 
         q=canonicalQueueOrder(q,p);
@@ -1248,7 +1496,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
       console.warn('No se pudo guardar el cambio de cola',err);
       state.queue=originalQueue;state.played=originalPlayed;
       saveStateLocalOnly();renderQueue();renderSongs();
-      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió la cola remota.':'No se pudo guardar el cambio; se restauró la cola.');
+      toast(err?.message==='OFFLINE'?'Sin conexión: no se cambió la cola remota.':String(err?.message||'Error desconocido'));
       throw err;
     }
   }
@@ -1338,6 +1586,17 @@ document.documentElement.dataset.egmVersion="6.36.92";
     saveStateLocalOnly();renderSongs();
 
     try{
+      if(LOCAL_QUEUE_MODE){
+        const result=await localQueueRequest('/api/queue/reorder',{
+          order:state.queue.map(String)
+        });
+        applyLocalQueueSnapshot(result,{force:true});
+        queueDragState.pendingRemoteQueue=null;
+        saveStateLocalOnly();
+        toast('Orden de cola guardado');
+        return result;
+      }
+
       if(!navigator.onLine)throw new Error('OFFLINE');
       if(!remoteStateRef)await initRemoteSync();
       if(!remoteStateRef||!remoteRunTransaction)throw new Error('Firestore todavía no está listo');
@@ -1556,7 +1815,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
       const isPlayed=state.played.has(song.id),isProtected=String(song.id)===currentProtectedId;
       item.className=`queue-item${isPlayed?' played':''}${isProtected?' protected-current':''}`;
       item.dataset.songId=song.id;
-      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}${isProtected?'<em class="queue-current-label">Actual</em>':''}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${isPlayed?'is-on':''}" data-q="played">${isPlayed?'Tocada':'Marcar tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
+      item.innerHTML=`<span class="queue-name"><b>${esc(song.titulo)}${isProtected?'<em class="queue-current-label">Actual</em>':''}</b><small>${esc(song.artista||'')}</small></span><button class="mini-btn played-toggle ${isPlayed?'is-on':''}" data-q="played">${isPlayed?'Tocada':'Tocada'}</button><button class="mini-btn remove" data-q="remove" aria-label="Quitar de la cola">×</button>`;
       const handleQueueControl=e=>{
         const button=e.target.closest('[data-q]');
         if(!button)return;
@@ -1592,26 +1851,21 @@ document.documentElement.dataset.egmVersion="6.36.92";
     const now=Date.now();
     if(pendingQueueTap?.key===key && now-pendingQueueTap.time<=900){
       clearTimeout(pendingQueueTap.timer);
-      pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
       pendingQueueTap=null;
       if(act==='played'){
         const wasPlayed=state.played.has(song.id);
-        persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').then(()=>toast(wasPlayed?'Estado Tocada retirado':'Marcada como tocada')).catch(()=>{});
+        persistQueueStateMutation(song.id,wasPlayed?'unplay':'play').catch(()=>{});
       }else if(act==='remove'){
-        persistQueueStateMutation(song.id,'remove').then(()=>toast('Canción retirada de la cola')).catch(()=>{});
+        persistQueueStateMutation(song.id,'remove').catch(()=>{});
       }
       return;
     }
     if(pendingQueueTap){
       clearTimeout(pendingQueueTap.timer);
-      pendingQueueTap.button?.classList.remove('is-awaiting-second-tap');
     }
-    button.classList.add('is-awaiting-second-tap');
-    toast(act==='remove'?'Toca otra vez para quitar':'Toca otra vez: Tocada');
     const entry={key,time:now,button,timer:null};
     entry.timer=setTimeout(()=>{
       if(pendingQueueTap===entry) pendingQueueTap=null;
-      button.classList.remove('is-awaiting-second-tap');
     },900);
     pendingQueueTap=entry;
   }
@@ -2206,6 +2460,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
     if(btn.dataset.module==='songbook-daniel') return openSongbookList('daniel');
     if(btn.dataset.module==='export-contacts') return openExportContacts();
     if(btn.dataset.module==='upload-photos') return openPhotoManager();
+    if(btn.id==='openAuxMonitorsBtn') return;
     if(btn.dataset.module==='security') return openSecurityAuth();
     $('#noticeTitle').textContent=btn.dataset.placeholder;
     $('#noticeDialog').showModal();
@@ -3548,6 +3803,498 @@ document.documentElement.dataset.egmVersion="6.36.92";
     if(event.target.closest('button,.song-action,.mini-btn,[role="button"]')) event.preventDefault();
   },{passive:false,capture:true});
 
+
+  /* EGP CONFIG LAN CONSOLIDADA V85 */
+  const EGP_REQUESTS_LAN_URL=EGP_AUDIT_LOCAL?'http://10.10.10.2:8796':'http://10.10.10.2:8790';
+
+  async function egpPublicarConfigLan(data={}){
+    try{
+      const cfg=state.config||{};
+      const active=('show_activo' in data)?data.show_activo===true:Boolean(state.config);
+      const showId=String(
+        data.inicio_show ||
+        (cfg.startedAt?new Date(cfg.startedAt).getTime():0) ||
+        latestRemoteState?.inicio_show ||
+        0
+      );
+      const enabled=('pedidos_panel' in data)?(active&&data.pedidos_panel===true):(active&&cfg.requests===true);
+      const mode=('pedidos_modo' in data)?(data.pedidos_modo==='uno_por_turno'?'uno_por_turno':'libre'):(cfg.requestsMode==='uno_por_turno'?'uno_por_turno':'libre');
+
+      await fetch(`${EGP_REQUESTS_LAN_URL}/api/config`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        cache:'no-store',
+        body:JSON.stringify({show_active:active,show_id:showId,pedidos_panel:enabled,pedidos_modo:mode})
+      });
+    }catch(err){
+      console.warn('Fallback LAN de Pedidos no disponible:',err);
+    }
+  }
+
+  /* EGP PEDIDOS AL PANEL · implementación integrada en el núcleo del Panel */
+  const EGP_PEDIDOS_PANEL_KEY='egp-pedidos-panel-enabled-v1';
+
+  function egpCrearInterfazPedidos(){
+    if(!document.getElementById('requestsToggle')){
+      const whatsapp=document.getElementById('whatsappToggle');
+      const card=whatsapp?.closest('.switch-card');
+      if(card){
+        const nueva=document.createElement('div');
+        nueva.className='switch-card';
+        nueva.innerHTML=`
+          <div>
+            <strong>Pedidos al panel</strong>
+            <small>Recibir pedidos en una lista para aceptar antes de enviarlos a la cola.</small>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+            <select id="requestsModeSelect" aria-label="Modo de pedidos" style="width:116px;max-width:116px;border:1px solid #30343d;border-radius:9px;background:#0d0f13;color:inherit;padding:7px 6px;font-size:12px">
+              <option value="libre">Libre</option>
+              <option value="uno_por_turno">1 por turno</option>
+            </select>
+            <label class="switch">
+              <input id="requestsToggle" type="checkbox">
+              <span></span>
+            </label>
+          </div>
+        `;
+        card.insertAdjacentElement('afterend',nueva);
+        const toggle=nueva.querySelector('#requestsToggle');
+        const mode=nueva.querySelector('#requestsModeSelect');
+        toggle.checked=state.config?.requests===true;
+        mode.value=state.config?.requestsMode==='uno_por_turno'?'uno_por_turno':'libre';
+        const publishCurrent=async()=>{
+          localStorage.setItem(EGP_PEDIDOS_PANEL_KEY,toggle.checked?'1':'0');
+          if(state.config){
+            state.config.requests=toggle.checked===true;
+            state.config.requestsMode=mode.value==='uno_por_turno'?'uno_por_turno':'libre';
+            saveStateLocalOnly();
+            await egpPublicarConfigLan({show_activo:true,inicio_show:new Date(state.config.startedAt).getTime(),pedidos_panel:state.config.requests,pedidos_modo:state.config.requestsMode});
+            if(!EGP_AUDIT_LOCAL){
+              try{await publishShowPatch({pedidos_panel:state.config.requests,pedidos_modo:state.config.requestsMode});}catch(err){console.warn('Pedidos pendientes de sincronizar',err);}
+            }
+          }
+        };
+        toggle.addEventListener('change',publishCurrent);
+        mode.addEventListener('change',publishCurrent);
+      }
+    }
+
+    if(!document.getElementById('egpPedidosBtn')){
+      const right=document.querySelector('.live-toolbar-right');
+      const ui24=document.getElementById('ui24rBtn');
+      if(right){
+        const btn=document.createElement('button');
+        btn.id='egpPedidosBtn';
+        btn.className='toolbar-btn egp-pedidos-btn';
+        btn.type='button';
+        if(ui24)right.insertBefore(btn,ui24);else right.prepend(btn);
+      }
+    }
+
+    if(!document.getElementById('egpPedidosDialog')){
+      const dialog=document.createElement('dialog');
+      dialog.id='egpPedidosDialog';
+      dialog.className='egp-pedidos-dialog';
+      dialog.innerHTML=`
+        <div class="egp-pedidos-panel">
+          <div class="egp-pedidos-head">
+            <div><strong>Pedidos</strong><small id="egpPedidosResumen">0 pendientes</small></div>
+            <button id="egpPedidosCerrar" type="button" aria-label="Cerrar">×</button>
+          </div>
+          <div id="egpPedidosLista" class="egp-pedidos-lista"></div>
+        </div>
+      `;
+      document.body.appendChild(dialog);
+      dialog.addEventListener('cancel',e=>e.preventDefault());
+      document.getElementById('egpPedidosCerrar')?.addEventListener('click',()=>dialog.close());
+    }
+
+    document.getElementById('egpPedidosBtn')?.addEventListener('click',()=>{
+      egpRenderPedidos();
+      document.getElementById('egpPedidosDialog')?.showModal();
+    });
+    egpRenderPedidos();
+  }
+
+  function egpEscPedidos(value=''){
+    return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
+  }
+
+  function egpHoraPedido(ms){
+    const n=Number(ms||0);if(!n)return '';
+    try{return new Date(n).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}catch{return '';}
+  }
+
+  function egpCombinarPedidosV85(){
+    const mapa=new Map();
+
+    [...egpPedidosFirebase,...egpPedidosLan]
+      .sort((a,b)=>Number(a?.creado_en_ms||0)-Number(b?.creado_en_ms||0))
+      .forEach(p=>{
+        const telefono=String(p?.telefono||'').replace(/\D/g,'');
+        const songId=String(p?.cancion_id||'');
+        const personaKey=telefono&&songId?`${telefono}|${songId}`:'';
+        const id=String(p?.id||'');
+
+        const existente=[...mapa.values()].find(x=>
+          telefono && songId &&
+          String(x?.telefono||'').replace(/\D/g,'')===telefono &&
+          String(x?.cancion_id||'')===songId
+        );
+
+        if(existente){
+          if(!p?.__egp_lan_v85 && existente?.__egp_lan_v85){
+            for(const [k,v] of mapa.entries())if(v===existente)mapa.delete(k);
+            mapa.set(id?`id:${id}`:`persona:${personaKey}`,p);
+          }
+          return;
+        }
+
+        if(id)mapa.set(`id:${id}`,p);
+        else if(personaKey)mapa.set(`persona:${personaKey}`,p);
+      });
+
+    egpPedidosPendientes=[...mapa.values()];
+    egpRenderPedidos();
+  }
+
+  function egpSyncPedidosFromRemote(data={}){
+    const showId=String(data.inicio_show||'');
+    const lista=Array.isArray(data.pedidos_panel_lista)?data.pedidos_panel_lista:[];
+    egpPedidosFirebase=lista
+      .filter(p=>String(p.show_id||'')===showId&&p.estado==='pendiente')
+      .sort((a,b)=>Number(a.creado_en_ms||0)-Number(b.creado_en_ms||0));
+    egpCombinarPedidosV85();
+  }
+
+  function egpPedidosAgrupados(){
+    const grupos=new Map();
+
+    egpPedidosPendientes.forEach(pedido=>{
+      const songId=String(pedido?.cancion_id||'');
+      if(!songId)return;
+
+      if(!grupos.has(songId)){
+        grupos.set(songId,{
+          songId,
+          cancion:pedido.cancion||'Canción',
+          creado_en_ms:Number(pedido.creado_en_ms||0),
+          pedidos:[]
+        });
+      }
+
+      const grupo=grupos.get(songId);
+      grupo.pedidos.push(pedido);
+      const t=Number(pedido.creado_en_ms||0);
+      if(t&&(grupo.creado_en_ms===0||t<grupo.creado_en_ms))grupo.creado_en_ms=t;
+    });
+
+    return [...grupos.values()].sort((a,b)=>
+      Number(a.creado_en_ms||0)-Number(b.creado_en_ms||0)
+    );
+  }
+
+  /* EGP USUARIOS PEDIDOS V82 */
+  const EGP_USUARIOS_PEDIDOS_V82='egp-usuarios-pedidos-v82';
+
+  function egpShowUsuariosKeyV82(){
+    return String(
+      state.config?.startedAt ||
+      latestRemoteState?.inicio_show ||
+      'show-actual'
+    );
+  }
+
+  function egpPersonaKeyV82(pedido){
+    const tel=String(
+      pedido?.telefono ||
+      pedido?.telefono_whatsapp ||
+      pedido?.phone ||
+      ''
+    ).replace(/\D/g,'');
+    if(tel)return `tel:${tel}`;
+    return `pedido:${String(pedido?.id||'sin-id')}`;
+  }
+
+  function egpMapaUsuariosV82(){
+    try{
+      const all=JSON.parse(localStorage.getItem(EGP_USUARIOS_PEDIDOS_V82)||'{}');
+      const key=egpShowUsuariosKeyV82();
+      return (all[key]&&typeof all[key]==='object')?all[key]:{};
+    }catch(err){
+      return {};
+    }
+  }
+
+  function egpGuardarMapaUsuariosV82(mapa){
+    try{
+      const all=JSON.parse(localStorage.getItem(EGP_USUARIOS_PEDIDOS_V82)||'{}');
+      all[egpShowUsuariosKeyV82()]=mapa;
+      localStorage.setItem(EGP_USUARIOS_PEDIDOS_V82,JSON.stringify(all));
+    }catch(err){}
+  }
+
+  function egpAsignarUsuariosV82(){
+    const mapa=egpMapaUsuariosV82();
+    let max=Object.values(mapa).map(Number).filter(Number.isFinite).reduce((a,b)=>Math.max(a,b),0);
+
+    [...egpPedidosPendientes]
+      .sort((a,b)=>Number(a?.creado_en_ms||0)-Number(b?.creado_en_ms||0))
+      .forEach(p=>{
+        const key=egpPersonaKeyV82(p);
+        if(!mapa[key]){
+          max+=1;
+          mapa[key]=max;
+        }
+      });
+
+    egpGuardarMapaUsuariosV82(mapa);
+    return mapa;
+  }
+
+  function egpUsuariosGrupoV82(pedidos,mapa){
+    return [...new Set(
+      pedidos
+        .map(p=>Number(mapa[egpPersonaKeyV82(p)]||0))
+        .filter(n=>n>0)
+    )].sort((a,b)=>a-b);
+  }
+
+  function egpCssUsuariosV82(){
+    if(document.getElementById('egpCssUsuariosV82'))return;
+    const style=document.createElement('style');
+    style.id='egpCssUsuariosV82';
+    style.textContent=`
+      .egp-pedido-numero-v82{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:flex-start;
+        min-width:42px;
+        flex:0 0 auto;
+      }
+      .egp-pedido-users-v82{
+        display:flex;
+        gap:3px;
+        flex-wrap:wrap;
+        justify-content:center;
+        margin-top:3px;
+        color:#ff3b30;
+        font-size:.68rem;
+        line-height:1;
+        font-weight:900;
+      }
+      .egp-pedido-user-v82{
+        color:#ff2d2d!important;
+        -webkit-text-fill-color:#ff2d2d!important;
+        opacity:1!important;
+        white-space:nowrap;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function egpRenderPedidos(){
+    egpCssUsuariosV82();
+
+    const btn=document.getElementById('egpPedidosBtn');
+    const lista=document.getElementById('egpPedidosLista');
+    const resumen=document.getElementById('egpPedidosResumen');
+    const grupos=egpPedidosAgrupados();
+    const totalPedidos=egpPedidosPendientes.length;
+    const mapaUsuarios=egpAsignarUsuariosV82();
+
+    if(btn){
+      btn.textContent=`Pedidos ${totalPedidos}`;
+      btn.classList.toggle('has-pedidos',totalPedidos>0);
+    }
+
+    if(resumen){
+      if(!totalPedidos)resumen.textContent='0 pendientes';
+      else resumen.textContent=`${grupos.length} ${grupos.length===1?'canción':'canciones'} · ${totalPedidos} ${totalPedidos===1?'pedido':'pedidos'}`;
+    }
+
+    if(!lista)return;
+
+    if(!totalPedidos){
+      lista.innerHTML='<div class="egp-pedidos-vacio">No hay pedidos pendientes.</div>';
+      return;
+    }
+
+    lista.innerHTML=grupos.map(grupo=>{
+      const numero=activeRepertoireNumber(grupo.songId)||'—';
+      const cantidad=grupo.pedidos.length;
+      const usuarios=egpUsuariosGrupoV82(grupo.pedidos,mapaUsuarios);
+
+      return `
+        <article class="egp-pedido-item egp-pedido-item--compacto">
+          <div class="egp-pedido-info egp-pedido-info--compacto">
+            <strong>
+              <span class="egp-pedido-numero-v82">
+                <span class="egp-pedido-numero">${numero}</span>
+                <span class="egp-pedido-users-v82">
+                  ${usuarios.map(u=>`<span class="egp-pedido-user-v82">U${u}</span>`).join('')}
+                </span>
+              </span>
+              <span>${egpEscPedidos(grupo.cancion)}</span>
+            </strong>
+          </div>
+          ${cantidad>1?`<b class="egp-pedido-cantidad">×${cantidad}</b>`:''}
+          <button class="egp-pedido-aceptar" type="button" data-song-id="${egpEscPedidos(grupo.songId)}">Aceptar</button>
+        </article>`;
+    }).join('');
+
+    lista.querySelectorAll('.egp-pedido-aceptar').forEach(button=>{
+      button.addEventListener('click',()=>egpAceptarPedido(button.dataset.songId,button));
+    });
+  }
+
+  /* EGP PEDIDOS LAN PANEL V77 */
+  async function egpPedidosLanPanelV85(){
+    if(document.hidden)return;
+    try{
+      const configResponse=await fetch(`${EGP_REQUESTS_LAN_URL}/api/config`,{cache:'no-store'});
+      if(!configResponse.ok)return;
+      const configLan=await configResponse.json();
+
+      if(configLan?.ok&&state.config){
+        state.config.requests=configLan.pedidos_panel===true;
+        state.config.requestsMode=configLan.pedidos_modo==='uno_por_turno'?'uno_por_turno':'libre';
+        const t=document.getElementById('requestsToggle');if(t)t.checked=state.config.requests;
+        const m=document.getElementById('requestsModeSelect');if(m)m.value=state.config.requestsMode;
+      }
+      if(!configLan?.ok || configLan.show_active!==true || !configLan.show_id){
+        egpPedidosLan=[];
+        egpCombinarPedidosV85();
+        return;
+      }
+
+      const r=await fetch(
+        `${EGP_REQUESTS_LAN_URL}/api/orders?show_id=${encodeURIComponent(String(configLan.show_id))}&estado=pendiente`,
+        {cache:'no-store'}
+      );
+      if(!r.ok)return;
+      const data=await r.json();
+      if(!data?.ok||!Array.isArray(data.orders))return;
+
+      const antes=JSON.stringify(egpPedidosLan.map(p=>String(p?.id||'')).sort());
+      egpPedidosLan=data.orders.map(p=>({...p,__egp_lan_v85:true}));
+      const despues=JSON.stringify(egpPedidosLan.map(p=>String(p?.id||'')).sort());
+      if(antes!==despues)egpCombinarPedidosV85();
+    }catch(err){
+      console.warn('No se pudieron leer Pedidos LAN:',err);
+    }
+  }
+
+  let egpPedidosLanTimerV85=0;
+  function egpProgramarPedidosLanPanelV85(delay=2500){
+    clearTimeout(egpPedidosLanTimerV85);
+    egpPedidosLanTimerV85=setTimeout(async()=>{
+      await egpPedidosLanPanelV85();
+      egpProgramarPedidosLanPanelV85(2500);
+    },delay);
+  }
+
+  egpProgramarPedidosLanPanelV85(200);
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)egpPedidosLanPanelV85();
+  });
+
+  async function egpAceptarPedidosLanV85(pedidos){
+    if(!pedidos.length)return;
+    const r=await fetch(`${EGP_REQUESTS_LAN_URL}/api/orders/accept`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      cache:'no-store',
+      body:JSON.stringify({ids:pedidos.map(p=>String(p.id))})
+    });
+    if(!r.ok)throw new Error('No se pudo aceptar pedido LAN');
+    const data=await r.json();
+    if(!data?.ok)throw new Error('Pedido LAN rechazado');
+  }
+
+  async function egpAceptarPedido(songId,button){
+    const id=String(songId||'');
+    const pedidos=egpPedidosPendientes.filter(p=>String(p?.cancion_id||'')===id);
+    if(!id||!pedidos.length)return;
+
+    const pedidosLan=pedidos.filter(p=>p?.__egp_lan_v85);
+    const pedidosFirebase=pedidos.filter(p=>!p?.__egp_lan_v85);
+
+    button.disabled=true;
+    button.textContent='Aceptando…';
+
+    try{
+      if(!state.queue.map(String).includes(id)){
+        await persistQueueStateMutation(id,'add');
+      }
+
+      if(pedidosLan.length){
+        await egpAceptarPedidosLanV85(pedidosLan);
+      }
+
+      if(pedidosFirebase.length){
+        if(!remoteStateRef)await initRemoteSync();
+        if(!remoteDb||!remoteDoc||!window.__egmUpdateDoc||!remoteRunTransaction||!remoteStateRef){
+          throw new Error('Firebase todavía no está listo');
+        }
+
+        const aceptadoEn=Date.now();
+        await Promise.all(
+          pedidosFirebase.map(pedido=>{
+            const ref=remoteDoc(remoteDb,'pedidos',String(pedido.id));
+            return window.__egmUpdateDoc(ref,{
+              estado:'aceptado',
+              aceptado_en_ms:aceptadoEn
+            });
+          })
+        );
+
+        const idsFirebase=new Set(pedidosFirebase.map(p=>String(p.id)));
+        await remoteRunTransaction(remoteDb,async transaction=>{
+          const snap=await transaction.get(remoteStateRef);
+          const data=snap.exists()?(snap.data()||{}):{};
+          const actual=Array.isArray(data.pedidos_panel_lista)?data.pedidos_panel_lista:[];
+          transaction.update(remoteStateRef,{
+            pedidos_panel_lista:actual.filter(x=>!idsFirebase.has(String(x?.id||'')))
+          });
+        });
+      }
+
+      const idsAceptados=new Set(pedidos.map(p=>String(p.id)));
+      egpPedidosFirebase=egpPedidosFirebase.filter(p=>!idsAceptados.has(String(p.id)));
+      egpPedidosLan=egpPedidosLan.filter(p=>!idsAceptados.has(String(p.id)));
+      egpCombinarPedidosV85();
+
+      toast(
+        pedidos.length>1
+          ? `${pedidos.length} pedidos aceptados y enviados a la cola.`
+          : 'Pedido aceptado y enviado a la cola.'
+      );
+    }catch(err){
+      console.error('No se pudo aceptar pedido:',err);
+      button.disabled=false;
+      button.textContent='Aceptar';
+      toast('No se pudo aceptar el pedido.');
+    }
+  }
+
+  async function egpCerrarPedidosPendientes(){
+    const pendientes=[...egpPedidosPendientes];
+    if(remoteDb&&remoteDoc&&window.__egmUpdateDoc&&pendientes.length){
+      await Promise.allSettled(pendientes.map(p=>{
+        const ref=remoteDoc(remoteDb,'pedidos',String(p.id));
+        return window.__egmUpdateDoc(ref,{estado:'cerrado',cerrado_en_ms:Date.now()});
+      }));
+    }
+    egpPedidosPendientes=[];
+    egpPedidosFirebase=[];
+    egpPedidosLan=[];
+    egpRenderPedidos();
+  }
+
+  egpCrearInterfazPedidos();
+
   // 6.36.69.2 — La contraseña se solicita en cada apertura del panel.
   // No se conserva autorización en localStorage/sessionStorage, para que otro dispositivo
   // nunca entre directamente aunque ya exista un show activo.
@@ -3564,19 +4311,32 @@ document.documentElement.dataset.egmVersion="6.36.92";
   login.hidden=trusted;
   loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(latestRemoteState)applyRemotePanelState(latestRemoteState);else if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   loadData().then(async()=>{
-    if(trusted&&state.config)showLive(); else if(trusted)showConfig();
+    if(trusted)showConfig();
+
+    let sharedStateResolved=false;
+
     try{
       await initRemoteSync();
+
       if(remoteGetDoc&&remoteStateRef){
         const snap=await remoteGetDoc(remoteStateRef);
+
         if(snap.exists()){
           latestRemoteState=snap.data()||{};
+          sharedStateResolved=true;
           applyRemotePanelState(latestRemoteState);
         }
       }
     }catch(err){
-      console.warn('Panel iniciado con la última copia local; la sincronización se reintentará al recuperar conexión.',err);
+      console.warn('No se pudo leer todavía el estado compartido del show.',err);
     }
+
+    if(trusted&&!sharedStateResolved){
+      if(state.config)showLive();
+      else showConfig();
+    }
+
+    egpPedidosLanPanelV85();
   });
 })();
 
@@ -3695,4 +4455,261 @@ document.documentElement.dataset.egmVersion="6.36.92";
   paint('songbookColorSwatch',byId('songbookColorSwatch')?.style.background||'#d00000');
   paint('songbookPencilSwatch',byId('songbookDrawColor')?.value||'#d00000');
   paint('imagePencilSwatch',imageColor?.value||'#d00000');
+
+  // === AUXILIARES / MONITORES DEV ===
+  const AUX_NAMES_KEY='egp_aux_monitor_names_v1';
+
+  const AUX_DEFAULTS={
+    stereo:['Cantante','Batería','Bajo','Piano'],
+    mono:['Cantante','Batería','Bajo','Piano','Aux 5','Aux 6','Aux 7','Aux 8']
+  };
+
+  function loadAuxMonitorNames(){
+    try{
+      const saved=JSON.parse(localStorage.getItem(AUX_NAMES_KEY)||'null');
+      return {
+        stereo:Array.isArray(saved?.stereo)?saved.stereo:AUX_DEFAULTS.stereo,
+        mono:Array.isArray(saved?.mono)?saved.mono:AUX_DEFAULTS.mono
+      };
+    }catch(_){
+      return structuredClone(AUX_DEFAULTS);
+    }
+  }
+
+  function fillAuxMonitorForm(){
+    const data=loadAuxMonitorNames();
+    data.stereo.forEach((name,i)=>{
+      const el=document.getElementById(`auxStereo${i+1}`);
+      if(el)el.value=name||'';
+    });
+    data.mono.forEach((name,i)=>{
+      const el=document.getElementById(`auxMono${i+1}`);
+      if(el)el.value=name||'';
+    });
+  }
+
+  document.getElementById('openAuxMonitorsBtn')?.addEventListener('click',()=>{
+    const menu=document.getElementById('toolsMenu');
+    if(menu?.open)menu.close();
+    fillAuxMonitorForm();
+    document.getElementById('auxMonitorsDialog')?.showModal();
+  });
+
+  document.getElementById('closeAuxMonitorsBtn')?.addEventListener('click',()=>{
+    document.getElementById('auxMonitorsDialog')?.close();
+  });
+
+  document.getElementById('auxMonitorsForm')?.addEventListener('submit',e=>{
+    e.preventDefault();
+
+    const stereo=Array.from({length:4},(_,i)=>
+      document.getElementById(`auxStereo${i+1}`)?.value.trim()||`Aux ${i+1}`
+    );
+
+    const mono=Array.from({length:8},(_,i)=>
+      document.getElementById(`auxMono${i+1}`)?.value.trim()||`Aux ${i+1}`
+    );
+
+    const save=async()=>{
+      const btn=document.querySelector('#auxMonitorsForm .aux-save-btn');
+
+      if(btn){
+        btn.disabled=true;
+        btn.textContent='Guardando…';
+
+        try{
+          btn.animate(
+            [
+              {transform:'scale(1)',opacity:1},
+              {transform:'scale(.985)',opacity:.82},
+              {transform:'scale(1)',opacity:1}
+            ],
+            {duration:700,iterations:Infinity}
+          ).cancel();
+        }catch(_){}
+      }
+
+      localStorage.setItem(
+        AUX_NAMES_KEY,
+        JSON.stringify({stereo,mono})
+      );
+
+      const monitoreo_perfiles={
+        stereo:[
+          {id:'stereo-1-2',nombre:stereo[0],aux:'1-2'},
+          {id:'stereo-3-4',nombre:stereo[1],aux:'3-4'},
+          {id:'stereo-5-6',nombre:stereo[2],aux:'5-6'},
+          {id:'stereo-7-8',nombre:stereo[3],aux:'7-8'}
+        ],
+        mono:mono.map((nombre,i)=>({
+          id:`mono-${i+1}`,
+          nombre,
+          aux:String(i+1)
+        }))
+      };
+
+      try{
+        const cfgResponse=await fetch(
+          'configuracion.json',
+          {cache:'no-store'}
+        );
+
+        if(!cfgResponse.ok){
+          throw new Error('No se pudo leer configuracion.json');
+        }
+
+        const cfg=await cfgResponse.json();
+
+        if(!cfg?.firebase?.projectId || !cfg?.firebase?.apiKey){
+          throw new Error('Configuración Firebase incompleta');
+        }
+
+        const stringValue=value=>({
+          stringValue:String(value ?? '')
+        });
+
+        const profileValue=item=>({
+          mapValue:{
+            fields:{
+              id:stringValue(item.id),
+              nombre:stringValue(item.nombre),
+              aux:stringValue(item.aux)
+            }
+          }
+        });
+
+        const firestoreBody={
+          fields:{
+            kind:{
+              stringValue:'egp_monitor_config_v1'
+            },
+            updated_at:{
+              integerValue:String(Date.now())
+            },
+            monitoreo_perfiles:{
+              mapValue:{
+                fields:{
+                  stereo:{
+                    arrayValue:{
+                      values:
+                        monitoreo_perfiles.stereo.map(profileValue)
+                    }
+                  },
+                  mono:{
+                    arrayValue:{
+                      values:
+                        monitoreo_perfiles.mono.map(profileValue)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        };
+
+        const auxUrl=
+          'https://firestore.googleapis.com/v1/projects/' +
+          encodeURIComponent(cfg.firebase.projectId) +
+          '/databases/(default)/documents/imageEdits/' +
+          'egp-system-monitoreo-v1?key=' +
+          encodeURIComponent(cfg.firebase.apiKey);
+
+        const auxResponse=await Promise.race([
+          fetch(
+            auxUrl,
+            {
+              method:'PATCH',
+              headers:{
+                'Content-Type':'application/json'
+              },
+              body:JSON.stringify(firestoreBody),
+              cache:'no-store'
+            }
+          ),
+          new Promise((_,reject)=>
+            setTimeout(
+              ()=>reject(new Error('Firebase REST tardó demasiado')),
+              8000
+            )
+          )
+        ]);
+
+        if(!auxResponse.ok){
+          const detail=await auxResponse.text();
+
+          throw new Error(
+            'Firebase REST ' +
+            auxResponse.status +
+            ': ' +
+            detail.slice(0,300)
+          );
+        }
+
+        fillAuxMonitorForm();
+
+        if(btn){
+          btn.textContent='✓ Sincronizado';
+
+          btn.animate(
+            [
+              {transform:'scale(1)'},
+              {transform:'scale(1.035)'},
+              {transform:'scale(.99)'},
+              {transform:'scale(1.02)'},
+              {transform:'scale(1)'}
+            ],
+            {
+              duration:700,
+              easing:'ease-out'
+            }
+          );
+
+          setTimeout(()=>{
+            btn.textContent='Guardar';
+            btn.disabled=false;
+          },1600);
+        }
+
+        toast('Nombres actualizados en EGP Músicos');
+
+      }catch(err){
+        console.error(
+          'No se pudieron sincronizar nombres AUX',
+          err
+        );
+
+        if(btn){
+          btn.textContent='⚠ Reintentar';
+          btn.disabled=false;
+
+          btn.animate(
+            [
+              {transform:'translateX(0)'},
+              {transform:'translateX(-5px)'},
+              {transform:'translateX(5px)'},
+              {transform:'translateX(-3px)'},
+              {transform:'translateX(3px)'},
+              {transform:'translateX(0)'}
+            ],
+            {duration:420}
+          );
+        }
+
+        toast(
+          'No se pudo sincronizar con EGP Músicos. Intenta nuevamente.'
+        );
+      }
+    };
+
+    if(typeof askConfirm==='function'){
+      askConfirm(
+        'Guardar auxiliares',
+        '¿Deseas guardar estos nombres de monitores?',
+        save,
+        'Guardar'
+      );
+    }else{
+      save();
+    }
+  });
 })();
