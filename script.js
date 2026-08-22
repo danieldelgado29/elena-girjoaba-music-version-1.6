@@ -1,57 +1,22 @@
 "use strict";
 
-const EGP_AUDIT_LOCAL = new URL(location.href).searchParams.get("audit_local") === "1";
-
-let initializeApp;
-let arrayRemove;
-let arrayUnion;
-let collection;
-let doc;
-let getDoc;
-let getDocs;
-let initializeFirestore;
-let onSnapshot;
-let query;
-let runTransaction;
-let serverTimestamp;
-let setDoc;
-let updateDoc;
-let where;
-let egpFirebaseModulosPromise = null;
-
-async function egpCargarFirebaseModulosV85() {
-  if (initializeApp && initializeFirestore) return true;
-
-  if (!egpFirebaseModulosPromise) {
-    egpFirebaseModulosPromise = Promise.all([
-      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js"),
-      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js")
-    ]).then(([appMod, fsMod]) => {
-      initializeApp = appMod.initializeApp;
-      arrayRemove = fsMod.arrayRemove;
-      arrayUnion = fsMod.arrayUnion;
-      collection = fsMod.collection;
-      doc = fsMod.doc;
-      getDoc = fsMod.getDoc;
-      getDocs = fsMod.getDocs;
-      initializeFirestore = fsMod.initializeFirestore;
-      onSnapshot = fsMod.onSnapshot;
-      query = fsMod.query;
-      runTransaction = fsMod.runTransaction;
-      serverTimestamp = fsMod.serverTimestamp;
-      setDoc = fsMod.setDoc;
-      updateDoc = fsMod.updateDoc;
-      where = fsMod.where;
-      return true;
-    }).catch((error) => {
-      egpFirebaseModulosPromise = null;
-      throw error;
-    });
-  }
-
-  return egpFirebaseModulosPromise;
-}
-
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  initializeFirestore,
+  onSnapshot,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const MODOS = Object.freeze([
   { id: "principal-diario", nombre: "Principal diario" },
@@ -115,9 +80,6 @@ const estado = {
   configRemota: {
     lista_activa: "principal-diario",
     pedidos_whatsapp: false,
-    pedidos_panel: false,
-    pedidos_modo: "libre",
-    pedidos_panel_lista: [],
     mostrar_cola: true,
     inicio_show: 0,
     cola: [],
@@ -126,14 +88,6 @@ const estado = {
     perfil_clientes: "medio",
     show_activo: false
   },
-  egpFirebaseEstadoRecibidoMs: 0,
-  egpFirebasePedidosAutoritativo: false,
-  egpFirebaseInicializando: false,
-  egpFirebaseInicializado: false,
-  egpFirebaseRetryTimer: 0,
-  egpLanConfig: null,
-  egpPedidosLan: [],
-  egpLanSyncTimer: 0,
   firebase: null,
   db: null,
   estadoRef: null,
@@ -865,28 +819,16 @@ async function cargarDatos() {
   aplicarModo(estado.modo, false);
 }
 
-async function iniciarFirebase(firebaseConfig) {
-  if (EGP_AUDIT_LOCAL) {
-    estado.egpFirebasePedidosAutoritativo = false;
-    actualizarEstadoFirebase("Auditoría LAN", "online");
-    egpSincronizarLanV85(true);
-    return;
-  }
+function iniciarFirebase(firebaseConfig) {
   if (!firebaseConfig?.apiKey || !firebaseConfig?.projectId) {
     actualizarEstadoFirebase("Sin configuración", "error");
     return;
   }
 
-  if (estado.egpFirebaseInicializado || estado.egpFirebaseInicializando) return;
-  estado.egpFirebaseInicializando = true;
-
   try {
-    await egpCargarFirebaseModulosV85();
-
     estado.firebase = initializeApp(firebaseConfig);
     estado.db = initializeFirestore(estado.firebase,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
     estado.estadoRef = doc(estado.db, "config", "estado");
-    estado.egpFirebaseInicializado = true;
 
     const crearFirmaEstadoRemoto = (datos = {}) => JSON.stringify({
       lista_activa: datos.lista_activa || datos.listaActiva || "",
@@ -894,9 +836,6 @@ async function iniciarFirebase(firebaseConfig) {
         ? datos.repertorio_activo_ids
         : (Array.isArray(datos.repertorioActivoIds) ? datos.repertorioActivoIds : []),
       pedidos_whatsapp: Boolean(datos.pedidos_whatsapp),
-      pedidos_panel: Boolean(datos.pedidos_panel),
-      pedidos_modo: datos.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre",
-      pedidos_panel_lista: Array.isArray(datos.pedidos_panel_lista) ? datos.pedidos_panel_lista : [],
       mostrar_cola: datos.mostrar_cola !== false,
       inicio_show: Number(datos.inicio_show || 0),
       cola: Array.isArray(datos.cola) ? datos.cola : [],
@@ -909,34 +848,28 @@ async function iniciarFirebase(firebaseConfig) {
 
     const procesarEstadoRemoto = async (snapshot) => {
       const datos = snapshot.exists() ? snapshot.data() : {};
-      const desdeCache = snapshot?.metadata?.fromCache === true;
-
-      estado.egpFirebasePedidosAutoritativo = snapshot.exists() && !desdeCache;
-      if (snapshot.exists()) estado.egpFirebaseEstadoRecibidoMs = Date.now();
 
       if (snapshot.exists()) {
         const firmaNueva = crearFirmaEstadoRemoto(datos);
+        // El sondeo periódico queda como respaldo, pero un estado idéntico no
+        // vuelve a reconstruir la lista ni reinicia sus animaciones visuales.
         if (firmaNueva === estado.firmaEstadoRemoto) return;
         estado.firmaEstadoRemoto = firmaNueva;
       }
 
       if (!snapshot.exists()) {
-        if (!desdeCache) {
-          await setDoc(
-            estado.estadoRef,
-            {
-              lista_activa: estado.modo,
-              pedidos_whatsapp: false,
-              pedidos_panel: false,
-              pedidos_modo: "libre",
-              mostrar_cola: true,
-              inicio_show: Date.now(),
-              cola: [],
-              tocadas: []
-            },
-            { merge: true }
-          );
-        }
+        await setDoc(
+          estado.estadoRef,
+          {
+            lista_activa: estado.modo,
+            pedidos_whatsapp: false,
+            mostrar_cola: true,
+            inicio_show: Date.now(),
+            cola: [],
+            tocadas: []
+          },
+          { merge: true }
+        );
         return;
       }
 
@@ -946,6 +879,8 @@ async function iniciarFirebase(firebaseConfig) {
         ? datos.repertorio_activo_ids
         : (Array.isArray(datos.repertorioActivoIds) ? datos.repertorioActivoIds : null);
       estado.idsRepertorioRemoto = idsRemotos ? new Set(idsRemotos.map(String)) : null;
+      // El id publicado por el panel es la fuente principal. Si además llegan
+      // ids directos, se acepta aunque sea un repertorio personalizado nuevo.
       const listaAplicable = (estado.idsRepertorioRemoto || modoValido(listaRemota))
         ? listaRemota
         : "principal-diario";
@@ -953,9 +888,6 @@ async function iniciarFirebase(firebaseConfig) {
       estado.configRemota = {
         lista_activa: listaAplicable,
         pedidos_whatsapp: Boolean(datos.pedidos_whatsapp),
-        pedidos_panel: Boolean(datos.pedidos_panel),
-        pedidos_modo: datos.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre",
-        pedidos_panel_lista: Array.isArray(datos.pedidos_panel_lista) ? datos.pedidos_panel_lista : [],
         mostrar_cola: datos.mostrar_cola !== false,
         inicio_show: Number(datos.inicio_show || 0),
         cola: Array.isArray(datos.cola) ? datos.cola : [],
@@ -967,8 +899,9 @@ async function iniciarFirebase(firebaseConfig) {
         show_activo: Boolean(datos.show_activo)
       };
 
-      actualizarEstadoFirebase(desdeCache ? "Copia local" : "En línea", desdeCache ? "" : "online");
+      actualizarEstadoFirebase("En línea", "online");
       await comprobarReinicioAutomatico();
+      await cargarContactos();
 
       if (!estado.modoForzado && (estado.modo !== listaAplicable || bibliotecaCambio)) {
         aplicarModo(listaAplicable, false);
@@ -978,39 +911,27 @@ async function iniciarFirebase(firebaseConfig) {
 
     onSnapshot(
       estado.estadoRef,
-      { includeMetadataChanges: true },
       procesarEstadoRemoto,
       (error) => {
-        estado.egpFirebasePedidosAutoritativo = false;
         console.error("Error de Firestore:", error);
         actualizarEstadoFirebase("Sin conexión", "error");
-        egpSincronizarLanV85(true);
       }
     );
 
+    // Respaldo para navegadores/redes donde el canal en tiempo real no avisa cambios.
+    // Lee directamente el documento cada 4 segundos y aplica el repertorio nuevo.
     window.setInterval(async () => {
       if (!estado.estadoRef || document.hidden) return;
       try {
         const snapshot = await getDoc(estado.estadoRef);
         await procesarEstadoRemoto(snapshot);
       } catch (error) {
-        estado.egpFirebasePedidosAutoritativo = false;
         console.warn("No se pudo comprobar el repertorio activo:", error);
-        egpSincronizarLanV85(true);
       }
-    }, 8000);
+    }, 4000);
   } catch (error) {
-    estado.egpFirebasePedidosAutoritativo = false;
-    console.warn("Firebase no disponible todavía; se usa LAN si existe:", error);
-    actualizarEstadoFirebase("Sin conexión", "error");
-
-    clearTimeout(estado.egpFirebaseRetryTimer);
-    estado.egpFirebaseRetryTimer = window.setTimeout(() => {
-      estado.egpFirebaseInicializando = false;
-      iniciarFirebase(firebaseConfig);
-    }, 15000);
-  } finally {
-    if (!estado.egpFirebaseInicializado) estado.egpFirebaseInicializando = false;
+    console.error("No se pudo iniciar Firebase:", error);
+    actualizarEstadoFirebase("Error", "error");
   }
 }
 
@@ -1145,8 +1066,6 @@ function estadoCancion(id) {
 
 function crearTarjeta(cancion, indice) {
   const situacion = estadoCancion(cancion.id);
-  const pedidosPendientes = cantidadPedidosPanelCancion(cancion.id);
-  const yaPidioEstaCancion = pedidoPropioYaEnviado(cancion.id);
   const articulo = document.createElement("article");
 
   articulo.className = "cancion cancion-enter";
@@ -1160,50 +1079,25 @@ function crearTarjeta(cancion, indice) {
 
   const etiquetaEstado =
     situacion === "cola"
-      ? '<span class="cancion__estado cancion__estado--cola">Pedida</span>'
+      ? '<span class="cancion__estado cancion__estado--cola">Ya pedida</span>'
       : situacion === "tocada"
         ? '<span class="cancion__estado cancion__estado--tocada">Ya sonó</span>'
-        : pedidosPendientes > 0
-          ? `<span class="cancion__estado cancion__estado--cola">Pedida · ×${pedidosPendientes}</span>`
-          : "";
+        : "";
 
-  const pedidosPanelActivo = egpPedidosPanelActivoV85();
-  const yaPedidaPorEstaPersona = pedidoPropioYaEnviado(cancion.id);
-
-  const puedePedirWhatsapp =
+  const puedePedir =
     !estado.vistaClientes &&
     estado.configRemota.pedidos_whatsapp &&
-    situacion === "disponible" &&
-    !yaPedidaPorEstaPersona;
-
-  const puedePedirPanel =
-    !estado.vistaClientes &&
-    pedidosPanelActivo &&
-    situacion === "disponible" &&
-    !yaPedidaPorEstaPersona;
-
-  const botonesPedidoDisponibles = [
-    puedePedirWhatsapp
-      ? '<button class="cancion__pedir cancion__pedir-whatsapp" type="button">Pedir por WhatsApp</button>'
-      : "",
-    puedePedirPanel
-      ? '<button class="cancion__pedir cancion__pedir-panel" type="button">Pedir por WhatsApp</button>'
-      : "",
-    !estado.vistaClientes &&
-    situacion === "disponible" &&
-    yaPedidaPorEstaPersona &&
-    (estado.configRemota.pedidos_whatsapp || pedidosPanelActivo)
-      ? '<button class="cancion__pedir" type="button" disabled>Ya pediste esta canción</button>'
-      : ""
-  ].join("");
+    situacion === "disponible";
 
   const botonPedido = estado.vistaClientes
     ? ""
-    : situacion === "cola"
-      ? '<button class="cancion__pedir" type="button" disabled>Esta canción ya fue pedida</button>'
-      : situacion === "tocada"
-        ? '<button class="cancion__pedir" type="button" disabled>Esta canción ya sonó</button>'
-        : botonesPedidoDisponibles;
+    : puedePedir
+      ? '<button class="cancion__pedir" type="button">Pedir por WhatsApp</button>'
+      : situacion === "cola"
+        ? '<button class="cancion__pedir" type="button" disabled>Esta canción ya fue pedida</button>'
+        : situacion === "tocada"
+          ? '<button class="cancion__pedir" type="button" disabled>Esta canción ya sonó</button>'
+          : "";
 
   articulo.innerHTML = `
     ${etiquetaEstado}
@@ -1227,8 +1121,6 @@ function crearTarjeta(cancion, indice) {
     </div>
   `;
 
-  requestAnimationFrame(() => egpAjustarPedidaTarjetaV85(articulo));
-
   articulo
     .querySelector(".cancion__letra")
     ?.addEventListener("click", (evento) => {
@@ -1237,26 +1129,14 @@ function crearTarjeta(cancion, indice) {
     });
 
   articulo
-    .querySelector(".cancion__pedir-whatsapp:not([disabled])")
+    .querySelector(".cancion__pedir:not([disabled])")
     ?.addEventListener("click", (evento) => {
       evento.stopPropagation();
       activarTarjetaWhatsApp(articulo, true);
-      abrirPedido(cancion, "whatsapp");
+      abrirPedido(cancion);
     });
 
-  articulo
-    .querySelector(".cancion__pedir-panel:not([disabled])")
-    ?.addEventListener("click", (evento) => {
-      evento.stopPropagation();
-      activarTarjetaWhatsApp(articulo, true);
-      abrirPedido(cancion, "panel");
-    });
-
-  if (
-    !estado.vistaClientes &&
-    (estado.configRemota.pedidos_whatsapp || egpPedidosPanelActivoV85()) &&
-    situacion === "disponible"
-  ) {
+  if (!estado.vistaClientes && estado.configRemota.pedidos_whatsapp && situacion === "disponible") {
     const alternarSeleccionWhatsApp = (evento) => {
       if (evento?.target?.closest("button, a, input, textarea, select")) return;
       const yaActiva = articulo.classList.contains("is-whatsapp-activa");
@@ -1275,7 +1155,7 @@ function crearTarjeta(cancion, indice) {
     });
   }
 
-  if (!estado.vistaClientes && !estado.configRemota.pedidos_whatsapp && !egpPedidosPanelActivoV85() && situacion === "disponible") {
+  if (!estado.vistaClientes && !estado.configRemota.pedidos_whatsapp && situacion === "disponible") {
     const mostrarIndicacion = () => {
       estado.cancionGritaActivaId = cancion.id;
       document.querySelectorAll(".cancion.is-grita-activa").forEach((otra) => {
@@ -1373,348 +1253,6 @@ function numeroCancionEnLista(idCancion) {
   );
 
   return indice >= 0 ? indice + 1 : null;
-}
-
-function pedidosPanelPendientesActuales() {
-  return egpPedidosCombinadosV85();
-}
-
-function cantidadPedidosPanelCancion(idCancion) {
-  const id = String(idCancion || "");
-  return pedidosPanelPendientesActuales().filter(
-    (pedido) => String(pedido?.cancion_id || "") === id
-  ).length;
-}
-
-/* EGP PEDIDO UNICO POR PERSONA V73 */
-/* EGP PEDIDOS CONSOLIDADO V85 */
-const EGP_REQUESTS_LAN_URL = EGP_AUDIT_LOCAL ? "http://10.10.10.2:8796" : "http://10.10.10.2:8790";
-
-function egpPedidosPanelActivoV85() {
-  if (estado.egpFirebasePedidosAutoritativo) {
-    return estado.configRemota.pedidos_panel === true;
-  }
-
-  if (estado.egpLanConfig?.ok) {
-    const lanActivo = estado.egpLanConfig.show_active === true && estado.egpLanConfig.pedidos_panel === true;
-    return lanActivo || estado.configRemota.pedidos_panel === true;
-  }
-
-  return estado.configRemota.pedidos_panel === true;
-}
-
-function egpPedidosModoActualV4() {
-  if (estado.egpFirebasePedidosAutoritativo) {
-    return estado.configRemota.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre";
-  }
-  if (estado.egpLanConfig?.ok) {
-    return estado.egpLanConfig.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre";
-  }
-  return estado.configRemota.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre";
-}
-
-function egpPedidosCombinadosV85() {
-  const mapa = new Map();
-  const showFirebase = String(estado.configRemota.inicio_show || "");
-  const showLan = String(estado.egpLanConfig?.show_id || "");
-
-  const firebase = Array.isArray(estado.configRemota.pedidos_panel_lista)
-    ? estado.configRemota.pedidos_panel_lista
-    : [];
-
-  firebase.forEach((pedido) => {
-    if (pedido?.estado !== "pendiente") return;
-    if (showFirebase && String(pedido?.show_id || "") !== showFirebase) return;
-    const id = String(pedido?.id || "");
-    if (id) mapa.set(`id:${id}`, pedido);
-  });
-
-  (Array.isArray(estado.egpPedidosLan) ? estado.egpPedidosLan : []).forEach((pedido) => {
-    if (pedido?.estado !== "pendiente") return;
-    if (showLan && String(pedido?.show_id || "") !== showLan) return;
-
-    const telefono = String(pedido?.telefono || "").replace(/\D/g, "");
-    const songId = String(pedido?.cancion_id || "");
-    const clavePersona = telefono && songId ? `persona:${telefono}|${songId}` : "";
-
-    const duplicadoFirebase = [...mapa.values()].some((otro) =>
-      String(otro?.telefono || "").replace(/\D/g, "") === telefono &&
-      String(otro?.cancion_id || "") === songId
-    );
-
-    if (duplicadoFirebase) return;
-
-    const id = String(pedido?.id || "");
-    if (id) mapa.set(`id:${id}`, {...pedido, __egp_lan_v85:true});
-    else if (clavePersona) mapa.set(clavePersona, {...pedido, __egp_lan_v85:true});
-  });
-
-  return [...mapa.values()].sort(
-    (a,b) => Number(a?.creado_en_ms || 0) - Number(b?.creado_en_ms || 0)
-  );
-}
-
-async function egpFetchLanV85(path, options = {}, timeoutMs = 1000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(`${EGP_REQUESTS_LAN_URL}${path}`, {
-      cache: "no-store",
-      ...options,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function egpSincronizarLanV85(forzar = false) {
-  if (document.hidden && !forzar) return;
-
-  const botonAntes = egpPedidosPanelActivoV85();
-  const firmaAntes = JSON.stringify(
-    egpPedidosCombinadosV85().map(p => String(p?.id || "")).sort()
-  );
-  const firmaColaAntes = JSON.stringify({
-    cola: (estado.configRemota.cola || []).map(String),
-    tocadas: (estado.configRemota.tocadas || []).map(String)
-  });
-
-  try {
-    const response = await egpFetchLanV85("/api/config");
-    if (!response.ok) return;
-    const config = await response.json();
-    if (!config?.ok) return;
-    estado.egpLanConfig = config;
-    if (!estado.egpFirebasePedidosAutoritativo) {
-      estado.configRemota.pedidos_panel = config.pedidos_panel === true;
-      estado.configRemota.pedidos_modo = config.pedidos_modo === "uno_por_turno" ? "uno_por_turno" : "libre";
-      if (config.show_active === true && config.show_id) {
-        estado.configRemota.inicio_show = Number(config.show_id) || estado.configRemota.inicio_show;
-        estado.configRemota.show_activo = true;
-      } else if (config.show_active === false) {
-        estado.configRemota.show_activo = false;
-      }
-    }
-
-    if (EGP_AUDIT_LOCAL) {
-      try {
-        const stateResponse = await egpFetchLanV85("/api/state", {}, 1000);
-        if (stateResponse.ok) {
-          const localState = await stateResponse.json();
-          const rows = Array.isArray(localState.queue) ? [...localState.queue].sort((a,b)=>(Number(a.position)||0)-(Number(b.position)||0)) : [];
-          /* EGP V6 FIX COLA PUBLICA DESDE API STATE */
-          const firmaColaLanAntesV6 = JSON.stringify({
-            cola: (estado.configRemota.cola || []).map(String),
-            tocadas: (estado.configRemota.tocadas || []).map(String),
-            mostrar: estado.configRemota.mostrar_cola !== false
-          });
-
-          estado.configRemota.cola = rows.map(x=>String(x.id||"")).filter(Boolean);
-          estado.configRemota.tocadas = rows.filter(x=>x.played===true).map(x=>String(x.id||"")).filter(Boolean);
-          estado.configRemota.mostrar_cola = true;
-
-          const firmaColaLanDespuesV6 = JSON.stringify({
-            cola: estado.configRemota.cola.map(String),
-            tocadas: estado.configRemota.tocadas.map(String),
-            mostrar: estado.configRemota.mostrar_cola !== false
-          });
-
-          if (firmaColaLanAntesV6 !== firmaColaLanDespuesV6) {
-            sincronizarInterfazRemota();
-          }
-        }
-      } catch {}
-    }
-
-    if (config.show_active === true && config.pedidos_panel === true && config.show_id) {
-      const ordersResponse = await egpFetchLanV85(
-        `/api/orders?show_id=${encodeURIComponent(String(config.show_id))}&estado=pendiente`
-      );
-      if (ordersResponse.ok) {
-        const data = await ordersResponse.json();
-        estado.egpPedidosLan = data?.ok && Array.isArray(data.orders) ? data.orders : [];
-      }
-    } else {
-      estado.egpPedidosLan = [];
-    }
-  } catch {
-    return;
-  }
-
-  const botonDespues = egpPedidosPanelActivoV85();
-  const firmaDespues = JSON.stringify(
-    egpPedidosCombinadosV85().map(p => String(p?.id || "")).sort()
-  );
-
-  if ((botonAntes !== botonDespues || firmaAntes !== firmaDespues) && DOM.lista) renderizar();
-}
-
-function egpProgramarLanV85(delay = 2500) {
-  clearTimeout(estado.egpLanSyncTimer);
-  estado.egpLanSyncTimer = window.setTimeout(async () => {
-    await egpSincronizarLanV85(false);
-    egpProgramarLanV85(2500);
-  }, delay);
-}
-
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) egpSincronizarLanV85(true);
-});
-
-function egpAjustarPedidaTarjetaV85(articulo) {
-  const badge = articulo?.querySelector(".cancion__estado--cola");
-  const titulo = articulo?.querySelector(".titulo");
-  if (!badge || !titulo) return;
-
-  if (badge.parentElement !== articulo) articulo.insertBefore(badge, articulo.firstChild);
-  badge.classList.remove("cancion__estado--debajo");
-
-  const br = badge.getBoundingClientRect();
-  const tr = titulo.getBoundingClientRect();
-  const seMontan = br.left < tr.right && br.right > tr.left && br.top < tr.bottom && br.bottom > tr.top;
-
-  if (seMontan) {
-    titulo.insertAdjacentElement("afterend", badge);
-    badge.classList.add("cancion__estado--debajo");
-  }
-}
-
-let egpResizePedidasV85 = 0;
-window.addEventListener("resize", () => {
-  cancelAnimationFrame(egpResizePedidasV85);
-  egpResizePedidasV85 = requestAnimationFrame(() => {
-    document.querySelectorAll(".cancion").forEach(egpAjustarPedidaTarjetaV85);
-  });
-});
-
-const EGP_PEDIDOS_PROPIOS_KEY = "egp-pedidos-propios-v73";
-
-function egpPedidosPropiosLeidos() {
-  try {
-    const data = JSON.parse(localStorage.getItem(EGP_PEDIDOS_PROPIOS_KEY) || "{}");
-    return data && typeof data === "object" ? data : {};
-  } catch {
-    return {};
-  }
-}
-
-function egpClavePedidoPropio(idCancion) {
-  return `${String(estado.configRemota.inicio_show || "")}|${String(idCancion || "")}`;
-}
-
-function pedidoPropioYaEnviado(idCancion) {
-  const id = String(idCancion || "");
-  if (!id || !estado.configRemota.inicio_show) return false;
-
-  const key = egpClavePedidoPropio(id);
-  const registro = egpPedidosPropiosLeidos()[key];
-  // Solo evita doble toque/envío accidental inmediato. El bloqueo real lo decide
-  // Firebase o el servicio LAN según el estado pendiente/aceptado.
-  return Boolean(registro && Date.now() - Number(registro.creado_en_ms || 0) < 2500);
-}
-
-function marcarPedidoPropio(idCancion, telefono = "") {
-  const id = String(idCancion || "");
-  if (!id) return;
-
-  const key = egpClavePedidoPropio(id);
-  if (!key || key.startsWith("|") || key.endsWith("|")) return;
-
-  const data = egpPedidosPropiosLeidos();
-  data[key] = {
-    telefono: String(telefono || ""),
-    creado_en_ms: Date.now()
-  };
-
-  const showActual = String(estado.configRemota.inicio_show || "");
-  const limpio = {};
-
-  Object.entries(data).forEach(([k, v]) => {
-    if (k.startsWith(`${showActual}|`)) limpio[k] = v;
-  });
-
-  localStorage.setItem(EGP_PEDIDOS_PROPIOS_KEY, JSON.stringify(limpio));
-}
-
-
-/* EGP V6 — BLOQUEO LOCAL INMEDIATO 1 POR TURNO
-   Usa los pedidos propios ya guardados para no volver a pedir el teléfono
-   mientras exista una canción de este mismo usuario todavía no Tocada. */
-function egpPedidoActivoLocalTurnoV6() {
-  if (egpPedidosModoActualV4() !== "uno_por_turno") return null;
-
-  const showId = String(
-    estado.egpLanConfig?.show_id ||
-    estado.configRemota.inicio_show ||
-    ""
-  );
-  if (!showId) return null;
-
-  const tocadas = new Set(
-    (Array.isArray(estado.configRemota.tocadas) ? estado.configRemota.tocadas : [])
-      .map(String)
-  );
-
-  const prefijo = `${showId}|`;
-  const candidatos = Object.entries(egpPedidosPropiosLeidos())
-    .filter(([clave, registro]) =>
-      clave.startsWith(prefijo) &&
-      registro &&
-      String(registro.telefono || "")
-    )
-    .map(([clave, registro]) => ({
-      songId: clave.slice(prefijo.length),
-      telefono: String(registro.telefono || ""),
-      creado_en_ms: Number(registro.creado_en_ms || 0)
-    }))
-    .filter((registro) => registro.songId && !tocadas.has(String(registro.songId)))
-    .sort((a, b) => b.creado_en_ms - a.creado_en_ms);
-
-  return candidatos[0] || null;
-}
-
-async function personaYaPidioCancionEnShow(cancion, telefono) {
-  if (!estado.db || !cancion || !telefono) return false;
-
-  try {
-    const snapshot = await getDocs(
-      query(
-        collection(estado.db, "pedidos"),
-        where("telefono", "==", telefono)
-      )
-    );
-
-    const showId = String(idShowActual());
-    const songId = String(cancion.id || "");
-
-    return snapshot.docs.some((documento) => {
-      const pedido = documento.data() || {};
-      return (
-        String(pedido.show_id || "") === showId &&
-        String(pedido.cancion_id || "") === songId &&
-        ["pendiente", "aceptado"].includes(String(pedido.estado || ""))
-      );
-    });
-  } catch (error) {
-    console.warn("No se pudo comprobar pedido duplicado:", error);
-    return false;
-  }
-}
-
-async function personaTienePedidoActivoEnShow(telefono) {
-  if (!estado.db || !telefono) return false;
-  try {
-    const snapshot = await getDocs(query(collection(estado.db, "pedidos"), where("telefono", "==", telefono)));
-    const showId = String(idShowActual());
-    return snapshot.docs.some((documento) => {
-      const pedido = documento.data() || {};
-      return String(pedido.show_id || "") === showId && ["pendiente", "aceptado"].includes(String(pedido.estado || ""));
-    });
-  } catch (error) {
-    console.warn("No se pudo comprobar el turno activo:", error);
-    return false;
-  }
 }
 
 function renderizarColaFijaAdmin() {
@@ -2702,155 +2240,16 @@ function limpiarSeleccionWhatsApp() {
   });
 }
 
-function egpRestaurarVentanaPedidoV6() {
-  const modal = DOM.pedidoModal;
-  if (!modal) return;
-  [
-    ".admin-panel__eyebrow",
-    "#pedidoCancion",
-    ".pedido-panel__label",
-    "#pedidoTelefono",
-    ".pedido-panel__nota",
-    "#pedidoEnviar"
-  ].forEach((selector) => {
-    const el = modal.querySelector(selector);
-    if (el) el.hidden = false;
-  });
-  if (DOM.pedidoError) {
-    DOM.pedidoError.hidden = true;
-    DOM.pedidoError.classList.remove("egp-turno-bloqueado");
-  }
-}
-
-function egpMostrarSoloBloqueoTurnoV6() {
-  const modal = DOM.pedidoModal;
-  if (!modal) return;
-
-  try { DOM.pedidoTelefono?.blur(); } catch {}
-  egpRestaurarViewportPedidoV6();
-
-  [".admin-panel__eyebrow", "#pedidoCancion"].forEach((selector) => {
-    const el = modal.querySelector(selector);
-    if (el) el.hidden = false;
-  });
-
-  [
-    ".pedido-panel__label",
-    "#pedidoTelefono",
-    ".pedido-panel__nota",
-    "#pedidoEnviar"
-  ].forEach((selector) => {
-    const el = modal.querySelector(selector);
-    if (el) el.hidden = true;
-  });
-
-  DOM.pedidoError.textContent = "Ya tienes una canción pedida. Podrás pedir otra cuando se toque.";
-  DOM.pedidoError.classList.add("egp-turno-bloqueado");
-  DOM.pedidoError.hidden = false;
-}
-
-
-/* EGP V6 AJUSTE TECLADO VISUALVIEWPORT — CORREGIDO */
-function egpAjustarPedidoAlTecladoV6() {
-  const modal = DOM.pedidoModal;
-  if (!modal || modal.hidden) return;
-
-  const vv = window.visualViewport;
-  if (!vv) return;
-
-  const alto = Math.max(1, Math.round(vv.height));
-  const ancho = Math.max(1, Math.round(vv.width));
-  const arriba = Math.max(0, Math.round(vv.offsetTop));
-  const izquierda = Math.max(0, Math.round(vv.offsetLeft));
-  const telefonoEnFoco = document.activeElement === DOM.pedidoTelefono;
-  const tecladoAbierto = telefonoEnFoco || (window.innerHeight - vv.height - vv.offsetTop) > 80;
-
-  modal.style.setProperty("--egp-vv-top", `${arriba}px`);
-  modal.style.setProperty("--egp-vv-left", `${izquierda}px`);
-  modal.style.setProperty("--egp-vv-width", `${ancho}px`);
-  modal.style.setProperty("--egp-vv-height", `${alto}px`);
-  modal.classList.toggle("egp-teclado-abierto-v6", tecladoAbierto);
-
-  if (tecladoAbierto) {
-    requestAnimationFrame(() => {
-      const panel = modal.querySelector(".pedido-panel");
-      if (panel) panel.scrollTop = 0;
-    });
-  }
-}
-
-function egpRestaurarViewportPedidoV6() {
-  const modal = DOM.pedidoModal;
-  if (!modal) return;
-
-  modal.classList.remove("egp-teclado-abierto-v6");
-  modal.style.removeProperty("--egp-vv-top");
-  modal.style.removeProperty("--egp-vv-left");
-  modal.style.removeProperty("--egp-vv-width");
-  modal.style.removeProperty("--egp-vv-height");
-}
-
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", egpAjustarPedidoAlTecladoV6);
-  window.visualViewport.addEventListener("scroll", egpAjustarPedidoAlTecladoV6);
-}
-
-
-function abrirPedido(cancion, modo = "whatsapp") {
+function abrirPedido(cancion) {
   estado.pedidoSeleccionado = cancion;
-  estado.pedidoModo = modo;
-
-  egpRestaurarVentanaPedidoV6();
-  egpRestaurarViewportPedidoV6();
   DOM.pedidoCancion.textContent = `${cancion.titulo} — ${cancion.artista}`;
   DOM.pedidoTelefono.value = "";
   DOM.pedidoError.hidden = true;
-
-  const nota = document.querySelector("#pedidoModal .pedido-panel__nota");
-
-  if (modo === "panel") {
-    if (nota) nota.textContent = "Acepto abrir WhatsApp para enviar mi canción.";
-    DOM.pedidoEnviar.textContent = "Enviar por WhatsApp";
-    DOM.pedidoError.textContent = "Ingresa un número de WhatsApp válido.";
-  } else {
-    if (nota) nota.textContent = "Acepto abrir WhatsApp para enviar mi canción.";
-    DOM.pedidoEnviar.textContent = "Enviar por WhatsApp";
-    DOM.pedidoError.textContent = "Ingresa un número de WhatsApp válido.";
-  }
-
   DOM.pedidoModal.hidden = false;
-  document.body.classList.add("egp-pedido-abierto-v6");
-
-  /* Si este mismo usuario ya tiene una canción activa en 1 por turno,
-     mostramos la advertencia inmediatamente EN VEZ del campo de teléfono. */
-  if (modo === "panel" && egpPedidoActivoLocalTurnoV6()) {
-    egpMostrarSoloBloqueoTurnoV6();
-    return;
-  }
-
-  requestAnimationFrame(egpAjustarPedidoAlTecladoV6);
-  setTimeout(egpAjustarPedidoAlTecladoV6, 120);
-  setTimeout(egpAjustarPedidoAlTecladoV6, 320);
-  setTimeout(egpAjustarPedidoAlTecladoV6, 600);
-
-  try {
-    DOM.pedidoTelefono.focus({ preventScroll: true });
-  } catch {
-    DOM.pedidoTelefono.focus();
-  }
-
-  requestAnimationFrame(() => {
-    try { DOM.pedidoTelefono.focus({ preventScroll: true }); }
-    catch { DOM.pedidoTelefono.focus(); }
-    egpAjustarPedidoAlTecladoV6();
-  });
 }
 
 function cerrarPedido() {
-  try { DOM.pedidoTelefono?.blur(); } catch {}
-  egpRestaurarViewportPedidoV6();
   DOM.pedidoModal.hidden = true;
-  document.body.classList.remove("egp-pedido-abierto-v6");
   estado.pedidoSeleccionado = null;
   limpiarSeleccionWhatsApp();
 }
@@ -2873,21 +2272,9 @@ async function enviarPedidoWhatsApp() {
   DOM.pedidoEnviar.textContent = "Abriendo WhatsApp…";
 
   try {
-    if (
-      pedidoPropioYaEnviado(cancion.id) ||
-      await personaYaPidioCancionEnShow(cancion, telefono)
-    ) {
-      marcarPedidoPropio(cancion.id, telefono);
-      DOM.pedidoError.textContent = "Ya pediste esta canción.";
-      DOM.pedidoError.hidden = false;
-      renderizar();
-      return;
-    }
-
     await guardarContactoYPedido(cancion);
-    marcarPedidoPropio(cancion.id, telefono);
     await agregarACola(cancion.id);
-    renderizar();
+    await cargarContactos();
 
     const mensaje = encodeURIComponent(
       `Hola Elena Girjoaba Music 👋\n\nSoy ${nombre}. Quisiera pedir esta canción:\n${cancion.titulo} — ${cancion.artista}\n\n¡Gracias!`
@@ -2905,109 +2292,6 @@ async function enviarPedidoWhatsApp() {
 }
 
 
-
-
-/* EGP ENVIO PEDIDOS V85 */
-async function egpGuardarPedidoLanV85(cancion, telefono) {
-  const pedido = {
-    show_id: String(estado.egpLanConfig?.show_id || idShowActual()),
-    cancion_id: String(cancion.id || ""),
-    cancion: String(cancion.titulo || "Canción"),
-    artista: String(cancion.artista || ""),
-    telefono: String(telefono || "")
-  };
-
-  const r = await egpFetchLanV85("/api/orders", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(pedido)
-  }, 1800);
-
-  let data = {};
-  try { data = await r.json(); } catch {}
-  if (!r.ok) {
-    if (data?.error === "active_order" || data?.error === "duplicate") return data;
-    throw new Error("Pedidos LAN no disponible");
-  }
-  if (!data?.ok) throw new Error("Pedidos LAN rechazó el pedido");
-  return data;
-}
-
-async function enviarPedidoPanel() {
-  const cancion = estado.pedidoSeleccionado;
-  if (!cancion) return;
-
-  const telefono = normalizarTelefono(DOM.pedidoTelefono.value);
-
-  if (!telefonoValido(telefono)) {
-    DOM.pedidoError.hidden = false;
-    return;
-  }
-
-  DOM.pedidoError.hidden = true;
-  DOM.pedidoEnviar.disabled = true;
-  DOM.pedidoEnviar.textContent = "Enviando…";
-
-  try {
-    if (pedidoPropioYaEnviado(cancion.id)) {
-      DOM.pedidoError.textContent = "Ya pediste esta canción.";
-      DOM.pedidoError.hidden = false;
-      renderizar();
-      return;
-    }
-
-    if (estado.egpFirebasePedidosAutoritativo && estado.db) {
-      if (egpPedidosModoActualV4() === "uno_por_turno" && await personaTienePedidoActivoEnShow(telefono)) {
-        egpMostrarSoloBloqueoTurnoV6();
-        return;
-      }
-      if (await personaYaPidioCancionEnShow(cancion, telefono)) {
-        marcarPedidoPropio(cancion.id, telefono);
-        DOM.pedidoError.textContent = "Ya pediste esta canción.";
-        DOM.pedidoError.hidden = false;
-        renderizar();
-        return;
-      }
-
-      await guardarContactoYPedido(cancion, {
-        origen: "panel",
-        estado: "pendiente",
-        pedidos_modo: egpPedidosModoActualV4()
-      });
-    } else {
-      const respuestaLan = await egpGuardarPedidoLanV85(cancion, telefono);
-      if (respuestaLan?.error === "active_order") {
-        egpMostrarSoloBloqueoTurnoV6();
-        await egpSincronizarLanV85(true);
-        return;
-      }
-      if (respuestaLan?.duplicate || respuestaLan?.error === "duplicate") {
-        marcarPedidoPropio(cancion.id, telefono);
-        DOM.pedidoError.textContent = "Ya pediste esta canción.";
-        DOM.pedidoError.hidden = false;
-        await egpSincronizarLanV85(true);
-        renderizar();
-        return;
-      }
-      await egpSincronizarLanV85(true);
-    }
-
-    marcarPedidoPropio(cancion.id, telefono);
-    renderizar();
-    DOM.pedidoEnviar.textContent = "✓ Pedido enviado";
-
-    setTimeout(() => cerrarPedido(), 350);
-  } catch (error) {
-    console.error("No se pudo enviar el pedido al panel:", error);
-    DOM.pedidoError.textContent = "No se pudo enviar el pedido. Intenta nuevamente.";
-    DOM.pedidoError.hidden = false;
-  } finally {
-    setTimeout(() => {
-      DOM.pedidoEnviar.disabled = false;
-      DOM.pedidoEnviar.textContent = "Enviar por WhatsApp";
-    }, 450);
-  }
-}
 
 function normalizarTelefono(valor = "") {
   let digitos = String(valor).replace(/\D/g, "");
@@ -3036,13 +2320,11 @@ function idShowActual() {
   return String(estado.configRemota.inicio_show || Date.now());
 }
 
-async function guardarContactoYPedido(cancion, opciones = {}) {
+async function guardarContactoYPedido(cancion) {
   const nombre = "Sin nombre";
   const telefono = normalizarTelefono(DOM.pedidoTelefono.value);
   const ahora = Date.now();
   const showId = idShowActual();
-  const origenPedido = opciones.origen || "whatsapp";
-  const estadoPedido = opciones.estado || "cola";
 
   const contactoRef = doc(
     estado.db,
@@ -3113,27 +2395,11 @@ async function guardarContactoYPedido(cancion, opciones = {}) {
     lista_activa: estado.configRemota.lista_activa,
     creado_en: serverTimestamp(),
     creado_en_ms: ahora,
-    origen: origenPedido,
-    estado: estadoPedido,
-    pedidos_modo: egpPedidosModoActualV4(),
+    origen: "whatsapp",
+    estado: "cola",
     lugar: estado.configRemota.lugar || "",
     perfil_clientes: estado.configRemota.perfil_clientes || "medio"
   });
-
-  if (origenPedido === "panel" && estado.estadoRef) {
-    await updateDoc(estado.estadoRef, {
-      pedidos_panel_lista: arrayUnion({
-        id: pedidoRef.id,
-        cancion_id: cancion.id,
-        cancion: cancion.titulo,
-        artista: cancion.artista,
-        telefono,
-        show_id: showId,
-        creado_en_ms: ahora,
-        estado: "pendiente"
-      })
-    });
-  }
 }
 
 async function cargarContactos() {
@@ -3730,13 +2996,7 @@ function registrarEventos() {
     elemento.addEventListener("click", cerrarPedido)
   );
 
-  DOM.pedidoEnviar.addEventListener("click", () => {
-  if (estado.pedidoModo === "panel") {
-    enviarPedidoPanel();
-  } else {
-    enviarPedidoWhatsApp();
-  }
-});
+  DOM.pedidoEnviar.addEventListener("click", enviarPedidoWhatsApp);
 
   $$("[data-cerrar-notas]").forEach((elemento) =>
     elemento.addEventListener("click", cerrarNotas)
@@ -3763,9 +3023,6 @@ function registrarEventos() {
 
 async function iniciar() {
   capturarDOM();
-  // V5: iniciar la sincronización LAN solo después de que el DOM exista.
-  // Antes podía leer pedidos_panel=true demasiado pronto y no volver a renderizar los botones.
-  egpProgramarLanV85(150);
   const panelMode=new URLSearchParams(location.search).get("panel")==="1";
   if(panelMode){
     sessionStorage.setItem("egm-panel-auth","1");

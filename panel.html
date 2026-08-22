@@ -33,7 +33,7 @@
     })();
   </script>
   <link rel="icon" href="assets/favicon.png">
-  <link rel="stylesheet" href="panel.css?v=20260819-180423">
+  <link rel="stylesheet" href="panel.css?v=6.36.93">
   <style>
     /* 6.34.1: acceso crítico visible incluso si Safari conserva CSS antiguo */
     #panelLogin{position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#050505!important;padding:24px!important;color:#fff!important;opacity:1!important;visibility:visible!important}
@@ -126,14 +126,6 @@
             <label class="switch"><input id="publicQueueToggle" type="checkbox" checked><span></span></label>
           </div>
 
-          <div class="switch-card">
-            <div>
-              <strong>Uso de publicidad</strong>
-              <small>Usar visitantes de este show para publicidad</small>
-            </div>
-            <label class="switch"><input id="advertisingToggle" type="checkbox"><span></span></label>
-          </div>
-
           <button id="continueShowBtn" class="primary-btn continue-show-btn" type="button" hidden>Continuar show</button>
           <button class="primary-btn start-btn" type="submit">Guardar configuración y comenzar show</button>
         </form>
@@ -146,10 +138,6 @@
           <button id="backConfigBtn" class="toolbar-btn" type="button">← <span>Configuración</span></button>
           <strong id="liveRepertoireName" class="live-repertoire-name"></strong>
           <div class="live-toolbar-right">
-            <a id="ui24rBtn"
-               class="toolbar-btn ui24r-btn"
-               href="http://10.10.10.10/mixer.html"
-               aria-label="Abrir consola Ui24R">Ui24R</a>
             <button id="finishShowBtn" class="toolbar-btn danger" type="button">Finalizar show</button>
             <button id="closePanelBtn" class="toolbar-btn danger square" type="button" aria-label="Cerrar panel">×</button>
           </div>
@@ -158,12 +146,7 @@
         <div class="live-sticky-tools">
           <section id="queuePanel" class="queue-panel">
             <div class="queue-heading">
-              <div class="queue-status">
-                <span class="live-dot"></span>
-                <strong class="queue-active-label">Cola activa</strong>
-                <strong id="queueRepertoireName" class="queue-repertoire-name"></strong>
-                <small id="queueCount">0 canciones</small>
-              </div>
+              <div class="queue-status"><span class="live-dot"></span><strong>Cola activa</strong><small id="queueCount">0 canciones</small></div>
               <strong id="panelProfileLabel" class="panel-profile-label">Elena</strong>
               <div class="show-timer" aria-label="Cronómetro del show">
                 <span id="showTimerDisplay" class="show-timer-display" aria-live="off">00:00:00</span>
@@ -207,43 +190,8 @@
         <button type="button" data-module="songbook-daniel"><b>Ｄ</b><span>Cancionero Daniel</span></button>
         <button type="button" data-module="export-contacts"><b>⇩</b><span>Exportar contactos</span></button>
         <button type="button" data-module="upload-photos"><b>▧</b><span>Subir fotos</span></button>
-        <button id="openAuxMonitorsBtn" type="button"><b>🎧</b><span>Auxiliares / Monitores</span></button>
         <button type="button" data-module="security"><b>🔒</b><span>Seguridad</span></button>
       </nav>
-    </div>
-  </dialog>
-
-
-  <dialog id="auxMonitorsDialog" class="modal">
-    <div class="module-card aux-monitor-card">
-      <button id="closeAuxMonitorsBtn" class="modal-x" type="button" aria-label="Cerrar">×</button>
-      <p class="eyebrow">MONITORES</p>
-      <h3>Auxiliares / Monitores</h3>
-      <p class="module-note">Nombres que aparecerán en EGP Músicos.</p>
-
-      <form id="auxMonitorsForm">
-        <h4>ESTÉREO · 4 mezclas</h4>
-        <div class="aux-monitor-grid">
-          <label class="field"><span>1</span><input id="auxStereo1"></label>
-          <label class="field"><span>2</span><input id="auxStereo2"></label>
-          <label class="field"><span>3</span><input id="auxStereo3"></label>
-          <label class="field"><span>4</span><input id="auxStereo4"></label>
-        </div>
-
-        <h4>MONO · 8 mezclas</h4>
-        <div class="aux-monitor-grid">
-          <label class="field"><span>1</span><input id="auxMono1"></label>
-          <label class="field"><span>2</span><input id="auxMono2"></label>
-          <label class="field"><span>3</span><input id="auxMono3"></label>
-          <label class="field"><span>4</span><input id="auxMono4"></label>
-          <label class="field"><span>5</span><input id="auxMono5"></label>
-          <label class="field"><span>6</span><input id="auxMono6"></label>
-          <label class="field"><span>7</span><input id="auxMono7"></label>
-          <label class="field"><span>8</span><input id="auxMono8"></label>
-        </div>
-
-        <button class="primary-btn aux-save-btn" type="submit">Guardar</button>
-      </form>
     </div>
   </dialog>
 
@@ -623,283 +571,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="panel.js?v=definitivo-20260821-120429"></script>
-  <script>
-(function(){
-  function syncQueueRepertoire(){
-    const source=document.getElementById('liveRepertoireName');
-    const target=document.getElementById('queueRepertoireName');
-    if(source&&target)target.textContent=source.textContent||'';
-  }
-
-  const source=document.getElementById('liveRepertoireName');
-
-  if(source){
-    new MutationObserver(syncQueueRepertoire).observe(source,{
-      childList:true,
-      subtree:true,
-      characterData:true
-    });
-  }
-
-  syncQueueRepertoire();
-  setInterval(syncQueueRepertoire,500);
-})();
-</script>
-
-  <script src="./pwa.js?v=PRUEBA-SIN-SW-20260819-182530"></script>
-
-<script>
-(function(){
-  function egpResponsiveLayout(){
-    var w=window.innerWidth||document.documentElement.clientWidth||0;
-    var h=window.innerHeight||document.documentElement.clientHeight||0;
-
-    /* Teléfono/tablet horizontal o ventana grande de computadora */
-    var twoColumns=(w>=900)||(w>=480 && w>h);
-
-    document.body.classList.toggle('egp-two-column',twoColumns);
-  }
-
-  egpResponsiveLayout();
-  window.addEventListener('resize',egpResponsiveLayout);
-  window.addEventListener('orientationchange',function(){
-    setTimeout(egpResponsiveLayout,150);
-  });
-})();
-</script>
-
-<script>
-(function(){
-  function egpIslandSide(){
-    const body=document.body;
-    const iphone=/iPhone/i.test(navigator.userAgent);
-
-    if(!iphone || !body.classList.contains('egp-two-column')){
-      body.dataset.egpIsland='none';
-      return;
-    }
-
-    let angle=0;
-
-    if(screen.orientation && typeof screen.orientation.angle==='number'){
-      angle=screen.orientation.angle;
-    }else if(typeof window.orientation==='number'){
-      angle=window.orientation;
-    }
-
-    angle=((angle%360)+360)%360;
-
-    body.dataset.egpIsland=(angle===90)?'left':'right';
-  }
-
-  window.addEventListener('resize',egpIslandSide);
-  window.addEventListener('orientationchange',function(){
-    setTimeout(egpIslandSide,150);
-  });
-
-  document.addEventListener('DOMContentLoaded',function(){
-    setTimeout(egpIslandSide,100);
-  });
-
-  setTimeout(egpIslandSide,200);
-})();
-</script>
-
-
-
-
-
-<div id="ui24rOverlay" class="ui24r-overlay" aria-hidden="true">
-  <iframe id="ui24rFrame" title="Soundcraft Ui24R"></iframe>
-  <button id="ui24rBackBtn" type="button">← PANEL</button>
-</div>
-
-<script>
-(function(){
-  const btn=document.getElementById('ui24rBtn');
-  const overlay=document.getElementById('ui24rOverlay');
-  const frame=document.getElementById('ui24rFrame');
-  const back=document.getElementById('ui24rBackBtn');
-
-  if(!btn || !overlay || !frame || !back) return;
-
-  const android=/Android/i.test(navigator.userAgent);
-
-  frame.src=android
-    ? 'http://10.10.10.10/phone.html'
-    : 'http://10.10.10.10/mixer.html';
-
-  btn.addEventListener('click',function(e){
-    e.preventDefault();
-    overlay.classList.add('is-open');
-    overlay.setAttribute('aria-hidden','false');
-  });
-
-  back.addEventListener('click',function(){
-    overlay.classList.remove('is-open');
-    overlay.setAttribute('aria-hidden','true');
-  });
-})();
-</script>
-
-
-
-
-
-<script id="egpUiSafeV26">
-(function(){
-  const frame=document.getElementById('ui24rFrame');
-  if(!frame) return;
-
-  function ajustar(){
-    const landscape=window.innerWidth>window.innerHeight;
-    const iphone=/iPhone/i.test(navigator.userAgent);
-
-    if(!landscape || !iphone){
-      frame.style.setProperty('--egp-ui-sx','1');
-      frame.style.setProperty('--egp-ui-origin','50% 50%');
-      return;
-    }
-
-    let angle=0;
-
-    if(screen.orientation && typeof screen.orientation.angle==='number'){
-      angle=screen.orientation.angle;
-    }else if(typeof window.orientation==='number'){
-      angle=window.orientation;
-    }
-
-    angle=((angle%360)+360)%360;
-
-    const margen=46;
-    const sx=(window.innerWidth-margen)/window.innerWidth;
-
-    frame.style.setProperty('--egp-ui-sx',sx);
-
-    if(angle===90){
-      frame.style.setProperty('--egp-ui-origin','100% 50%');
-    }else{
-      frame.style.setProperty('--egp-ui-origin','0% 50%');
-    }
-  }
-
-  window.addEventListener('resize',ajustar);
-  window.addEventListener('orientationchange',function(){
-    setTimeout(ajustar,200);
-  });
-
-  ajustar();
-})();
-</script>
-
-
-<script id="egpIosMomentumV35">
-(function(){
-  if(!/iPhone|iPod/i.test(navigator.userAgent)) return;
-
-  document.body.classList.add('egp-ios');
-
-  function bindMomentum(el){
-    if(!el || el.dataset.egpMomentum==='1') return;
-    el.dataset.egpMomentum='1';
-
-    let active=false;
-    let lastY=0;
-    let lastT=0;
-    let velocity=0;
-    let frame=0;
-
-    function stop(){
-      if(frame){
-        cancelAnimationFrame(frame);
-        frame=0;
-      }
-    }
-
-    el.addEventListener('touchstart',function(e){
-      if(e.touches.length!==1) return;
-
-      if(e.target.closest('input,select,textarea')) return;
-      if(e.target.closest('button,a') && !el.classList.contains('song-scroll-region')) return;
-
-      stop();
-      active=true;
-      lastY=e.touches[0].clientY;
-      lastT=performance.now();
-      velocity=0;
-    },{passive:true});
-
-    el.addEventListener('touchmove',function(e){
-      if(!active || e.touches.length!==1) return;
-
-      const now=performance.now();
-      const y=e.touches[0].clientY;
-      const dt=Math.max(1,now-lastT);
-      const delta=lastY-y;
-
-      el.scrollTop+=delta;
-
-      const instant=delta/dt;
-      velocity=velocity*.72 + instant*.28;
-
-      lastY=y;
-      lastT=now;
-
-      e.preventDefault();
-    },{passive:false});
-
-    function momentum(){
-      if(Math.abs(velocity)<0.01){
-        frame=0;
-        return;
-      }
-
-      const max=Math.max(0,el.scrollHeight-el.clientHeight);
-      const before=el.scrollTop;
-
-      el.scrollTop+=velocity*16;
-
-      if(el.scrollTop<=0 || el.scrollTop>=max || el.scrollTop===before){
-        velocity=0;
-        frame=0;
-        return;
-      }
-
-      velocity*=0.94;
-      frame=requestAnimationFrame(momentum);
-    }
-
-    function end(){
-      if(!active) return;
-      active=false;
-      stop();
-      frame=requestAnimationFrame(momentum);
-    }
-
-    el.addEventListener('touchend',end,{passive:true});
-    el.addEventListener('touchcancel',function(){
-      active=false;
-      stop();
-    },{passive:true});
-  }
-
-  function preparar(){
-    bindMomentum(document.getElementById('configView'));
-    bindMomentum(document.getElementById('queuePanel'));
-    bindMomentum(document.querySelector('.song-scroll-region'));
-  }
-
-  preparar();
-
-  new MutationObserver(preparar).observe(document.body,{
-    childList:true,
-    subtree:true,
-    attributes:true,
-    attributeFilter:['class']
-  });
-})();
-</script>
-
+  <script type="module" src="panel.js?v=6.36.93"></script>
+  <script src="./pwa.js?v=6.36.94"></script>
 </body>
 </html>
