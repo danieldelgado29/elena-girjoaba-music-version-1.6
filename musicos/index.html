@@ -13,6 +13,27 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <link rel="icon" href="./icon-192.png">
   <link rel="stylesheet" href="./style.css?v=espacio-animacion-20260819-190549">
+
+<!-- EGP_MUSICOS_NO_TEXT_SELECTION_V1_INICIO -->
+<style id="EGP_MUSICOS_NO_TEXT_SELECTION_V1">
+/* Interfaz tipo app: texto normal no seleccionable. */
+html,
+body,
+body * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Solo los lugares donde realmente se escribe/editan conservan selección. */
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+[contenteditable]:not([contenteditable="false"]) * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+</style>
+<!-- EGP_MUSICOS_NO_TEXT_SELECTION_V1_FIN -->
 </head>
 <body>
   <main id="installView" class="install-view">
@@ -171,6 +192,163 @@
 
   </div>
 
+
+<!-- EGP_MUSICOS_UI24R_AVAILABILITY_V1_INICIO -->
+<style id="EGP_MUSICOS_UI24R_AVAILABILITY_V1_CSS">
+/*
+  MONITOREO queda gris mientras el launcher Ui24R real
+  no haya confirmado que está vivo.
+*/
+#monitorBtn.egp-ui24r-offline,
+#monitorBtn.egp-ui24r-checking {
+  background:#3a3d45 !important;
+  color:#8d929c !important;
+  border-color:#4b4f58 !important;
+  box-shadow:none !important;
+  opacity:.78 !important;
+  filter:saturate(.12) !important;
+  cursor:not-allowed !important;
+}
+</style>
+
+<script id="EGP_MUSICOS_UI24R_AVAILABILITY_V1_JS">
+(function(){
+  const ORIGIN='https://ui.elenagirjoaba.com';
+  const RETRY_MS=4000;
+
+  const btn=document.getElementById('monitorBtn');
+  const frame=document.getElementById('egpUi24rFrame');
+
+  if(!btn || !frame) return;
+
+  let state='checking';
+  let retryTimer=0;
+
+  function paint(next){
+    state=next;
+
+    const unavailable=(state!=='online');
+
+    btn.classList.toggle('egp-ui24r-checking',state==='checking');
+    btn.classList.toggle('egp-ui24r-offline',state==='offline');
+
+    btn.setAttribute(
+      'aria-disabled',
+      unavailable ? 'true' : 'false'
+    );
+
+    btn.dataset.ui24rState=state;
+  }
+
+  function stopRetry(){
+    if(retryTimer){
+      clearTimeout(retryTimer);
+      retryTimer=0;
+    }
+  }
+
+  function scheduleRetry(){
+    stopRetry();
+
+    if(state==='online') return;
+
+    retryTimer=setTimeout(retryLauncher,RETRY_MS);
+  }
+
+  function retryLauncher(){
+    if(state==='online') return;
+
+    const real=frame.dataset.src || '';
+    if(!real){
+      paint('offline');
+      scheduleRetry();
+      return;
+    }
+
+    try{
+      const u=new URL(real,location.href);
+      u.searchParams.set('egp_retry',String(Date.now()));
+
+      /*
+        Se recarga SOLO el iframe oculto mientras Ui24R no está disponible.
+        Cuando Ui24R responde, se detienen los reintentos.
+      */
+      frame.setAttribute('src',u.href);
+    }catch(_){
+      frame.setAttribute(
+        'src',
+        real + (real.includes('?') ? '&' : '?') +
+        'egp_retry=' + Date.now()
+      );
+    }
+
+    paint('offline');
+    scheduleRetry();
+  }
+
+  /*
+    Esta es la confirmación REAL que ya usa EGP Músicos:
+    musicos.html del launcher Ui24R envía
+    "egp-ui24r-launcher-ready" cuando está funcionando.
+  */
+  window.addEventListener('message',function(event){
+    if(event.origin!==ORIGIN) return;
+
+    const data=event.data || {};
+
+    if(
+      data.type==='egp-ui24r-launcher-ready' ||
+      data.type==='egp-ui24r-aux-ready'
+    ){
+      paint('online');
+      stopRetry();
+    }
+  });
+
+  frame.addEventListener('error',function(){
+    if(state!=='online'){
+      paint('offline');
+      scheduleRetry();
+    }
+  });
+
+  /*
+    Bloquea el MONITOREO antes de que app.js ejecute su listener.
+    Cuando state === online no hace absolutamente nada:
+    el botón abre inmediatamente, sin esperar ningún chequeo.
+  */
+  btn.addEventListener('click',function(event){
+    if(state==='online') return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    paint('offline');
+    scheduleRetry();
+  },true);
+
+  /*
+    El cargador persistente que ya existe inicia el iframe.
+    Le damos tiempo para responder y luego reintentamos en segundo plano
+    únicamente si todavía no confirmó disponibilidad.
+  */
+  paint('checking');
+  scheduleRetry();
+
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden && state!=='online'){
+      scheduleRetry();
+    }
+  });
+
+  window.addEventListener('focus',function(){
+    if(state!=='online'){
+      scheduleRetry();
+    }
+  });
+})();
+</script>
+<!-- EGP_MUSICOS_UI24R_AVAILABILITY_V1_FIN -->
 
 <!-- EGP_MUSICOS_UI24R_PERSISTENTE_POSTLOAD_V1_INICIO -->
 <script id="EGP_MUSICOS_UI24R_PERSISTENTE_POSTLOAD_V1">
