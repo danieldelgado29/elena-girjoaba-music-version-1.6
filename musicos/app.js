@@ -202,6 +202,7 @@ const openChromeBtn = $("#openChromeBtn");
 let deferredPrompt = null;
 let songs = new Map();
 let unsubscribe = null;
+window.__EGP_MUSICOS_BUILD = "lan-cache-fix-20260901-v2";
 const LAST_STATE_KEY = "egp-musicos-last-state-v1";
 const LOCAL_CORE = "https://core.elenagirjoaba.com";
 let localCoreOnline = false;
@@ -699,7 +700,7 @@ if ("serviceWorker" in navigator && !previewMode) {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=lan-priority-failover-20260901-v1", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=lan-cache-fix-20260901-v2", {
         scope: "./",
         updateViaCache: "none"
       });

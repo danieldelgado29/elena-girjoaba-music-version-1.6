@@ -9,14 +9,14 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp-musicos-lan-priority-failover-20260901-v1";
+const CACHE = "egp-musicos-lan-cache-fix-20260901-v2";
 
 const CORE = [
   "./",
   "./?musicos_pwa=1",
   "./index.html",
   "./style.css?v=espacio-animacion-20260819-190549",
-  "./app.js?v=lan-priority-failover-20260901-v1",
+  "./app.js?v=lan-cache-fix-20260901-v2",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
@@ -90,17 +90,19 @@ self.addEventListener("activate", event => {
 });
 
 async function getCached(request, fallbackRelative = null) {
-  const direct =
-    await caches.match(request, { ignoreSearch: true });
+  /*
+   * IMPORTANTE:
+   * NO ignorar query strings.
+   * app.js?v=NUEVO debe recibir exactamente esa versión,
+   * nunca una copia anterior de app.js?v=VIEJO.
+   */
+  const direct = await caches.match(request);
 
   if (direct) return direct;
 
   if (fallbackRelative) {
     return (
-      await caches.match(
-        scopeUrl(fallbackRelative),
-        { ignoreSearch: true }
-      )
+      await caches.match(scopeUrl(fallbackRelative))
     ) || null;
   }
 
