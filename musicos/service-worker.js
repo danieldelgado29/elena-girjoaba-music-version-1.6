@@ -9,14 +9,14 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp-musicos-offline-inmediato-20260901-v1";
+const CACHE = "egp-musicos-lan-priority-failover-20260901-v1";
 
 const CORE = [
   "./",
   "./?musicos_pwa=1",
   "./index.html",
   "./style.css?v=espacio-animacion-20260819-190549",
-  "./app.js?v=touch-final-20260825-115209",
+  "./app.js?v=lan-priority-failover-20260901-v1",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",

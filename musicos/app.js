@@ -206,6 +206,8 @@ const LAST_STATE_KEY = "egp-musicos-last-state-v1";
 const LOCAL_CORE = "https://core.elenagirjoaba.com";
 let localCoreOnline = false;
 let localCoreTimer = null;
+let localCoreBusy = false;
+let localCoreFailures = 0;
 let firebaseOnline = false;
 let latestFirebaseState = null;
 
@@ -223,48 +225,103 @@ function localCoreToMusicos(data){
 }
 
 async function pollLocalCore(){
+  /*
+   * LAN PRIMERA PRIORIDAD.
+   * Evita solicitudes superpuestas.
+   */
+  if(localCoreBusy) return;
+  localCoreBusy = true;
+
   try{
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1800);
 
-    const res = await fetch(LOCAL_CORE + "/api/state", {
-      cache: "no-store",
-      signal: controller.signal
-    });
+    /*
+     * Core medido alrededor de 20 ms.
+     * 450 ms permite detectar caida rapido con margen amplio.
+     */
+    const timeout = setTimeout(
+      () => controller.abort(),
+      450
+    );
 
-    clearTimeout(timeout);
+    let res;
+
+    try{
+      res = await fetch(LOCAL_CORE + "/api/state", {
+        cache: "no-store",
+        signal: controller.signal
+      });
+    }finally{
+      clearTimeout(timeout);
+    }
+
     if(!res.ok) throw new Error("Local Core HTTP " + res.status);
 
     const raw = await res.json();
-    if(raw?.ok !== true) throw new Error("Local Core inválido");
+    if(raw?.ok !== true) throw new Error("Local Core invalido");
 
     const data = localCoreToMusicos(raw);
+
+    localCoreFailures = 0;
     localCoreOnline = true;
+
     connectionDot.classList.add("online");
     appError.hidden = true;
+
     saveLastState(data);
     render(data);
-  }catch(_){
+
+  }catch(err){
+    localCoreFailures += 1;
+
+    /*
+     * Un fallo aislado no cambia de fuente.
+     * Dos fallos consecutivos = LAN no disponible.
+     */
+    if(localCoreOnline && localCoreFailures < 2){
+      return;
+    }
+
     const wasLocal = localCoreOnline;
     localCoreOnline = false;
 
+    /*
+     * FAILOVER INTERNET.
+     * Firebase ya escucha en paralelo.
+     */
     if(firebaseOnline && latestFirebaseState){
       connectionDot.classList.add("online");
-      if(wasLocal){
+
+      if(wasLocal || localCoreFailures === 2){
         saveLastState(latestFirebaseState);
         render(latestFirebaseState);
       }
     }else{
       connectionDot.classList.remove("online");
     }
+
+  }finally{
+    localCoreBusy = false;
   }
 }
 
 function startLocalCore(){
   if(localCoreTimer) return;
+
   pollLocalCore();
-  localCoreTimer = setInterval(pollLocalCore, 1200);
+
+  /*
+   * ~6.7 lecturas/segundo.
+   * Con Core a ~20 ms, la cola normalmente cambia en menos de 0.2 s.
+   */
+  localCoreTimer = setInterval(pollLocalCore, 150);
 }
+
+document.addEventListener("visibilitychange", () => {
+  if(!document.hidden) pollLocalCore();
+});
+
+window.addEventListener("focus", pollLocalCore);
 
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const ownPwaLaunch = new URL(location.href).searchParams.get("musicos_pwa") === "1";
@@ -642,7 +699,7 @@ if ("serviceWorker" in navigator && !previewMode) {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=offline-inmediato-20260901-v1", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=lan-priority-failover-20260901-v1", {
         scope: "./",
         updateViaCache: "none"
       });
