@@ -9,14 +9,14 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp-musicos-lan-cache-fix-20260901-v2";
+const CACHE = "egp-musicos-install-play-20260901-v3";
 
 const CORE = [
   "./",
   "./?musicos_pwa=1",
   "./index.html",
-  "./style.css?v=espacio-animacion-20260819-190549",
-  "./app.js?v=lan-cache-fix-20260901-v2",
+  "./style.css?v=install-play-20260901-v3",
+  "./app.js?v=install-play-20260901-v3",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",

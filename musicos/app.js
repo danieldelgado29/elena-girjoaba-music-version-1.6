@@ -202,7 +202,7 @@ const openChromeBtn = $("#openChromeBtn");
 let deferredPrompt = null;
 let songs = new Map();
 let unsubscribe = null;
-window.__EGP_MUSICOS_BUILD = "lan-cache-fix-20260901-v2";
+window.__EGP_MUSICOS_BUILD = "install-play-20260901-v3";
 const LAST_STATE_KEY = "egp-musicos-last-state-v1";
 const LOCAL_CORE = "https://core.elenagirjoaba.com";
 let localCoreOnline = false;
@@ -211,6 +211,7 @@ let localCoreBusy = false;
 let localCoreFailures = 0;
 let firebaseOnline = false;
 let latestFirebaseState = null;
+let latestLocalCoreState = null;
 
 function saveLastState(data){ try{ localStorage.setItem(LAST_STATE_KEY,JSON.stringify(data||{})); }catch(_){} }
 function loadLastState(){ try{ return JSON.parse(localStorage.getItem(LAST_STATE_KEY)||"null"); }catch(_){ return null; } }
@@ -262,6 +263,15 @@ async function pollLocalCore(){
     if(raw?.ok !== true) throw new Error("Local Core invalido");
 
     const data = localCoreToMusicos(raw);
+    latestLocalCoreState = data;
+
+    /*
+     * Si Local Core confirma un show activo, la prioridad es COLA.
+     * No esperar Firebase ni dejar una pantalla previa tapándola.
+     */
+    if(data.show_activo===true && monitorSetup){
+      monitorSetup.hidden = true;
+    }
 
     localCoreFailures = 0;
     localCoreOnline = true;
@@ -417,31 +427,70 @@ async function startApp() {
   startApp.started = true;
   appError.hidden = true;
 
+
+  /*
+   * INSTALL AND PLAY:
+   * Local Core arranca ANTES de cualquier petición que pueda
+   * esperar Internet. La LAN nunca debe esperar Firebase.
+   */
+  const cachedState = loadLastState();
+
+  if (cachedState) {
+    render(cachedState);
+    venueName.textContent = String(
+      cachedState?.lugar ||
+      cachedState?.show?.venue ||
+      venueName.textContent ||
+      "Último estado guardado"
+    );
+  }
+
+  if (!noCoreTest) {
+    startLocalCore();
+  }
+
+  /*
+   * Los archivos base se cargan DESPUÉS.
+   * El Service Worker normalmente los entrega desde caché.
+   */
   let cfg = null;
+
   try {
     const [cfgRes, songsRes] = await Promise.all([
       fetch("../configuracion.json", { cache: "no-store" }),
       fetch("../canciones.json", { cache: "no-store" })
     ]);
-    if (!cfgRes.ok || !songsRes.ok) throw new Error("base no disponible");
+
+    if (!cfgRes.ok || !songsRes.ok) {
+      throw new Error("base no disponible");
+    }
+
     cfg = await cfgRes.json();
+
     const list = await songsRes.json();
-    songs = new Map((Array.isArray(list) ? list : []).map(song => [String(song.id), song]));
+
+    songs = new Map(
+      (Array.isArray(list) ? list : [])
+        .map(song => [String(song.id), song])
+    );
+
+    /*
+     * Local Core puede haber llegado antes que canciones.json.
+     * Al terminar la base, repintamos inmediatamente su último estado.
+     */
+    if (latestLocalCoreState) {
+      render(latestLocalCoreState);
+    } else if (cachedState) {
+      render(cachedState);
+    }
+
   } catch (error) {
-    // El Service Worker debe resolver estos archivos desde caché. Si todavía no controla
-    // esta apertura, mantenemos la última vista disponible en el dispositivo.
     console.warn("Base offline músicos:", error);
-  }
 
-  const cachedState = loadLastState();
-  if (cachedState) {
-    render(cachedState);
-    venueName.textContent = String(cachedState?.lugar || cachedState?.show?.venue || venueName.textContent || "Último estado guardado");
+    if (latestLocalCoreState) {
+      render(latestLocalCoreState);
+    }
   }
-
-  // En EGP-MUSICOS, Local Core es la fuente preferida.
-  // Fuera de esa red, Firebase continúa funcionando normalmente.
-  if (!noCoreTest) startLocalCore();
 
   // Sin Internet la app NO falla: conserva la última cola guardada.
   // Firebase se carga dinámicamente únicamente cuando está disponible.
@@ -678,6 +727,18 @@ if (previewMode && "serviceWorker" in navigator) {
 }
 
 if ("serviceWorker" in navigator && !previewMode) {
+  let egpMusicosReloadingForUpdate = false;
+
+  navigator.serviceWorker.addEventListener(
+    "controllerchange",
+    () => {
+      if (egpMusicosReloadingForUpdate) return;
+
+      egpMusicosReloadingForUpdate = true;
+      location.reload();
+    }
+  );
+
   window.addEventListener("load", async () => {
     try {
       const EGP_TEST_REPO =
@@ -700,7 +761,7 @@ if ("serviceWorker" in navigator && !previewMode) {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=lan-cache-fix-20260901-v2", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=install-play-20260901-v3", {
         scope: "./",
         updateViaCache: "none"
       });
