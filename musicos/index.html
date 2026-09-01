@@ -151,9 +151,10 @@
 
     <iframe
       id="egpUi24rFrame"
-      src="https://ui.elenagirjoaba.com/musicos.html?v=1.5.8.14"
+      src="about:blank"
+      data-src="https://ui.elenagirjoaba.com/musicos.html?v=1.5.8.14"
       title="Monitoreo Ui24R"
-      loading="eager"
+      loading="lazy"
       allow="autoplay"
     ></iframe>
 
@@ -169,6 +170,47 @@
     </button>
 
   </div>
+
+
+<!-- EGP_MUSICOS_UI24R_PERSISTENTE_POSTLOAD_V1_INICIO -->
+<script id="EGP_MUSICOS_UI24R_PERSISTENTE_POSTLOAD_V1">
+(function(){
+  const frame=document.getElementById('egpUi24rFrame');
+  if(!frame) return;
+
+  let iniciado=false;
+
+  function iniciarUnaSolaVez(){
+    const actual=frame.getAttribute('src') || '';
+    const real=frame.dataset.src || '';
+
+    if(iniciado || (actual && actual!=='about:blank')){
+      iniciado=true;
+      return;
+    }
+
+    if(!real) return;
+
+    iniciado=true;
+    frame.setAttribute('src',real);
+  }
+
+  function arrancarDespuesDePagina(){
+    setTimeout(iniciarUnaSolaVez,250);
+  }
+
+  if(document.readyState==='complete'){
+    arrancarDespuesDePagina();
+  }else{
+    window.addEventListener('load',arrancarDespuesDePagina,{once:true});
+  }
+
+  document.getElementById('monitorBtn')
+    ?.addEventListener('click',iniciarUnaSolaVez,true);
+})();
+</script>
+<!-- EGP_MUSICOS_UI24R_PERSISTENTE_POSTLOAD_V1_FIN -->
+
 
 <script type="module" src="./app.js?v=touch-final-20260825-115209"></script>
 
