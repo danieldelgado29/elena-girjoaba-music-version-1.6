@@ -642,11 +642,16 @@ if ("serviceWorker" in navigator && !previewMode) {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register("./service-worker.js?v=1.5.8", {
+      const registration = await navigator.serviceWorker.register("./service-worker.js?v=offline-inmediato-20260901-v1", {
         scope: "./",
         updateViaCache: "none"
       });
       await registration.update();
+      /*
+       * Asegura que, durante una apertura con Internet,
+       * el shell offline quede instalado antes de la siguiente apertura.
+       */
+      await navigator.serviceWorker.ready;
     } catch (error) {
       console.warn("Service Worker músicos:", error);
     }

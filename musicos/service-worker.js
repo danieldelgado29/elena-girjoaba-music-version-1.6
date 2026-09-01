@@ -1,34 +1,182 @@
 "use strict";
-const CACHE = "egp-musicos-touch-final-20260825-115209";
+
+/*
+ * EGP MUSICOS — OFFLINE INMEDIATO
+ *
+ * Si la app ya está instalada/cacheada:
+ * - abre desde caché inmediatamente;
+ * - la red actualiza por detrás;
+ * - una Wi‑Fi sin Internet jamás bloquea el arranque.
+ */
+
+const CACHE = "egp-musicos-offline-inmediato-20260901-v1";
+
 const CORE = [
-  "./", "./index.html", "./style.css?v=1.5.8.17", "./app.js?v=touch-final-20260825-115209",
-  "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
-  "../canciones.json", "../configuracion.json"
+  "./",
+  "./?musicos_pwa=1",
+  "./index.html",
+  "./style.css?v=espacio-animacion-20260819-190549",
+  "./app.js?v=touch-final-20260825-115209",
+  "./manifest.webmanifest",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./apple-touch-icon.png",
+  "../egp-photo-responsive.js?v=responsive-photos-20260824",
+  "../canciones.json",
+  "../configuracion.json"
 ];
-async function cacheOne(cache,url){
-  try{ const r=await fetch(new Request(url,{cache:"reload"})); if(r && (r.ok||r.type==="opaque")) await cache.put(url,r); }catch(_){}
+
+const scopeUrl = path =>
+  new URL(path, self.registration.scope).href;
+
+async function fetchFresh(url) {
+  try {
+    const response = await fetch(
+      new Request(url, { cache: "reload" })
+    );
+
+    if (
+      !response ||
+      !(response.ok || response.type === "opaque")
+    ) {
+      return null;
+    }
+
+    return response;
+  } catch (_) {
+    return null;
+  }
 }
-self.addEventListener("install",event=>event.waitUntil((async()=>{
-  const cache=await caches.open(CACHE);
-  await Promise.allSettled(CORE.map(url=>cacheOne(cache,url)));
-  await self.skipWaiting();
-})()));
-self.addEventListener("activate",event=>event.waitUntil((async()=>{
-  const keys=await caches.keys();
-  await Promise.all(keys.filter(k=>k.startsWith("egp-musicos-")&&k!==CACHE).map(k=>caches.delete(k)));
-  await self.clients.claim();
-})()));
-async function networkFirst(request,fallback){
-  try{ const r=await fetch(new Request(request,{cache:"no-store"})); if(r&&r.ok){const c=await caches.open(CACHE);await c.put(request,r.clone());} return r; }
-  catch(_){ return (await caches.match(request,{ignoreSearch:true})) || (fallback ? await caches.match(fallback,{ignoreSearch:true}) : null) || Response.error(); }
+
+async function preload(cache, relativeUrl) {
+  const url = scopeUrl(relativeUrl);
+  const response = await fetchFresh(url);
+
+  if (!response) {
+    throw new Error("No se pudo precargar: " + relativeUrl);
+  }
+
+  await cache.put(url, response.clone());
 }
-async function cacheFirst(request){
-  const c=await caches.match(request,{ignoreSearch:true}); if(c)return c;
-  try{const r=await fetch(request);if(r&&r.ok){const cache=await caches.open(CACHE);await cache.put(request,r.clone());}return r;}catch(_){return Response.error();}
+
+self.addEventListener("install", event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+
+    await Promise.all(
+      CORE.map(url => preload(cache, url))
+    );
+
+    await self.skipWaiting();
+  })());
+});
+
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+
+    await Promise.all(
+      keys
+        .filter(
+          key =>
+            key.startsWith("egp-musicos-") &&
+            key !== CACHE
+        )
+        .map(key => caches.delete(key))
+    );
+
+    await self.clients.claim();
+  })());
+});
+
+async function getCached(request, fallbackRelative = null) {
+  const direct =
+    await caches.match(request, { ignoreSearch: true });
+
+  if (direct) return direct;
+
+  if (fallbackRelative) {
+    return (
+      await caches.match(
+        scopeUrl(fallbackRelative),
+        { ignoreSearch: true }
+      )
+    ) || null;
+  }
+
+  return null;
 }
-self.addEventListener("fetch",event=>{
-  if(event.request.method!=="GET")return;
-  const u=new URL(event.request.url);
-  if(event.request.mode==="navigate"){ event.respondWith(networkFirst(event.request,"./index.html")); return; }
-  if(u.origin===self.location.origin){ event.respondWith(/\.(?:js|css|json|webmanifest)$/.test(u.pathname)?networkFirst(event.request):cacheFirst(event.request)); }
+
+async function refreshInBackground(request) {
+  try {
+    const response = await fetch(
+      new Request(request, { cache: "no-store" })
+    );
+
+    if (
+      response &&
+      (response.ok || response.type === "opaque")
+    ) {
+      const cache = await caches.open(CACHE);
+      await cache.put(request, response.clone());
+    }
+
+    return response;
+  } catch (_) {
+    return null;
+  }
+}
+
+self.addEventListener("fetch", event => {
+  const request = event.request;
+
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+
+  /*
+   * Firebase, Local Core y Ui24R son conexiones aparte.
+   * No pueden bloquear el shell local.
+   */
+  if (url.origin !== self.location.origin) return;
+
+  /*
+   * La actualización de red arranca por detrás.
+   * Si hay caché, respondemos con ella sin esperar Internet.
+   */
+  const networkRefresh =
+    refreshInBackground(request);
+
+  event.waitUntil(
+    networkRefresh.then(() => {}).catch(() => {})
+  );
+
+  if (request.mode === "navigate") {
+    event.respondWith((async () => {
+      const local =
+        await getCached(request, "./index.html");
+
+      if (local) return local;
+
+      const online = await networkRefresh;
+      if (online) return online;
+
+      return (
+        await getCached(
+          scopeUrl("./index.html")
+        )
+      ) || Response.error();
+    })());
+
+    return;
+  }
+
+  event.respondWith((async () => {
+    const local = await getCached(request);
+
+    if (local) return local;
+
+    const online = await networkRefresh;
+    return online || Response.error();
+  })());
 });
