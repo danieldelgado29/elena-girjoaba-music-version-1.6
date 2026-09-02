@@ -213,8 +213,18 @@ textarea,
 
 <script id="EGP_MUSICOS_UI24R_AVAILABILITY_V1_JS">
 (function(){
-  const ORIGIN='https://ui.elenagirjoaba.com';
-  const RETRY_MS=4000;
+  /*
+   * EGP_MUSICOS_UI24R_PHYSICAL_HEALTH_V1
+   *
+   * La disponibilidad NO depende de que el iframe consiga mandar
+   * postMessage. La verdad es la respuesta física de la Ui24R.
+   *
+   * Regla universal:
+   *   sin señal = gris
+   *   señal     = azul
+   */
+  const HEALTH_URL=
+    'https://ui.elenagirjoaba.com/__egp_health?egp_health=';
 
   const btn=document.getElementById('monitorBtn');
   const frame=document.getElementById('egpUi24rFrame');
@@ -222,15 +232,23 @@ textarea,
   if(!btn || !frame) return;
 
   let state='checking';
-  let retryTimer=0;
+  let timer=0;
+  let busy=false;
 
   function paint(next){
     state=next;
 
     const unavailable=(state!=='online');
 
-    btn.classList.toggle('egp-ui24r-checking',state==='checking');
-    btn.classList.toggle('egp-ui24r-offline',state==='offline');
+    btn.classList.toggle(
+      'egp-ui24r-checking',
+      state==='checking'
+    );
+
+    btn.classList.toggle(
+      'egp-ui24r-offline',
+      state==='offline'
+    );
 
     btn.setAttribute(
       'aria-disabled',
@@ -240,112 +258,128 @@ textarea,
     btn.dataset.ui24rState=state;
   }
 
-  function stopRetry(){
-    if(retryTimer){
-      clearTimeout(retryTimer);
-      retryTimer=0;
+  function schedule(ms){
+    if(timer){
+      clearTimeout(timer);
+      timer=0;
     }
+
+    timer=setTimeout(check,ms);
   }
 
-  function scheduleRetry(){
-    stopRetry();
-
-    if(state==='online') return;
-
-    retryTimer=setTimeout(retryLauncher,RETRY_MS);
-  }
-
-  function retryLauncher(){
-    if(state==='online') return;
-
+  function reloadOnlyUi24r(){
     const real=frame.dataset.src || '';
-    if(!real){
-      paint('offline');
-      scheduleRetry();
-      return;
-    }
+
+    if(!real) return;
 
     try{
       const u=new URL(real,location.href);
-      u.searchParams.set('egp_retry',String(Date.now()));
-
-      /*
-        Se recarga SOLO el iframe oculto mientras Ui24R no está disponible.
-        Cuando Ui24R responde, se detienen los reintentos.
-      */
+      u.searchParams.set(
+        'egp_reconnect',
+        String(Date.now())
+      );
       frame.setAttribute('src',u.href);
     }catch(_){
       frame.setAttribute(
         'src',
-        real + (real.includes('?') ? '&' : '?') +
-        'egp_retry=' + Date.now()
+        real +
+        (real.includes('?') ? '&' : '?') +
+        'egp_reconnect=' +
+        Date.now()
       );
     }
+  }
 
-    paint('offline');
-    scheduleRetry();
+  async function check(){
+    if(busy) return;
+
+    busy=true;
+    const previous=state;
+
+    const controller=new AbortController();
+    const timeout=setTimeout(
+      ()=>controller.abort(),
+      900
+    );
+
+    try{
+      const response=await fetch(
+        HEALTH_URL + Date.now(),
+        {
+          cache:'no-store',
+          signal:controller.signal
+        }
+      );
+
+      if(!response.ok){
+        throw new Error(
+          'Ui24R HTTP ' + response.status
+        );
+      }
+
+      paint('online');
+
+      /*
+       * Solo una reconexión física offline -> online
+       * recarga el iframe. Abrir/cerrar MONITOREO no lo recarga.
+       */
+      if(previous==='offline'){
+        reloadOnlyUi24r();
+      }
+
+    }catch(_){
+      paint('offline');
+
+    }finally{
+      clearTimeout(timeout);
+      busy=false;
+
+      schedule(
+        state==='online'
+          ? 2500
+          : 400
+      );
+    }
   }
 
   /*
-    Esta es la confirmación REAL que ya usa EGP Músicos:
-    musicos.html del launcher Ui24R envía
-    "egp-ui24r-launcher-ready" cuando está funcionando.
-  */
-  window.addEventListener('message',function(event){
-    if(event.origin!==ORIGIN) return;
+   * Si está gris, no abrir nada.
+   * Solo se vuelve a comprobar en silencio.
+   */
+  btn.addEventListener(
+    'click',
+    function(event){
+      if(state==='online') return;
 
-    const data=event.data || {};
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      check();
+    },
+    true
+  );
 
-    if(
-      data.type==='egp-ui24r-launcher-ready' ||
-      data.type==='egp-ui24r-aux-ready'
-    ){
-      paint('online');
-      stopRetry();
+  window.addEventListener('focus',check);
+  window.addEventListener('online',check);
+  window.addEventListener('pageshow',check);
+
+  document.addEventListener(
+    'visibilitychange',
+    function(){
+      if(!document.hidden) check();
     }
-  });
+  );
 
-  frame.addEventListener('error',function(){
-    if(state!=='online'){
-      paint('offline');
-      scheduleRetry();
-    }
-  });
-
-  /*
-    Bloquea el MONITOREO antes de que app.js ejecute su listener.
-    Cuando state === online no hace absolutamente nada:
-    el botón abre inmediatamente, sin esperar ningún chequeo.
-  */
-  btn.addEventListener('click',function(event){
-    if(state==='online') return;
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    paint('offline');
-    scheduleRetry();
-  },true);
-
-  /*
-    El cargador persistente que ya existe inicia el iframe.
-    Le damos tiempo para responder y luego reintentamos en segundo plano
-    únicamente si todavía no confirmó disponibilidad.
-  */
   paint('checking');
-  scheduleRetry();
 
-  document.addEventListener('visibilitychange',function(){
-    if(!document.hidden && state!=='online'){
-      scheduleRetry();
-    }
-  });
-
-  window.addEventListener('focus',function(){
-    if(state!=='online'){
-      scheduleRetry();
-    }
-  });
+  if(document.readyState==='complete'){
+    setTimeout(check,250);
+  }else{
+    window.addEventListener(
+      'load',
+      ()=>setTimeout(check,250),
+      {once:true}
+    );
+  }
 })();
 </script>
 <!-- EGP_MUSICOS_UI24R_AVAILABILITY_V1_FIN -->

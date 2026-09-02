@@ -9,7 +9,7 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp-musicos-lan-cache-fix-20260901-v2";
+const CACHE = "egp-musicos-ui24r-health-20260902-v1";
 
 const CORE = [
   "./",
