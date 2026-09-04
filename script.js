@@ -40,8 +40,8 @@ const CONFIG = Object.freeze({
   telefonoWhatsApp: "593987388915",
   telefonoElena: "593987388915",
   telefonoDaniel: "593992890540",
-  claveInstagramVisitado: "egmInstagramVisitado",
-  claveInstagramDesbloqueo: "egmInstagramDesbloqueo",
+  claveInstagramVisitado: "egm16-InstagramVisitado",
+  claveInstagramDesbloqueo: "egm16-InstagramDesbloqueo",
   demoraContinuacionInstagram: 3000,
   rutaAnotaciones: "assets/anotaciones",
   rutaIndiceAnotaciones: "assets/anotaciones/index.json",
@@ -54,7 +54,7 @@ function obtenerSeguridadLocal() {
       password: CONFIG.claveAdmin,
       danielPhone: CONFIG.telefonoDaniel,
       elenaPhone: CONFIG.telefonoElena,
-      ...JSON.parse(localStorage.getItem("egm-security-settings") || "{}")
+      ...JSON.parse(localStorage.getItem("egm16-security-settings") || "{}")
     };
   } catch (_) {
     return { password: CONFIG.claveAdmin, danielPhone: CONFIG.telefonoDaniel, elenaPhone: CONFIG.telefonoElena };
@@ -235,11 +235,11 @@ async function cargarLetras() {
     estado.letras = await respuesta.json();
 
     Object.keys(estado.letras).forEach((id) => {
-      const guardada = localStorage.getItem(`egmLetraEscenario:${id}`);
+      const guardada = localStorage.getItem(`egm16-LetraEscenario:${id}`);
       if (guardada) estado.letras[id].escenarioHtml = guardada;
     });
 
-    const letrasLocales = JSON.parse(localStorage.getItem("egmLetrasLocales") || "{}");
+    const letrasLocales = JSON.parse(localStorage.getItem("egm16-LetrasLocales") || "{}");
     estado.letras = { ...estado.letras, ...letrasLocales };
   } catch (error) {
     console.warn(error);
@@ -414,7 +414,7 @@ async function guardarLetraEscenario() {
 
   const contenido = DOM.letraContenido.innerHTML;
   estado.letras[id].escenarioHtml = contenido;
-  localStorage.setItem(`egmLetraEscenario:${id}`, contenido);
+  localStorage.setItem(`egm16-LetraEscenario:${id}`, contenido);
   guardarLetrasLocales();
   estado.letraOriginalEdicion = "";
   DOM.letraContenido.contentEditable = "false";
@@ -429,7 +429,7 @@ function guardarLetrasLocales() {
   Object.entries(estado.letras).forEach(([id, doc]) => {
     if (doc.local) locales[id] = doc;
   });
-  localStorage.setItem("egmLetrasLocales", JSON.stringify(locales));
+  localStorage.setItem("egm16-LetrasLocales", JSON.stringify(locales));
 }
 
 function mostrarAviso(texto) {
@@ -524,7 +524,7 @@ function crearIdCancion(titulo) {
 
 function guardarCancionesLocales() {
   const locales = estado.todas.filter((c) => String(c.id).startsWith("local-"));
-  localStorage.setItem("egmCancionesLocales", JSON.stringify(locales));
+  localStorage.setItem("egm16-CancionesLocales", JSON.stringify(locales));
 }
 
 async function guardarNuevaLetra() {
@@ -784,7 +784,7 @@ async function cargarDatos() {
   }
 
   estado.todas = depurarCanciones(await respuestaCanciones.json());
-  const cancionesLocales = JSON.parse(localStorage.getItem("egmCancionesLocales") || "[]");
+  const cancionesLocales = JSON.parse(localStorage.getItem("egm16-CancionesLocales") || "[]");
   cancionesLocales.forEach((local) => {
     estado.todas.push(local);
   });
@@ -823,6 +823,18 @@ function iniciarFirebase(firebaseConfig) {
   if (!firebaseConfig?.apiKey || !firebaseConfig?.projectId) {
     actualizarEstadoFirebase("Sin configuración", "error");
     return;
+  }
+
+  /*
+   * EGP16_FIREBASE_PROJECT_GUARD_V2
+   * Esta copia 1.6 SOLO acepta su Firebase exclusivo.
+   */
+  if (String(firebaseConfig.projectId) !== "egm16-respaldo-daniel-260904") {
+    actualizarEstadoFirebase("Firebase 1.6 bloqueado", "error");
+    throw new Error(
+      "EGP 1.6 BLOQUEADA: Firebase no autorizado: " +
+      String(firebaseConfig.projectId || "")
+    );
   }
 
   try {
@@ -1492,7 +1504,7 @@ function abrirAdmin() {
 
   // La clave ya fue validada en la página pública. Entregamos una autorización
   // limitada a esta pestaña para que panel.html no vuelva a pedirla.
-  sessionStorage.setItem("egm-panel-auth", "1");
+  sessionStorage.setItem("egm16-panel-auth", "1");
   window.location.href = "panel.html?trusted=1&live=1";
 }
 
@@ -3025,7 +3037,7 @@ async function iniciar() {
   capturarDOM();
   const panelMode=new URLSearchParams(location.search).get("panel")==="1";
   if(panelMode){
-    sessionStorage.setItem("egm-panel-auth","1");
+    sessionStorage.setItem("egm16-panel-auth","1");
     DOM.landing.hidden=true;DOM.app.hidden=false;
     if(DOM.panelBackButton){DOM.panelBackButton.hidden=false;DOM.panelBackButton.addEventListener("click",()=>{location.href="panel.html?trusted=1&live=1";});}
   }

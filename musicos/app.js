@@ -29,7 +29,7 @@ let unsubscribeMonitorConfig = null;
 
 try {
   const cachedMonitorConfig =
-    JSON.parse(localStorage.getItem("egp-monitor-config-v1") || "null");
+    JSON.parse(localStorage.getItem("egp16-monitor-config-v1") || "null");
 
   if (
     cachedMonitorConfig &&
@@ -203,7 +203,7 @@ let deferredPrompt = null;
 let songs = new Map();
 let unsubscribe = null;
 window.__EGP_MUSICOS_BUILD = "lan-cache-fix-20260901-v2";
-const LAST_STATE_KEY = "egp-musicos-last-state-v1";
+const LAST_STATE_KEY = "egp16-musicos-last-state-v1";
 /*
  * EGP16_BACKUP_FIREBASE_ONLY_V1
  *
@@ -457,6 +457,18 @@ async function startApp() {
   // Firebase se carga dinámicamente únicamente cuando está disponible.
   try {
     if (!cfg?.firebase) throw new Error("Firebase no disponible");
+
+    /*
+     * EGP16_FIREBASE_PROJECT_GUARD_V2
+     * Músicos 1.6 tampoco puede caer accidentalmente al Firebase fuerte.
+     */
+    if (String(cfg.firebase.projectId || "") !== "egm16-respaldo-daniel-260904") {
+      throw new Error(
+        "EGP 1.6 BLOQUEADA: Firebase no autorizado: " +
+        String(cfg.firebase.projectId || "")
+      );
+    }
+
     const [{ initializeApp }, { initializeFirestore, doc, onSnapshot }] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js")
@@ -501,7 +513,7 @@ async function startApp() {
         try {
           if (monitorConfigData) {
             localStorage.setItem(
-              "egp-monitor-config-v1",
+              "egp16-monitor-config-v1",
               JSON.stringify(monitorConfigData)
             );
           }

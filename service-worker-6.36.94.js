@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm16-v6.36.94-firebase-separado-v1";
+const VERSION = "egm16-v6.36.94-aislamiento-total-20260904-v2";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const STATIC_ASSETS = [

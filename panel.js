@@ -39,7 +39,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   const dialogBaselines = new WeakMap();
   const trackedDialogIds = new Set(['newSongDialog','repertoiresDialog','editSongDialog','songbookEditorDialog','photoManagerDialog','securityDialog','imageEditorDialog']);
   const labels = {alto:'Alto potencial', medio:'Potencial medio', bajo:'Bajo potencial'};
-  const PANEL_PREFS_KEY='egm-panel-device-profile-v1';
+  const PANEL_PREFS_KEY='egm16-panel-device-profile-v1';
   const isDesktopMac=/Macintosh|MacIntel/.test(navigator.platform||navigator.userAgent)&&Number(navigator.maxTouchPoints||0)===0;
   const defaultDanielAutoOpen=isDesktopMac?'image':'none';
   let panelDevicePrefs={profile:'elena',autoOpen:'none'};
@@ -244,12 +244,12 @@ document.documentElement.dataset.egmVersion="6.36.92";
   let latestRemoteState=null;
   let remoteShowGeneration=0;
   let lastAppliedRemoteRevision=0;
-  const DEVICE_ID=sessionStorage.getItem('egm-device-id')||(`dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  sessionStorage.setItem('egm-device-id',DEVICE_ID);
+  const DEVICE_ID=sessionStorage.getItem('egm16-device-id')||(`dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  sessionStorage.setItem('egm16-device-id',DEVICE_ID);
 
 
   // 6.36.35 — Persistencia offline-first para imágenes y anotaciones.
-  const OFFLINE_DB_NAME='egm-editor-offline-v1';
+  const OFFLINE_DB_NAME='egm16-editor-offline-v1';
   const OFFLINE_DB_VERSION=1;
   let offlineDbPromise=null;
   function openOfflineDb(){
@@ -281,7 +281,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
   async function cacheEditorImage(src){
     if(!src||src.startsWith('data:')||!('caches' in window))return;
-    try{const cache=await caches.open('egm-editor-images-v1');const req=new Request(src,{mode:'cors',credentials:'same-origin'});if(!(await cache.match(req))){const res=await fetch(req);if(res.ok||res.type==='opaque')await cache.put(req,res.clone());}}catch(err){console.warn('No se pudo guardar la foto para uso offline',err);}
+    try{const cache=await caches.open('egm16-editor-images-v1');const req=new Request(src,{mode:'cors',credentials:'same-origin'});if(!(await cache.match(req))){const res=await fetch(req);if(res.ok||res.type==='opaque')await cache.put(req,res.clone());}}catch(err){console.warn('No se pudo guardar la foto para uso offline',err);}
   }
   async function flushPendingImageEdits(){
     if(!navigator.onLine)return;
@@ -314,6 +314,18 @@ document.documentElement.dataset.egmVersion="6.36.92";
       const response=await fetch('configuracion.json');
       const cfg=await response.json();
       if(!cfg?.firebase?.apiKey||!cfg?.firebase?.projectId) return;
+
+      /*
+       * EGP16_FIREBASE_PROJECT_GUARD_V2
+       * La 1.6 se niega a arrancar contra cualquier Firebase distinto.
+       */
+      if(String(cfg.firebase.projectId)!=='egm16-respaldo-daniel-260904'){
+        throw new Error(
+          'EGP 1.6 BLOQUEADA: Firebase no autorizado: ' +
+          String(cfg.firebase.projectId||'')
+        );
+      }
+
       const app=initializeApp(cfg.firebase,'panel-v3');
       const panelDb=initializeFirestore(app,{experimentalAutoDetectLongPolling:true,useFetchStreams:false});
       remoteDb=panelDb;
@@ -515,7 +527,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   }
 
   function hydrateSavedState(){
-    const saved = JSON.parse(localStorage.getItem('egm-panel-v3') || '{}');
+    const saved = JSON.parse(localStorage.getItem('egm16-panel-v3') || '{}');
     state.config = saved.config || null;
     state.customSongs = Array.isArray(saved.customSongs) ? saved.customSongs : [];
     state.songEdits = saved.songEdits && typeof saved.songEdits==='object' ? saved.songEdits : {};
@@ -538,7 +550,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
 
   function saveStateLocalOnly(){
     const venues = $$('#venueHistory option').map(o=>o.value);
-    localStorage.setItem('egm-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
+    localStorage.setItem('egm16-panel-v3',JSON.stringify({config:state.config,queue:state.queue,played:[...state.played],venues,customSongs:state.customSongs,customRepertoires:state.customRepertoires,songEdits:state.songEdits}));
   }
   function saveState(immediate=false){ saveStateLocalOnly(); return syncRemoteState(immediate); }
 
@@ -733,7 +745,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   function showConfig(fromLive=false){ configOpenedFromLive=Boolean(fromLive&&state.config);document.documentElement.classList.remove('live-mode');document.body.classList.remove('live-mode');$('#liveView').classList.remove('is-active');$('#configView').classList.add('is-active');const continueBtn=$('#continueShowBtn');if(continueBtn)continueBtn.hidden=!configOpenedFromLive;window.scrollTo({left:0,top:0,behavior:'smooth'}); }
 
   // Entrega 6.36.65 · pausa/play con doble clic o doble toque compatible.
-  const SHOW_TIMER_KEY='egm-show-timer-v1';
+  const SHOW_TIMER_KEY='egm16-show-timer-v1';
   const SHOW_TIMER_SCHEMA=3;
   let showTimer={elapsedMs:0,running:false,startedAt:0};
   let showTimerFrame=0;
@@ -2688,9 +2700,9 @@ document.documentElement.dataset.egmVersion="6.36.92";
   // Entrega 6.16 — Exportar contactos
   const DANIEL_PHONE='593992890540';
   function readContacts(){
-    const candidates=['egm-contactos','contactos','egm-panel-v3-contactos']; let list=[];
+    const candidates=['egm-contactos','contactos','egm16-panel-v3-contactos']; let list=[];
     for(const key of candidates){try{const value=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(value))list.push(...value);}catch(_){} }
-    try{const saved=JSON.parse(localStorage.getItem('egm-panel-v3')||'{}');if(Array.isArray(saved.contacts))list.push(...saved.contacts);if(Array.isArray(saved.contactos))list.push(...saved.contactos);}catch(_){}
+    try{const saved=JSON.parse(localStorage.getItem('egm16-panel-v3')||'{}');if(Array.isArray(saved.contacts))list.push(...saved.contacts);if(Array.isArray(saved.contactos))list.push(...saved.contactos);}catch(_){}
     return list.map((x,i)=>({id:x.id||i,nombre:x.nombre||x.name||'Sin nombre',telefono:String(x.telefono||x.phone||'').replace(/\D/g,''),fecha:x.fecha||x.date||x.creado_en||x.createdAt||'',hora:x.hora||x.time||'',cancion:x.cancion||x.song||'',lugar:x.lugar||x.venue||'',perfil:x.perfil||x.perfil_clientes||x.profile||'',show:x.show||x.show_id||''})).filter(x=>x.telefono);
   }
   function uniqueContacts(list){const m=new Map();list.forEach(x=>{if(!m.has(x.telefono))m.set(x.telefono,x)});return [...m.values()];}
@@ -2706,7 +2718,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   function contactRows(){const only=$('#exportContent').value==='phones';const rows=filteredContacts();return {only,rows};}
   function exportText(){const {only,rows}=contactRows();return only?rows.map(x=>'+'+x.telefono).join('\n'):['nombre\tteléfono\tfecha\thora\tcanción\tlugar\tperfil\tshow',...rows.map(x=>[x.nombre,'+'+x.telefono,x.fecha,x.hora,x.cancion,x.lugar,x.perfil,x.show].join('\t'))].join('\n');}
   function downloadContacts(){const {only,rows}=contactRows();if(!rows.length)return toast('No hay contactos para exportar');askConfirm('Exportar contactos',`Se exportarán ${rows.length} contactos únicos.`,()=>{let blob,name;if($('#exportFormat').value==='text'){blob=new Blob([exportText()],{type:'text/plain;charset=utf-8'});name='contactos.txt';}else{const heads=only?['Teléfono']:['Nombre','Teléfono','Fecha','Hora','Canción','Lugar','Perfil','Show'];const body=rows.map(x=>only?['+'+x.telefono]:[x.nombre,'+'+x.telefono,x.fecha,x.hora,x.cancion,x.lugar,x.perfil,x.show]);const html='<table><tr>'+heads.map(x=>`<th>${esc(x)}</th>`).join('')+'</tr>'+body.map(r=>'<tr>'+r.map(x=>`<td>${esc(x)}</td>`).join('')+'</tr>').join('')+'</table>';blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel'});name='contactos.xls';}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);toast('Exportado exitosamente.');},'Exportar');}
-  function securitySettings(){try{return {...{password:'2907',danielPhone:'593992890540',elenaPhone:'593987388915'},...JSON.parse(localStorage.getItem('egm-security-settings')||'{}')}}catch(_){return {password:'2907',danielPhone:'593992890540',elenaPhone:'593987388915'}}}
+  function securitySettings(){try{return {...{password:'2907',danielPhone:'593992890540',elenaPhone:'593987388915'},...JSON.parse(localStorage.getItem('egm16-security-settings')||'{}')}}catch(_){return {password:'2907',danielPhone:'593992890540',elenaPhone:'593987388915'}}}
   function whatsappNumberElena(){return String(securitySettings().elenaPhone||'593987388915').replace(/\D/g,'');}
   function whatsappNumberDaniel(){return String(securitySettings().danielPhone||'593992890540').replace(/\D/g,'');}
   function shareContacts(phone){const rows=filteredContacts();if(!rows.length)return toast('No hay contactos para exportar');askConfirm('Enviar contactos',`Se enviarán ${rows.length} contactos únicos por WhatsApp.`,()=>{window.open(`https://wa.me/${phone}?text=${encodeURIComponent(exportText())}`,'_blank','noopener');toast('Exportado exitosamente.');},'Abrir WhatsApp');}
@@ -2747,7 +2759,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
     if(danielPhone.length<8||elenaPhone.length<8){error.textContent='Revisa los números de WhatsApp.';error.hidden=false;return;}
     error.hidden=true;
     askConfirm('Guardar seguridad','Se cambiarán la contraseña del panel y los teléfonos de WhatsApp.',()=>{
-      localStorage.setItem('egm-security-settings',JSON.stringify({password,danielPhone,elenaPhone}));
+      localStorage.setItem('egm16-security-settings',JSON.stringify({password,danielPhone,elenaPhone}));
       rememberDialogState($('#securityDialog'));
       toast('Guardado exitosamente');
     },'Guardar');
@@ -2756,8 +2768,8 @@ document.documentElement.dataset.egmVersion="6.36.92";
   // Entrega 6.17 — Subir fotos y editor real de encuadre
   let activePhotoSlot='inicio',photoDrafts={},dragState=null;
   const PHOTO_DEFAULTS={x:50,y:50,zoom:100,intensity:55,direction:'to bottom',color:'#000000',opacity:70};
-  function loadPhotoSettings(){try{return JSON.parse(localStorage.getItem('egm-photo-settings')||'{}')}catch(_){return {}}}
-  function loadPhotoSources(){try{return JSON.parse(localStorage.getItem('egm-photo-originals')||'{}')}catch(_){return {}}}
+  function loadPhotoSettings(){try{return JSON.parse(localStorage.getItem('egm16-photo-settings')||'{}')}catch(_){return {}}}
+  function loadPhotoSources(){try{return JSON.parse(localStorage.getItem('egm16-photo-originals')||'{}')}catch(_){return {}}}
   function currentPhotoDraft(){
     if(!photoDrafts[activePhotoSlot]){
       const saved=loadPhotoSettings()[activePhotoSlot]||{},sources=loadPhotoSources();
@@ -2827,7 +2839,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   $('#savePhotoSettingsBtn').addEventListener('click',()=>askConfirm('Guardar fotografías','Se conservarán las imágenes originales y se guardarán por separado únicamente los parámetros de encuadre.',()=>{
     const sources={},settings={};
     Object.entries(photoDrafts).forEach(([slot,d])=>{sources[slot]=d.src||'';const {src,fileName,...params}=d;settings[slot]={...params,fileName:fileName||''};});
-    try{localStorage.setItem('egm-photo-originals',JSON.stringify(sources));localStorage.setItem('egm-photo-settings',JSON.stringify(settings));rememberDialogState($('#photoManagerDialog'));toast('Guardado exitosamente');}
+    try{localStorage.setItem('egm16-photo-originals',JSON.stringify(sources));localStorage.setItem('egm16-photo-settings',JSON.stringify(settings));rememberDialogState($('#photoManagerDialog'));toast('Guardado exitosamente');}
     catch(_){toast('La imagen es demasiado grande. Usa una imagen más liviana.');}
   },'Guardar'));
 
@@ -3562,7 +3574,7 @@ document.documentElement.dataset.egmVersion="6.36.92";
   const trusted=params.get('trusted')==='1';
   if(!trusted){ login.removeAttribute('hidden'); login.setAttribute('aria-hidden','false'); }
   login.hidden=trusted;
-  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(latestRemoteState)applyRemotePanelState(latestRemoteState);else if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
+  loginForm.addEventListener('submit',e=>{e.preventDefault();const security=JSON.parse(localStorage.getItem('egm16-security-settings')||'{}');if(loginPassword.value===(security.password||'2907')){rememberPanelAuth();login.hidden=true;loginError.hidden=true;loginPassword.value='';if(latestRemoteState)applyRemotePanelState(latestRemoteState);else if(state.config)showLive();else showConfig();}else loginError.hidden=false;});
   loadData().then(async()=>{
     if(trusted&&state.config)showLive(); else if(trusted)showConfig();
     try{

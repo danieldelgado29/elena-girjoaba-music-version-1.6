@@ -48,9 +48,9 @@
 
       instagram.addEventListener("click", function () {
         try {
-          sessionStorage.setItem("egmInstagramVisitado", "1");
+          sessionStorage.setItem("egm16-InstagramVisitado", "1");
           sessionStorage.setItem(
-            "egmInstagramDesbloqueo",
+            "egm16-InstagramDesbloqueo",
             String(Date.now() + 3000)
           );
         } catch (error) {}
@@ -60,9 +60,9 @@
 
       try {
         const visitado =
-          sessionStorage.getItem("egmInstagramVisitado") === "1";
+          sessionStorage.getItem("egm16-InstagramVisitado") === "1";
         const desbloqueo = Number(
-          sessionStorage.getItem("egmInstagramDesbloqueo") || 0
+          sessionStorage.getItem("egm16-InstagramDesbloqueo") || 0
         );
 
         if (visitado) {
@@ -75,7 +75,7 @@
     });
   </script>
 
-  <script type="module" src="script.js?v=6.36.72.11"></script>
+  <script type="module" src="script.js?v=egm16-aislamiento-total-20260904-v2"></script>
 </head>
 
 <body>
