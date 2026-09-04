@@ -1,11 +1,11 @@
 {
   "firebase": {
-    "apiKey": "AIzaSyAXW5kZfwB8HOwx6Gs1K8l1Jd04otNRKWQ",
-    "authDomain": "elena-girjoaba-music.firebaseapp.com",
-    "projectId": "elena-girjoaba-music",
-    "storageBucket": "elena-girjoaba-music.firebasestorage.app",
-    "messagingSenderId": "788327893336",
-    "appId": "1:788327893336:web:d8edd64463cca8a677bd2d"
+    "apiKey": "AIzaSyBgDp57X-uKLAvH2PtKXhEYSTvDwkyDydU",
+    "authDomain": "egm16-respaldo-daniel-260904.firebaseapp.com",
+    "projectId": "egm16-respaldo-daniel-260904",
+    "storageBucket": "egm16-respaldo-daniel-260904.firebasestorage.app",
+    "messagingSenderId": "200660113645",
+    "appId": "1:200660113645:web:a93c2e5422f2cc1a3d54e4"
   },
   "modoPredeterminado": "principal-diario",
   "duracionShowHoras": 8

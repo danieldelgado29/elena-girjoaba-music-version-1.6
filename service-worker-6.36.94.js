@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm-v6.36.94-offline-real";
+const VERSION = "egm16-v6.36.94-firebase-separado-v1";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const STATIC_ASSETS = [
@@ -167,8 +167,20 @@ self.addEventListener("install",event=>{
 self.addEventListener("activate",event=>{
   event.waitUntil((async()=>{
     const names=await caches.keys();
+    /*
+     * EGP16_CACHE_NAMESPACE_V1
+     * La 1.6 solo administra sus propias caches.
+     */
+    const ownLegacyCaches = new Set([
+      "egm-v6.36.94-offline-real-static",
+      "egm-v6.36.94-offline-real-runtime"
+    ]);
+
     await Promise.all(names.filter(name=>
-      (name.startsWith("egm-") || name.startsWith("egm-panel-")) &&
+      (
+        name.startsWith("egm16-") ||
+        ownLegacyCaches.has(name)
+      ) &&
       ![STATIC_CACHE,RUNTIME_CACHE].includes(name)
     ).map(name=>caches.delete(name)));
     await self.clients.claim();

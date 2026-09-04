@@ -9,7 +9,7 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp-musicos-ui24r-health-20260902-v1";
+const CACHE = "egp16-musicos-firebase-separado-20260904-v1";
 
 const CORE = [
   "./",
@@ -79,7 +79,10 @@ self.addEventListener("activate", event => {
       keys
         .filter(
           key =>
-            key.startsWith("egp-musicos-") &&
+            (
+              key.startsWith("egp16-musicos-") ||
+              key === "egp-musicos-ui24r-health-20260902-v1"
+            ) &&
             key !== CACHE
         )
         .map(key => caches.delete(key))

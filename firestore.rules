@@ -1,14 +1,26 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Estado general usado por panel y cliente.
+
+    // Show, repertorio, cola y biblioteca de ESTA copia 1.6.
     match /config/estado {
       allow read, write: if true;
     }
 
-    // Una edición ligera por canción y por cancionero.
-    // Ejemplos: imageEdits/elena-c002, imageEdits/daniel-c002
+    // Editores Elena/Daniel y configuración de monitoreo:
+    // imageEdits/egp-system-monitoreo-v1
     match /imageEdits/{editId} {
+      allow read, write: if true;
+    }
+
+    // Contactos propios del respaldo.
+    match /contactos/{contactId} {
+      allow read, write: if true;
+    }
+
+    // Pedidos propios del respaldo.
+    match /pedidos/{pedidoId} {
       allow read, write: if true;
     }
   }

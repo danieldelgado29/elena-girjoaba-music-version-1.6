@@ -204,7 +204,15 @@ let songs = new Map();
 let unsubscribe = null;
 window.__EGP_MUSICOS_BUILD = "lan-cache-fix-20260901-v2";
 const LAST_STATE_KEY = "egp-musicos-last-state-v1";
-const LOCAL_CORE = "https://core.elenagirjoaba.com";
+/*
+ * EGP16_BACKUP_FIREBASE_ONLY_V1
+ *
+ * Respaldo 1.6 independiente:
+ * - NO consulta Local Core de la .com.
+ * - usa exclusivamente SU Firebase.
+ */
+const EGP16_BACKUP_FIREBASE_ONLY = true;
+const LOCAL_CORE = "";
 let localCoreOnline = false;
 let localCoreTimer = null;
 let localCoreBusy = false;
@@ -226,6 +234,7 @@ function localCoreToMusicos(data){
 }
 
 async function pollLocalCore(){
+  if (EGP16_BACKUP_FIREBASE_ONLY) return;
   /*
    * LAN PRIMERA PRIORIDAD.
    * Evita solicitudes superpuestas.
@@ -307,6 +316,7 @@ async function pollLocalCore(){
 }
 
 function startLocalCore(){
+  if (EGP16_BACKUP_FIREBASE_ONLY) return;
   if(localCoreTimer) return;
 
   pollLocalCore();
