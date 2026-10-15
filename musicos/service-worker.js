@@ -9,7 +9,7 @@
  * - una Wi‑Fi sin Internet jamás bloquea el arranque.
  */
 
-const CACHE = "egp16-musicos-aislamiento-total-20260904-v2";
+const CACHE = "egp16-musicos-live-api-20261014-v1";
 
 const CORE = [
   "./",
@@ -138,6 +138,21 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  /*
+   * EGP LIVE STATE:
+   * /api/* jamás sale de Cache Storage.
+   * Si Core no responde, no se devuelve una cola vieja.
+   */
+  if (
+    url.origin === self.location.origin &&
+    url.pathname.startsWith("/api/")
+  ) {
+    event.respondWith(
+      fetch(new Request(request, { cache: "no-store" }))
+    );
+    return;
+  }
 
   /*
    * Firebase, Local Core y Ui24R son conexiones aparte.

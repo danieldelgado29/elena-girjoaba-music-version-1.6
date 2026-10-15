@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "egm16-v6.36.94-aislamiento-total-20260904-v2";
+const VERSION = "egm16-v6.36.94-live-api-20261014-v1";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const STATIC_ASSETS = [
@@ -214,6 +214,22 @@ self.addEventListener("fetch",event=>{
   const request=event.request;
   if(request.method!=="GET") return;
   const url=new URL(request.url);
+
+  /*
+   * PANEL / MUSICOS LIVE STATE:
+   * /api/* siempre se obtiene de Core/red.
+   * Nunca desde Cache Storage.
+   */
+  if(
+    url.origin===self.location.origin &&
+    url.pathname.startsWith("/api/")
+  ){
+    event.respondWith(
+      fetch(new Request(request,{cache:"no-store"}))
+    );
+    return;
+  }
+
   if(request.mode==="navigate"){
     const fallback=url.pathname.includes("/musicos/")?scopedUrl("./musicos/index.html"):(url.pathname.endsWith("/panel.html")?scopedUrl("./panel.html"):scopedUrl("./index.html"));
     event.respondWith(networkFirst(request,fallback));

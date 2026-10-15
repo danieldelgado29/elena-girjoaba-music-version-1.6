@@ -202,17 +202,18 @@ const openChromeBtn = $("#openChromeBtn");
 let deferredPrompt = null;
 let songs = new Map();
 let unsubscribe = null;
-window.__EGP_MUSICOS_BUILD = "lan-cache-fix-20260901-v2";
+window.__EGP_MUSICOS_BUILD = "lan-live-core-20261014-v1";
 const LAST_STATE_KEY = "egp16-musicos-last-state-v1";
 /*
- * EGP16_BACKUP_FIREBASE_ONLY_V1
+ * EGP MUSICOS — CORE LOCAL PRIMARIO
  *
- * Respaldo 1.6 independiente:
- * - NO consulta Local Core de la .com.
- * - usa exclusivamente SU Firebase.
+ * Durante el show:
+ * - Local Core LAN es la fuente preferida.
+ * - Firebase permanece disponible como respaldo.
+ * - el estado vivo nunca debe salir de una caché antigua.
  */
-const EGP16_BACKUP_FIREBASE_ONLY = true;
-const LOCAL_CORE = "";
+const EGP16_BACKUP_FIREBASE_ONLY = false;
+const LOCAL_CORE = "https://10.10.10.2:8789";
 let localCoreOnline = false;
 let localCoreTimer = null;
 let localCoreBusy = false;
@@ -429,9 +430,17 @@ async function startApp() {
 
   let cfg = null;
   try {
+    const runningOnLocalCore = location.hostname === "10.10.10.2";
+    const configUrl = runningOnLocalCore
+      ? "/panel/configuracion.json"
+      : "../configuracion.json";
+    const songsUrl = runningOnLocalCore
+      ? "/musicos/canciones.json"
+      : "../canciones.json";
+
     const [cfgRes, songsRes] = await Promise.all([
-      fetch("../configuracion.json", { cache: "no-store" }),
-      fetch("../canciones.json", { cache: "no-store" })
+      fetch(configUrl, { cache: "no-store" }),
+      fetch(songsUrl, { cache: "no-store" })
     ]);
     if (!cfgRes.ok || !songsRes.ok) throw new Error("base no disponible");
     cfg = await cfgRes.json();
